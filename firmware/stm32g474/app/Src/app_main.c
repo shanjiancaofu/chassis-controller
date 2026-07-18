@@ -7,6 +7,7 @@
 #include "bsp_encoder.h"
 #include "bsp_motor.h"
 #include "bsp_power_sample.h"
+#include "board_self_test.h"
 #include "chassis_control.h"
 #include "fdcan_driver.h"
 #include "iwdg.h"
@@ -43,6 +44,9 @@ void App_Init(void)
   }
 
   ChassisControl_Init();
+  if (!BoardSelfTest_Init()) {
+    Error_Handler();
+  }
   if (HAL_TIM_Base_Start_IT(&htim6) != HAL_OK) {
     Error_Handler();
   }
@@ -143,6 +147,8 @@ void App_Run(void)
     }
   }
 
+  BoardSelfTest_Run(now_ms);
+
   if (now_ms - last_telemetry_ms >= MOTOR_TELEMETRY_PERIOD_MS) {
     uint32_t supply_mv;
     const bool supply_valid =
@@ -161,7 +167,7 @@ void App_Run(void)
         (long)status.right_delta, (int)status.right_output,
         (unsigned int)status.state, (unsigned long)status.fault_flags);
     if (length > 0 && (size_t)length < sizeof(telemetry) &&
-        HAL_UART_GetState(&huart1) == HAL_UART_STATE_READY) {
+        huart1.gState == HAL_UART_STATE_READY) {
       (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)telemetry,
                                  (uint16_t)length);
     }
