@@ -8,6 +8,7 @@
 - CubeMX 配置：`firmware/stm32g474/chassis_controller.ioc`
 - 应用入口：`firmware/stm32g474/app/Src/app_main.c`
 - CAN FD 协议：`protocol/canfd_protocol.md`
+- 裸机进度：`docs/裸机阶段进度.md`
 - 本地参考资料：`example/`，不作为产品源码，也不提交到仓库
 
 工具链使用 STM32CubeMX 6.18、STM32CubeG4 V1.6.3、STM32CubeIDE GCC 和 ST-Link。CubeMX 选择 `STM32CubeIDE`，并启用 `Generate Under Root`。
