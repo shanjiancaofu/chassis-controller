@@ -3,5 +3,6 @@
 
 void App_Init(void);
 void App_Run(void);
+void App_FatalError(void);
 
 #endif
