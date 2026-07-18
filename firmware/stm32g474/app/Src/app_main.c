@@ -1,5 +1,6 @@
 #include "app_main.h"
 
+#include "bsp_motor.h"
 #include "fdcan_driver.h"
 #include "iwdg.h"
 #include "main.h"
@@ -12,6 +13,9 @@ void App_Init(void)
   HAL_UART_Transmit(&huart1, startup_message, sizeof(startup_message) - 1U,
                     HAL_MAX_DELAY);
   if (FdcanDriver_Init() != HAL_OK) {
+    Error_Handler();
+  }
+  if (!BspMotor_Init()) {
     Error_Handler();
   }
 }
