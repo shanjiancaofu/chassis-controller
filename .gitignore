@@ -65,3 +65,7 @@ dkms.conf
 
 # Local vendor reference projects
 /example/
+
+# STM32CubeIDE build output
+/firmware/**/STM32CubeIDE/Debug/
+/firmware/**/STM32CubeIDE/Release/
