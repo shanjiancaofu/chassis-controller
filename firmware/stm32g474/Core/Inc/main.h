@@ -63,6 +63,44 @@ void Error_Handler(void);
 #define LED_G_GPIO_Port GPIOC
 #define LED_R_Pin GPIO_PIN_2
 #define LED_R_GPIO_Port GPIOC
+#define MOTOR_LEFT_ENC_A_Pin GPIO_PIN_0
+#define MOTOR_LEFT_ENC_A_GPIO_Port GPIOA
+#define MOTOR_LEFT_ENC_B_Pin GPIO_PIN_1
+#define MOTOR_LEFT_ENC_B_GPIO_Port GPIOA
+#define LCD_RST_Pin GPIO_PIN_5
+#define LCD_RST_GPIO_Port GPIOA
+#define LCD_BLK_Pin GPIO_PIN_6
+#define LCD_BLK_GPIO_Port GPIOA
+#define LCD_CS_Pin GPIO_PIN_7
+#define LCD_CS_GPIO_Port GPIOA
+#define LCD_SCK_Pin GPIO_PIN_13
+#define LCD_SCK_GPIO_Port GPIOB
+#define LCD_DC_Pin GPIO_PIN_14
+#define LCD_DC_GPIO_Port GPIOB
+#define LCD_SDA_Pin GPIO_PIN_15
+#define LCD_SDA_GPIO_Port GPIOB
+#define MOTOR_RIGHT_ENC_A_Pin GPIO_PIN_12
+#define MOTOR_RIGHT_ENC_A_GPIO_Port GPIOD
+#define MOTOR_RIGHT_ENC_B_Pin GPIO_PIN_13
+#define MOTOR_RIGHT_ENC_B_GPIO_Port GPIOD
+#define MOTOR_LEFT_PWM_Pin GPIO_PIN_6
+#define MOTOR_LEFT_PWM_GPIO_Port GPIOC
+#define MOTOR_RIGHT_PWM_Pin GPIO_PIN_7
+#define MOTOR_RIGHT_PWM_GPIO_Port GPIOC
+#define MOTOR_LEFT_DIR_Pin GPIO_PIN_8
+#define MOTOR_LEFT_DIR_GPIO_Port GPIOC
+#define MOTOR_RIGHT_DIR_Pin GPIO_PIN_9
+#define MOTOR_RIGHT_DIR_GPIO_Port GPIOC
+#define MOTOR_LEFT_EN_Pin GPIO_PIN_0
+#define MOTOR_LEFT_EN_GPIO_Port GPIOD
+#define MOTOR_RIGHT_EN_Pin GPIO_PIN_1
+#define MOTOR_RIGHT_EN_GPIO_Port GPIOD
+#define E_STOP_Pin GPIO_PIN_2
+#define E_STOP_GPIO_Port GPIOD
+#define E_STOP_EXTI_IRQn EXTI2_IRQn
+#define KEY_Pin GPIO_PIN_8
+#define KEY_GPIO_Port GPIOB
+#define KEY_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
 

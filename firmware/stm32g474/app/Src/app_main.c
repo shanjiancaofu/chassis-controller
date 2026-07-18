@@ -1,6 +1,7 @@
 #include "app_main.h"
 
 #include "fdcan_driver.h"
+#include "iwdg.h"
 #include "main.h"
 #include "usart.h"
 
@@ -32,4 +33,6 @@ void App_Run(void)
   } else if (loopback_status == FDCAN_LOOPBACK_FAILED) {
     HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET);
   }
+
+  HAL_IWDG_Refresh(&hiwdg);
 }
