@@ -35,6 +35,15 @@
 *.i*86
 *.x86_64
 *.hex
+*.axf
+*.crf
+*.dep
+*.lnp
+*.lst
+*.build_log.htm
+*.uvguix.*
+*.bak
+*.orig
 
 # Debug files
 *.dSYM/
@@ -53,3 +62,6 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Local vendor reference projects
+/example/
