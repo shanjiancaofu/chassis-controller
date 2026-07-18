@@ -4,7 +4,7 @@
 
 #include "fdcan.h"
 
-#define LOOPBACK_CAN_ID 0x321U
+#define LOOPBACK_CAN_ID 0x721U
 
 static volatile FdcanLoopbackStatus loopback_status = FDCAN_LOOPBACK_PENDING;
 
