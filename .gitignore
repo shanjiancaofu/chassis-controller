@@ -67,5 +67,8 @@ dkms.conf
 /example/
 
 # STM32CubeIDE build output
-/firmware/**/STM32CubeIDE/Debug/
-/firmware/**/STM32CubeIDE/Release/
+/firmware/stm32g474/Debug/
+/firmware/stm32g474/Release/
+
+# Local editor settings
+/.vscode/

@@ -1,5 +1,5 @@
-#ifndef APP_H
-#define APP_H
+#ifndef APP_MAIN_H
+#define APP_MAIN_H
 
 void App_Init(void);
 void App_Run(void);
