@@ -4,12 +4,15 @@
 #include <string.h>
 
 #include "fdcan_driver.h"
+#include "quadspi.h"
 #include "rtc.h"
 #include "usart.h"
 
 #define UART_RX_DMA_BUFFER_SIZE 128U
 #define UART_COMMAND_BUFFER_SIZE 32U
 #define SELF_TEST_REPORT_DELAY_MS 100U
+#define QSPI_JEDEC_ID_COMMAND 0x9FU
+#define QSPI_COMMAND_TIMEOUT_MS 100U
 
 static uint8_t uart_rx_dma_buffer[UART_RX_DMA_BUFFER_SIZE];
 static volatile uint16_t uart_rx_dma_position;
@@ -21,16 +24,42 @@ static uint8_t uart_command_length;
 static RTC_TimeTypeDef rtc_time;
 static RTC_DateTypeDef rtc_date;
 static bool rtc_read_ok;
+static uint8_t qspi_jedec_id[3];
+static uint32_t qspi_capacity_bytes;
+static bool qspi_read_ok;
 static bool initial_report_sent;
 static bool report_requested;
 static bool pong_requested;
 static bool help_requested;
 static uint32_t self_test_started_ms;
-static char self_test_report[384];
+static char self_test_report[448];
 
 bool BoardSelfTest_Init(void)
 {
+  QSPI_CommandTypeDef qspi_command = {0};
+
   self_test_started_ms = HAL_GetTick();
+
+  qspi_command.Instruction = QSPI_JEDEC_ID_COMMAND;
+  qspi_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+  qspi_command.AddressMode = QSPI_ADDRESS_NONE;
+  qspi_command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+  qspi_command.DataMode = QSPI_DATA_1_LINE;
+  qspi_command.DummyCycles = 0U;
+  qspi_command.NbData = sizeof(qspi_jedec_id);
+  qspi_command.DdrMode = QSPI_DDR_MODE_DISABLE;
+  qspi_command.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
+  qspi_command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+  qspi_read_ok =
+      HAL_QSPI_Command(&hqspi1, &qspi_command, QSPI_COMMAND_TIMEOUT_MS) ==
+          HAL_OK &&
+      HAL_QSPI_Receive(&hqspi1, qspi_jedec_id, QSPI_COMMAND_TIMEOUT_MS) ==
+          HAL_OK;
+  if (qspi_read_ok && qspi_jedec_id[2] >= 0x10U &&
+      qspi_jedec_id[2] <= 0x1FU) {
+    qspi_capacity_bytes = 1UL << qspi_jedec_id[2];
+  }
 
   if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_rx_dma_buffer,
                                    sizeof(uart_rx_dma_buffer)) != HAL_OK) {
@@ -110,6 +139,9 @@ void BoardSelfTest_Run(uint32_t now_ms)
       report_requested) {
     const char *fdcan_text = "READY";
     char rtc_text[48];
+    char qspi_text[96];
+    const uint32_t configured_qspi_capacity =
+        1UL << (hqspi1.Init.FlashSize + 1U);
     int length;
 
     rtc_read_ok =
@@ -139,6 +171,28 @@ void BoardSelfTest_Run(uint32_t now_ms)
       (void)snprintf(rtc_text, sizeof(rtc_text), "FAIL");
     }
 
+    if (!qspi_read_ok) {
+      (void)snprintf(qspi_text, sizeof(qspi_text), "FAIL read");
+    } else if (qspi_capacity_bytes == 0U) {
+      (void)snprintf(qspi_text, sizeof(qspi_text),
+                     "FAIL jedec=%02X%02X%02X capacity=UNKNOWN",
+                     qspi_jedec_id[0], qspi_jedec_id[1],
+                     qspi_jedec_id[2]);
+    } else if (qspi_capacity_bytes != configured_qspi_capacity) {
+      (void)snprintf(
+          qspi_text, sizeof(qspi_text),
+          "FAIL jedec=%02X%02X%02X detected=%luMiB configured=%luMiB",
+          qspi_jedec_id[0], qspi_jedec_id[1], qspi_jedec_id[2],
+          (unsigned long)(qspi_capacity_bytes / (1024UL * 1024UL)),
+          (unsigned long)(configured_qspi_capacity / (1024UL * 1024UL)));
+    } else {
+      (void)snprintf(
+          qspi_text, sizeof(qspi_text),
+          "PASS jedec=%02X%02X%02X capacity=%luMiB",
+          qspi_jedec_id[0], qspi_jedec_id[1], qspi_jedec_id[2],
+          (unsigned long)(qspi_capacity_bytes / (1024UL * 1024UL)));
+    }
+
     length = snprintf(
         self_test_report, sizeof(self_test_report),
         "SELF_TEST\r\n"
@@ -146,7 +200,7 @@ void BoardSelfTest_Run(uint32_t now_ms)
         "USART_RX_DMA: READY\r\n"
         "RTC_READ: %s\r\n"
         "RTC_BACKUP: READY\r\n"
-        "QSPI_ID: READY\r\n"
+        "QSPI_ID: %s\r\n"
         "QSPI_RW_TEST: DISABLED\r\n"
         "LCD: READY\r\n"
         "FDCAN_INTERNAL: %s\r\n"
@@ -155,7 +209,7 @@ void BoardSelfTest_Run(uint32_t now_ms)
         "MOTOR: DISABLED\r\n"
         "IWDG_RESET_TEST: DISABLED\r\n"
         "COMMANDS: ping, status\r\n",
-        rtc_text, fdcan_text);
+        rtc_text, qspi_text, fdcan_text);
     if (length > 0 && (size_t)length < sizeof(self_test_report) &&
         HAL_UART_Transmit_DMA(&huart1, (uint8_t *)self_test_report,
                               (uint16_t)length) == HAL_OK) {

@@ -21,7 +21,7 @@
 
 裸机双电机控制链路已经接入：TIM2/TIM4 编码器增量、TIM6 10 ms 调度、速度 PID、方向切换保护、200 ms 命令超时、PD2 急停锁存、ADC 电源采样和 USART1 遥测。应用启动时会启动两路编码器和 TIM8 四路 PWM，但四路比较值保持为 0；电机 Demo 默认关闭，不会自动转动。驱动板和底盘线束尚未实物验证，不能跳过接线检查直接带电机上电。
 
-启动自检通过 USART1 DMA 输出 RTC、FDCAN 和待测外设状态。USART1 RX 使用循环 DMA 和空闲线事件接收，主循环处理 `ping`、`status` 两个测试命令；接收回调不解析命令。自检不会启动电机、擦写 QSPI 或触发 IWDG 复位测试。
+启动自检通过 USART1 DMA 输出 RTC、FDCAN、QSPI 和待测外设状态。QSPI 自检读取 JEDEC ID、计算芯片容量并核对控制器地址空间，不执行擦除或写入。USART1 RX 使用循环 DMA 和空闲线事件接收，主循环处理 `ping`、`status` 两个测试命令；接收回调不解析命令。自检不会启动电机、擦写 QSPI 或触发 IWDG 复位测试。
 
 ## 外设与引脚
 
@@ -34,7 +34,7 @@
 | 板载按键 | `PB8/BOOT0` | EXTI8，上升沿中断 |
 | 调试串口 | `PA9/PA10` | USART1 TX/RX，115200 baud |
 | CAN FD | `PB6/PB5` | FDCAN2 TX/RX，连接 MCP2562FD 收发器 |
-| QSPI Flash | `PE10` 至 `PE15` | QUADSPI1，W25Q Flash 候选 8 MiB 地址空间 |
+| QSPI Flash | `PE10` 至 `PE15` | QUADSPI1，XPlus 原理图标注 W25Q32，4 MiB 地址空间 |
 | LCD 控制 | `PA5/PA7/PB14` | 复位、片选、数据/命令 |
 | LCD SPI | `PB13/PB15` | SPI2 SCK/MOSI，Mode 3，约 10.625 Mbit/s |
 | LCD 背光 | `PA6` | TIM3 CH1，20 kHz PWM |
