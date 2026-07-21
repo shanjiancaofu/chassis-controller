@@ -15,13 +15,13 @@
 
 ## 当前状态
 
-已完成 170 MHz 系统时钟、SWD、GPIO、USART1、DMA、FDCAN2 内部回环、QSPI Flash、2 英寸 SPI LCD 接口、RTC、IWDG、定时器以及 AT8236 D157B 双电机资源配置。
+已完成 170 MHz 系统时钟、SWD、GPIO、USART1、DMA、FDCAN2 内部回环、QSPI Flash、2 英寸 SPI LCD 驱动、RTC、IWDG、定时器以及 AT8236 D157B 双电机资源配置。
 
 启动后 USART1 输出启动信息，蓝灯每 500 ms 翻转；FDCAN2 以 500 kbps 仲裁速率、2 Mbps 数据速率发送 CAN FD+BRS 回环帧，接收校验成功亮绿灯，失败亮红灯。RTC 使用板载 32.768 kHz LSE，仅在备份域未初始化时写入默认时间；IWDG 继续使用 LSI，只在主循环和 10 ms 控制节拍均正常且没有内部关键故障时刷新。
 
 裸机双电机控制链路已经接入：TIM2/TIM4 编码器增量、TIM6 10 ms 调度、速度 PID、方向切换保护、200 ms 命令超时、PD2 急停锁存、ADC 电源采样和 USART1 遥测。应用启动时会启动两路编码器和 TIM8 四路 PWM，但四路比较值保持为 0；电机 Demo 默认关闭，不会自动转动。驱动板和底盘线束尚未实物验证，不能跳过接线检查直接带电机上电。
 
-启动自检通过 USART1 DMA 输出 RTC、FDCAN、QSPI 和待测外设状态。QSPI 自检读取 JEDEC ID、计算芯片容量并核对控制器地址空间；只有人工输入 `qspi test confirm` 才会擦写固定保留扇区。USART1 RX 使用循环 DMA 和空闲线事件接收，主循环处理 `ping`、`status`、遥测开关和 QSPI 测试命令；接收回调不解析命令。周期遥测默认关闭，自检不会启动电机、自动擦写 QSPI 或触发 IWDG 复位测试。
+启动自检通过 USART1 DMA 输出 RTC、FDCAN、QSPI 和待测外设状态。QSPI 自检读取 JEDEC ID、计算芯片容量并核对控制器地址空间；只有人工输入 `qspi test confirm` 才会擦写固定保留扇区。LCD 使用 640 字节单行缓冲和 SPI2 TX DMA 绘制四色测试图，DMA 回调只更新状态，后续行由主循环提交。USART1 RX 使用循环 DMA 和空闲线事件接收，主循环处理命令；周期遥测默认关闭，自检不会启动电机、自动擦写 QSPI 或触发 IWDG 复位测试。
 
 ## 外设与引脚
 
@@ -84,7 +84,7 @@ D157B 的 6P 电机接口给同厂配套霍尔编码器提供 5 V 电源，`E1B/
 | `DMA1_Channel2` | USART1 TX，内存到外设，普通，中优先级 | 每 100 ms 异步发送控制遥测 |
 | `DMA1_Channel3` | SPI2 TX，内存到外设，普通，低优先级 | 批量发送 LCD 像素，减少 CPU 搬运 |
 
-当前启动日志仍使用一次阻塞式 `HAL_UART_Transmit`，周期遥测使用 USART1 TX DMA。LCD 驱动和串口接收模块实现后再启用对应 DMA；ADC 只需每 100 ms 软件触发一次，不使用 DMA。
+当前启动日志仍使用一次阻塞式 `HAL_UART_Transmit`，周期遥测使用 USART1 TX DMA，LCD 像素使用 SPI2 TX DMA。ADC 只需每 100 ms 软件触发一次，不使用 DMA。
 
 ## 裸机电机控制
 
@@ -116,8 +116,8 @@ ADC1 每 100 ms 读取 PA2，内部使用 `vin_mv = adc_raw * 3300 * 11 / 4095` 
 
 ## 下一批任务
 
-1. 按 6P 端子定义逐根确认 D157B、STM32 和配套电机线序，并测量编码器 A/B 高电平。
-2. 架空车轮，以默认 10% 输出上限验证急停、正反转、左右编码器方向和换向零输出周期。
-3. 用万用表校准 PA2 电压换算，确认实际 VDDA 和分压比例。
-4. 根据真实编码器 counts/10 ms 逐步整定左右 PI，确认每转计数和减速比后再换算 RPM。
-5. 完成硬件 Demo 后接入 CAN FD 控制帧，再根据控制时序和模块数量评估 FreeRTOS 迁移。
+1. 烧录后确认 LCD 白色边框、黑色十字和红绿蓝黄四个区域完整显示，并用 `status` 确认 `LCD: READY`。
+2. 补齐板载按键消抖和自检处理。
+3. 按 6P 端子定义逐根确认 D157B、STM32 和配套电机线序，并测量编码器 A/B 高电平。
+4. 架空车轮，以默认 10% 输出上限验证急停、正反转、左右编码器方向和换向零输出周期。
+5. 用万用表校准 PA2 电压换算，之后接入外部 CAN FD 控制帧。

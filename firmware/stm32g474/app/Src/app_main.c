@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "bsp_encoder.h"
+#include "bsp_lcd.h"
 #include "bsp_motor.h"
 #include "bsp_power_sample.h"
 #include "board_self_test.h"
@@ -42,6 +43,7 @@ void App_Init(void)
   if (!BspEncoder_Start() || !BspPowerSample_Init()) {
     Error_Handler();
   }
+  (void)BspLcd_Init();
 
   ChassisControl_Init();
   if (!BoardSelfTest_Init()) {
@@ -148,6 +150,7 @@ void App_Run(void)
     }
   }
 
+  BspLcd_Run();
   telemetry_enabled = BoardSelfTest_Run(now_ms);
 
   if (telemetry_enabled &&

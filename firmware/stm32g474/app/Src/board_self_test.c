@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "bsp_lcd.h"
 #include "fdcan_driver.h"
 #include "quadspi.h"
 #include "rtc.h"
@@ -389,6 +390,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         now_ms - self_test_started_ms >= SELF_TEST_REPORT_DELAY_MS)) ||
       report_requested) {
     const char *fdcan_text = "READY";
+    const char *lcd_text = "DISABLED";
     const char *qspi_rw_text = "DISABLED";
     char rtc_text[48];
     char qspi_text[96];
@@ -408,6 +410,14 @@ bool BoardSelfTest_Run(uint32_t now_ms)
       fdcan_text = "PASS";
     } else if (fdcan_status == FDCAN_LOOPBACK_FAILED) {
       fdcan_text = "FAIL";
+    }
+
+    if (BspLcd_GetStatus() == BSP_LCD_DRAWING) {
+      lcd_text = "DRAWING";
+    } else if (BspLcd_GetStatus() == BSP_LCD_READY) {
+      lcd_text = "READY";
+    } else if (BspLcd_GetStatus() == BSP_LCD_FAILED) {
+      lcd_text = "FAIL";
     }
 
     if (qspi_test_state >= QSPI_TEST_ERASE_WRITE_ENABLE &&
@@ -463,7 +473,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         "RTC_BACKUP: READY\r\n"
         "QSPI_ID: %s\r\n"
         "QSPI_RW_TEST: %s\r\n"
-        "LCD: READY\r\n"
+        "LCD: %s\r\n"
         "FDCAN_INTERNAL: %s\r\n"
         "FDCAN_EXTERNAL: DISABLED\r\n"
         "ENCODER: READY\r\n"
@@ -471,7 +481,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         "IWDG_RESET_TEST: DISABLED\r\n"
         "TELEMETRY: %s\r\n"
         "COMMANDS: ping, status, telemetry on, telemetry off, qspi test confirm\r\n",
-        rtc_text, qspi_text, qspi_rw_text, fdcan_text,
+        rtc_text, qspi_text, qspi_rw_text, lcd_text, fdcan_text,
         telemetry_enabled ? "ON" : "OFF");
     if (length > 0 && (size_t)length < sizeof(self_test_report) &&
         HAL_UART_Transmit_DMA(&huart1, (uint8_t *)self_test_report,
