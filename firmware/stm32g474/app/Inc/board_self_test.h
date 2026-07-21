@@ -5,6 +5,6 @@
 #include <stdint.h>
 
 bool BoardSelfTest_Init(void);
-void BoardSelfTest_Run(uint32_t now_ms);
+bool BoardSelfTest_Run(uint32_t now_ms);
 
 #endif

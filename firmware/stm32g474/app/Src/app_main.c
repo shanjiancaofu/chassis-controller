@@ -69,6 +69,7 @@ void App_Run(void)
   ChassisControlStatus status;
   uint8_t pending_ticks;
   bool tick_overflow;
+  bool telemetry_enabled;
   uint32_t primask;
   const uint32_t now_ms = HAL_GetTick();
   const FdcanLoopbackStatus loopback_status =
@@ -147,9 +148,10 @@ void App_Run(void)
     }
   }
 
-  BoardSelfTest_Run(now_ms);
+  telemetry_enabled = BoardSelfTest_Run(now_ms);
 
-  if (now_ms - last_telemetry_ms >= MOTOR_TELEMETRY_PERIOD_MS) {
+  if (telemetry_enabled &&
+      now_ms - last_telemetry_ms >= MOTOR_TELEMETRY_PERIOD_MS) {
     uint32_t supply_mv;
     const bool supply_valid =
         BspPowerSample_ReadMillivolts(&supply_mv);

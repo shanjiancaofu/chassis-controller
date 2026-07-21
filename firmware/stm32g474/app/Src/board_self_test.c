@@ -31,6 +31,8 @@ static bool initial_report_sent;
 static bool report_requested;
 static bool pong_requested;
 static bool help_requested;
+static bool telemetry_enabled;
+static bool telemetry_state_requested;
 static uint32_t self_test_started_ms;
 static char self_test_report[448];
 
@@ -39,6 +41,7 @@ bool BoardSelfTest_Init(void)
   QSPI_CommandTypeDef qspi_command = {0};
 
   self_test_started_ms = HAL_GetTick();
+  telemetry_enabled = false;
 
   qspi_command.Instruction = QSPI_JEDEC_ID_COMMAND;
   qspi_command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
@@ -69,10 +72,13 @@ bool BoardSelfTest_Init(void)
   return true;
 }
 
-void BoardSelfTest_Run(uint32_t now_ms)
+bool BoardSelfTest_Run(uint32_t now_ms)
 {
   static const uint8_t pong[] = "PONG\r\n";
-  static const uint8_t help[] = "COMMANDS: ping, status\r\n";
+  static const uint8_t telemetry_on[] = "TELEMETRY: ON\r\n";
+  static const uint8_t telemetry_off[] = "TELEMETRY: OFF\r\n";
+  static const uint8_t help[] =
+      "COMMANDS: ping, status, telemetry on, telemetry off\r\n";
   uint16_t dma_position = 0U;
   bool process_rx = false;
   uint32_t primask = __get_PRIMASK();
@@ -113,6 +119,12 @@ void BoardSelfTest_Run(uint32_t now_ms)
           pong_requested = true;
         } else if (strcmp(uart_command, "status") == 0) {
           report_requested = true;
+        } else if (strcmp(uart_command, "telemetry on") == 0) {
+          telemetry_enabled = true;
+          telemetry_state_requested = true;
+        } else if (strcmp(uart_command, "telemetry off") == 0) {
+          telemetry_enabled = false;
+          telemetry_state_requested = true;
         } else if (uart_command_length != 0U) {
           help_requested = true;
         }
@@ -130,7 +142,7 @@ void BoardSelfTest_Run(uint32_t now_ms)
   }
 
   if (huart1.gState != HAL_UART_STATE_READY) {
-    return;
+    return telemetry_enabled;
   }
 
   if ((!initial_report_sent &&
@@ -208,22 +220,38 @@ void BoardSelfTest_Run(uint32_t now_ms)
         "ENCODER: READY\r\n"
         "MOTOR: DISABLED\r\n"
         "IWDG_RESET_TEST: DISABLED\r\n"
-        "COMMANDS: ping, status\r\n",
-        rtc_text, qspi_text, fdcan_text);
+        "TELEMETRY: %s\r\n"
+        "COMMANDS: ping, status, telemetry on, telemetry off\r\n",
+        rtc_text, qspi_text, fdcan_text,
+        telemetry_enabled ? "ON" : "OFF");
     if (length > 0 && (size_t)length < sizeof(self_test_report) &&
         HAL_UART_Transmit_DMA(&huart1, (uint8_t *)self_test_report,
                               (uint16_t)length) == HAL_OK) {
       initial_report_sent = true;
       report_requested = false;
     }
-    return;
+    return telemetry_enabled;
   }
 
   if (pong_requested &&
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)pong,
                             sizeof(pong) - 1U) == HAL_OK) {
     pong_requested = false;
-    return;
+    return telemetry_enabled;
+  }
+
+  if (telemetry_state_requested) {
+    const uint8_t *message =
+        telemetry_enabled ? telemetry_on : telemetry_off;
+    const uint16_t message_length =
+        telemetry_enabled ? sizeof(telemetry_on) - 1U
+                          : sizeof(telemetry_off) - 1U;
+
+    if (HAL_UART_Transmit_DMA(&huart1, (uint8_t *)message,
+                              message_length) == HAL_OK) {
+      telemetry_state_requested = false;
+      return telemetry_enabled;
+    }
   }
 
   if (help_requested &&
@@ -231,6 +259,7 @@ void BoardSelfTest_Run(uint32_t now_ms)
                             sizeof(help) - 1U) == HAL_OK) {
     help_requested = false;
   }
+  return telemetry_enabled;
 }
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
