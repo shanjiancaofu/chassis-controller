@@ -33,6 +33,7 @@ extern "C" {
 /* USER CODE END Includes */
 
 extern QSPI_HandleTypeDef hqspi1;
+extern DMA_HandleTypeDef hdma_quadspi;
 
 /* USER CODE BEGIN Private defines */
 

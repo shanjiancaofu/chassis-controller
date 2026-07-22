@@ -5,7 +5,6 @@
 #include <stdio.h>
 
 #include "bsp_encoder.h"
-#include "bsp_lcd.h"
 #include "bsp_motor.h"
 #include "bsp_power_sample.h"
 #include "board_self_test.h"
@@ -14,6 +13,7 @@
 #include "iwdg.h"
 #include "main.h"
 #include "project_config.h"
+#include "status_display.h"
 #include "tim.h"
 #include "usart.h"
 
@@ -43,7 +43,7 @@ void App_Init(void)
   if (!BspEncoder_Start() || !BspPowerSample_Init()) {
     Error_Handler();
   }
-  (void)BspLcd_Init();
+  (void)StatusDisplay_Init();
 
   ChassisControl_Init();
   if (!BoardSelfTest_Init()) {
@@ -150,8 +150,13 @@ void App_Run(void)
     }
   }
 
-  BspLcd_Run();
+  StatusDisplay_Run(now_ms);
   telemetry_enabled = BoardSelfTest_Run(now_ms);
+
+  if (BoardSelfTest_IsIwdgResetRequested()) {
+    ChassisControl_Stop();
+    BspMotor_EmergencyStop();
+  }
 
   if (telemetry_enabled &&
       now_ms - last_telemetry_ms >= MOTOR_TELEMETRY_PERIOD_MS) {
@@ -190,7 +195,8 @@ void App_Run(void)
 
   if (last_control_run_ms != 0U &&
       now_ms - last_control_run_ms <= 50U &&
-      !ChassisControl_HasInternalFault()) {
+      !ChassisControl_HasInternalFault() &&
+      !BoardSelfTest_IsIwdgResetRequested()) {
     HAL_IWDG_Refresh(&hiwdg);
   }
 }
@@ -213,6 +219,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin)
 {
+  if (gpio_pin == KEY_Pin) {
+    StatusDisplay_OnKeyInterrupt();
+  }
   if (gpio_pin == E_STOP_Pin &&
       HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET) {
     ChassisControl_EmergencyStopFromIsr();
