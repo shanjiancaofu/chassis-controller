@@ -70,9 +70,12 @@ static bool button_test_passed;
 static bool iwdg_reset_test_passed;
 static bool iwdg_reset_requested;
 static bool iwdg_reset_report_requested;
+static BoardMotorTestRequest motor_test_request;
+static bool motor_test_report_requested;
 static uint32_t self_test_started_ms;
 static char self_test_report[768];
 static char qspi_test_report[128];
+static char motor_test_report[96];
 
 static void QspiRunTest(uint32_t now_ms)
 {
@@ -257,7 +260,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
   static const uint8_t telemetry_on[] = "TELEMETRY: ON\r\n";
   static const uint8_t telemetry_off[] = "TELEMETRY: OFF\r\n";
   static const uint8_t help[] =
-      "COMMANDS: ping, status, telemetry on, telemetry off, qspi test confirm, iwdg reset confirm\r\n";
+      "COMMANDS: ping, status, telemetry on, telemetry off, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
   static const uint8_t iwdg_armed[] =
       "IWDG_RESET_TEST: ARMED, reset expected within 2 seconds\r\n";
   uint16_t dma_position = 0U;
@@ -295,6 +298,9 @@ bool BoardSelfTest_Run(uint32_t now_ms)
                      UART_RX_DMA_BUFFER_SIZE);
       --bytes_available;
       if (value == '\n') {
+        BoardMotorTestRequest requested_motor_test =
+            BOARD_MOTOR_TEST_NONE;
+
         uart_command[uart_command_length] = '\0';
         if (strcmp(uart_command, "ping") == 0) {
           pong_requested = true;
@@ -328,7 +334,31 @@ bool BoardSelfTest_Run(uint32_t now_ms)
           } else {
             help_requested = true;
           }
+        } else if (strcmp(uart_command, "motor stop") == 0) {
+          requested_motor_test = BOARD_MOTOR_TEST_STOP;
+        } else if (strcmp(uart_command,
+                          "motor left forward confirm") == 0) {
+          requested_motor_test = BOARD_MOTOR_TEST_LEFT_FORWARD;
+        } else if (strcmp(uart_command,
+                          "motor left reverse confirm") == 0) {
+          requested_motor_test = BOARD_MOTOR_TEST_LEFT_REVERSE;
+        } else if (strcmp(uart_command,
+                          "motor right forward confirm") == 0) {
+          requested_motor_test = BOARD_MOTOR_TEST_RIGHT_FORWARD;
+        } else if (strcmp(uart_command,
+                          "motor right reverse confirm") == 0) {
+          requested_motor_test = BOARD_MOTOR_TEST_RIGHT_REVERSE;
         } else if (uart_command_length != 0U) {
+          help_requested = true;
+        }
+        if (requested_motor_test == BOARD_MOTOR_TEST_STOP ||
+            (requested_motor_test != BOARD_MOTOR_TEST_NONE &&
+             motor_test_request == BOARD_MOTOR_TEST_NONE &&
+             !iwdg_reset_requested &&
+             !(qspi_test_state >= QSPI_TEST_ERASE_START &&
+               qspi_test_state <= QSPI_TEST_VERIFY))) {
+          motor_test_request = requested_motor_test;
+        } else if (requested_motor_test != BOARD_MOTOR_TEST_NONE) {
           help_requested = true;
         }
         uart_command_length = 0U;
@@ -453,7 +483,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         "MOTOR: DISABLED\r\n"
         "IWDG_RESET_TEST: %s\r\n"
         "TELEMETRY: %s\r\n"
-        "COMMANDS: ping, status, telemetry on, telemetry off, qspi test confirm, iwdg reset confirm\r\n",
+        "COMMANDS: ping, status, telemetry on, telemetry off, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n",
         rtc_text, qspi_text, qspi_rw_text, lcd_text, fdcan_text,
         button_test_passed ? "PASS" : "READY", iwdg_text,
         telemetry_enabled ? "ON" : "OFF");
@@ -516,6 +546,13 @@ bool BoardSelfTest_Run(uint32_t now_ms)
     return telemetry_enabled;
   }
 
+  if (motor_test_report_requested &&
+      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)motor_test_report,
+                            (uint16_t)strlen(motor_test_report)) == HAL_OK) {
+    motor_test_report_requested = false;
+    return telemetry_enabled;
+  }
+
   if (help_requested &&
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)help,
                             sizeof(help) - 1U) == HAL_OK) {
@@ -545,6 +582,50 @@ void BoardSelfTest_NotifyButtonPressed(void)
 bool BoardSelfTest_IsIwdgResetRequested(void)
 {
   return iwdg_reset_requested;
+}
+
+BoardMotorTestRequest BoardSelfTest_TakeMotorTestRequest(void)
+{
+  const BoardMotorTestRequest request = motor_test_request;
+
+  motor_test_request = BOARD_MOTOR_TEST_NONE;
+  return request;
+}
+
+void BoardSelfTest_ReportMotorTestResult(BoardMotorTestRequest request,
+                                         bool accepted)
+{
+  const char *action = "UNKNOWN";
+
+  switch (request) {
+    case BOARD_MOTOR_TEST_STOP:
+      action = "STOP";
+      break;
+    case BOARD_MOTOR_TEST_LEFT_FORWARD:
+      action = "LEFT FORWARD";
+      break;
+    case BOARD_MOTOR_TEST_LEFT_REVERSE:
+      action = "LEFT REVERSE";
+      break;
+    case BOARD_MOTOR_TEST_RIGHT_FORWARD:
+      action = "RIGHT FORWARD";
+      break;
+    case BOARD_MOTOR_TEST_RIGHT_REVERSE:
+      action = "RIGHT REVERSE";
+      break;
+    default:
+      return;
+  }
+
+  if (request == BOARD_MOTOR_TEST_STOP && accepted) {
+    (void)snprintf(motor_test_report, sizeof(motor_test_report),
+                   "MOTOR_TEST: STOPPED\r\n");
+  } else {
+    (void)snprintf(motor_test_report, sizeof(motor_test_report),
+                   "MOTOR_TEST: %s %s\r\n",
+                   accepted ? "STARTED" : "REJECTED", action);
+  }
+  motor_test_report_requested = true;
 }
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)

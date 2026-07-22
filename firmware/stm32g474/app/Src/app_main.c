@@ -72,6 +72,7 @@ void App_Run(void)
   uint8_t pending_ticks;
   bool tick_overflow;
   bool telemetry_enabled;
+  BoardMotorTestRequest motor_test_request;
   uint32_t primask;
   const uint32_t now_ms = HAL_GetTick();
   const FdcanLoopbackStatus loopback_status =
@@ -156,6 +157,39 @@ void App_Run(void)
   if (BoardSelfTest_IsIwdgResetRequested()) {
     ChassisControl_Stop();
     BspMotor_EmergencyStop();
+  }
+
+  motor_test_request = BoardSelfTest_TakeMotorTestRequest();
+  if (motor_test_request != BOARD_MOTOR_TEST_NONE) {
+    int16_t left_duty = 0;
+    int16_t right_duty = 0;
+    bool accepted = false;
+
+    if (motor_test_request == BOARD_MOTOR_TEST_STOP) {
+      ChassisControl_Stop();
+      accepted = true;
+    } else if (!BoardSelfTest_IsIwdgResetRequested()) {
+      switch (motor_test_request) {
+        case BOARD_MOTOR_TEST_LEFT_FORWARD:
+          left_duty = MOTOR_OPEN_LOOP_TEST_DUTY;
+          break;
+        case BOARD_MOTOR_TEST_LEFT_REVERSE:
+          left_duty = -MOTOR_OPEN_LOOP_TEST_DUTY;
+          break;
+        case BOARD_MOTOR_TEST_RIGHT_FORWARD:
+          right_duty = MOTOR_OPEN_LOOP_TEST_DUTY;
+          break;
+        case BOARD_MOTOR_TEST_RIGHT_REVERSE:
+          right_duty = -MOTOR_OPEN_LOOP_TEST_DUTY;
+          break;
+        default:
+          break;
+      }
+      accepted = ChassisControl_StartOpenLoopTest(
+          left_duty, right_duty, now_ms,
+          MOTOR_OPEN_LOOP_TEST_DURATION_MS);
+    }
+    BoardSelfTest_ReportMotorTestResult(motor_test_request, accepted);
   }
 
   if (telemetry_enabled &&

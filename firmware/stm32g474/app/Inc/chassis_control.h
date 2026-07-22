@@ -9,7 +9,8 @@ typedef enum {
   CHASSIS_CONTROL_RUNNING,
   CHASSIS_CONTROL_COMMAND_TIMEOUT,
   CHASSIS_CONTROL_EMERGENCY_STOP,
-  CHASSIS_CONTROL_INTERNAL_FAULT
+  CHASSIS_CONTROL_INTERNAL_FAULT,
+  CHASSIS_CONTROL_OPEN_LOOP_TEST
 } ChassisControlState;
 
 enum {
@@ -33,6 +34,10 @@ typedef struct {
 
 void ChassisControl_Init(void);
 bool ChassisControl_Start(void);
+bool ChassisControl_StartOpenLoopTest(int16_t left_duty,
+                                      int16_t right_duty,
+                                      uint32_t now_ms,
+                                      uint32_t duration_ms);
 void ChassisControl_Stop(void);
 void ChassisControl_SetTargetSpeed(int32_t left_counts_per_tick,
                                    int32_t right_counts_per_tick);

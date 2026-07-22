@@ -12,11 +12,20 @@
 #error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
 #endif
 
+#if MOTOR_OPEN_LOOP_TEST_DUTY > MOTOR_CONTROL_OUTPUT_LIMIT
+#error "MOTOR_OPEN_LOOP_TEST_DUTY exceeds bring-up output limit"
+#endif
+
 static SpeedPid left_pid;
 static SpeedPid right_pid;
 static ChassisControlStatus control_status;
 static volatile bool emergency_stop_latched;
 static bool running;
+static bool open_loop_test_running;
+static int16_t open_loop_left_duty;
+static int16_t open_loop_right_duty;
+static uint32_t open_loop_started_ms;
+static uint32_t open_loop_duration_ms;
 static bool has_command;
 static uint32_t last_command_ms;
 
@@ -30,6 +39,7 @@ void ChassisControl_Init(void)
                 MOTOR_RIGHT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
   running = false;
+  open_loop_test_running = false;
   has_command = false;
   last_command_ms = 0U;
 
@@ -46,7 +56,7 @@ void ChassisControl_Init(void)
 bool ChassisControl_Start(void)
 {
   if (emergency_stop_latched || ChassisControl_HasInternalFault() ||
-      !has_command) {
+      open_loop_test_running || !has_command) {
     return false;
   }
 
@@ -55,9 +65,43 @@ bool ChassisControl_Start(void)
   return true;
 }
 
+bool ChassisControl_StartOpenLoopTest(int16_t left_duty,
+                                      int16_t right_duty,
+                                      uint32_t now_ms,
+                                      uint32_t duration_ms)
+{
+  if (emergency_stop_latched || ChassisControl_HasInternalFault() ||
+      running || open_loop_test_running || duration_ms == 0U ||
+      (left_duty == 0 && right_duty == 0) ||
+      (left_duty != 0 && right_duty != 0) ||
+      left_duty > MOTOR_CONTROL_OUTPUT_LIMIT ||
+      left_duty < -MOTOR_CONTROL_OUTPUT_LIMIT ||
+      right_duty > MOTOR_CONTROL_OUTPUT_LIMIT ||
+      right_duty < -MOTOR_CONTROL_OUTPUT_LIMIT) {
+    return false;
+  }
+
+  has_command = false;
+  control_status.left_target = 0;
+  control_status.right_target = 0;
+  open_loop_left_duty = left_duty;
+  open_loop_right_duty = right_duty;
+  open_loop_started_ms = now_ms;
+  open_loop_duration_ms = duration_ms;
+  open_loop_test_running = true;
+  control_status.state = CHASSIS_CONTROL_OPEN_LOOP_TEST;
+  BspMotor_CoastAll();
+  SpeedPid_Reset(&left_pid);
+  SpeedPid_Reset(&right_pid);
+  return true;
+}
+
 void ChassisControl_Stop(void)
 {
   running = false;
+  open_loop_test_running = false;
+  open_loop_left_duty = 0;
+  open_loop_right_duty = 0;
   has_command = false;
   control_status.left_target = 0;
   control_status.right_target = 0;
@@ -108,6 +152,7 @@ void ChassisControl_Tick10ms(uint32_t now_ms)
 
   if (emergency_stop_latched) {
     running = false;
+    open_loop_test_running = false;
     has_command = false;
     control_status.left_target = 0;
     control_status.right_target = 0;
@@ -123,12 +168,26 @@ void ChassisControl_Tick10ms(uint32_t now_ms)
 
   if (ChassisControl_HasInternalFault()) {
     running = false;
+    open_loop_test_running = false;
     control_status.left_output = 0;
     control_status.right_output = 0;
     control_status.state = CHASSIS_CONTROL_INTERNAL_FAULT;
     BspMotor_CoastAll();
     SpeedPid_Reset(&left_pid);
     SpeedPid_Reset(&right_pid);
+    return;
+  }
+
+  if (open_loop_test_running) {
+    if (now_ms - open_loop_started_ms >= open_loop_duration_ms) {
+      ChassisControl_Stop();
+      return;
+    }
+    BspMotor_SetSignedDutyBoth(open_loop_left_duty,
+                               open_loop_right_duty);
+    control_status.left_output = open_loop_left_duty;
+    control_status.right_output = open_loop_right_duty;
+    control_status.state = CHASSIS_CONTROL_OPEN_LOOP_TEST;
     return;
   }
 
@@ -239,6 +298,7 @@ void ChassisControl_LatchInternalFault(uint32_t fault)
   control_status.fault_flags |= fault;
   control_status.state = CHASSIS_CONTROL_INTERNAL_FAULT;
   running = false;
+  open_loop_test_running = false;
   has_command = false;
   control_status.left_target = 0;
   control_status.right_target = 0;

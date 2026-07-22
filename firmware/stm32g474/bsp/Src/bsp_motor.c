@@ -62,7 +62,7 @@ void BspMotor_SetSignedDuty(BspMotorId motor, int16_t duty)
   } else if (motor == BSP_MOTOR_RIGHT) {
     __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_3, 0U);
     __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_4, 0U);
-    __HAL_TIM_SET_COMPARE(&htim8, value >= 0 ? TIM_CHANNEL_3 : TIM_CHANNEL_4,
+    __HAL_TIM_SET_COMPARE(&htim8, value >= 0 ? TIM_CHANNEL_4 : TIM_CHANNEL_3,
                           compare);
     right_applied_duty = (int16_t)value;
   }
