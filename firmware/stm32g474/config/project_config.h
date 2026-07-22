@@ -1,6 +1,8 @@
 #ifndef PROJECT_CONFIG_H
 #define PROJECT_CONFIG_H
 
+#define CHASSIS_FIRMWARE_VERSION "0.1.0"
+
 #define ENABLE_BAREMETAL_MOTOR_DEMO 0
 
 #define MOTOR_CONTROL_PERIOD_MS 10U
@@ -10,7 +12,7 @@
 
 /* Initial bring-up limit: about 10% of TIM8 ARR. */
 #define MOTOR_CONTROL_OUTPUT_LIMIT 849
-#define MOTOR_LEFT_ENCODER_DIRECTION 1
+#define MOTOR_LEFT_ENCODER_DIRECTION -1
 #define MOTOR_RIGHT_ENCODER_DIRECTION 1
 
 /* Conservative starting values. They still require hardware tuning. */
