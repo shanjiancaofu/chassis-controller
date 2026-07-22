@@ -45,10 +45,44 @@ chassis-controller/
 
 ## 开发流程
 
-1. 使用 CubeMX 打开 `.ioc`，工具链选择 `STM32CubeIDE`，启用 `Generate Under Root`。
-2. 生成后在 STM32CubeIDE 导入 `firmware/stm32g474/`，使用 GCC 构建 Debug 或 Release。
-3. 使用 ST-Link 烧录和调试，CH340 串口使用 115200 baud 查看自检与遥测。
-4. 修改 CubeMX 生成文件时只写入 `USER CODE BEGIN/END` 区域，业务代码放入 `app/`、`bsp/` 或 `communication/`。
+### CubeMX 生成工程
+
+1. 使用 CubeMX 打开 `firmware/stm32g474/chassis_controller.ioc`。
+2. `Toolchain / IDE` 选择 `STM32CubeIDE`，勾选 `Generate Under Root`。
+3. 生成代码后检查自定义源文件和头文件路径仍在 `.cproject` 中。
+4. CubeMX 生成文件只在 `USER CODE BEGIN/END` 区域内手工修改；业务代码放入 `app/`、`bsp/` 或 `communication/`。
+
+### STM32CubeIDE 构建和烧录
+
+首次打开时选择 `File -> Import -> Existing Projects into Workspace`，根目录填写：
+
+```text
+E:\code\github\chassis-controller\firmware\stm32g474
+```
+
+导入 `chassis_controller` 后：
+
+1. 在 `Project -> Build Configurations -> Set Active` 选择 `Debug`。
+2. 日常编译使用 `Project -> Build Project`。
+3. 修改公共头文件、CubeMX 配置或怀疑仍在使用旧目标文件时，先执行 `Project -> Clean...`，再执行 `Project -> Build Project`。
+4. Console 出现 `Build Finished. 0 errors` 后，Debug 固件位于 `firmware/stm32g474/Debug/chassis_controller.elf`。
+5. 打开 `Run -> Debug Configurations -> STM32 C/C++ Application`，Project 选择 `chassis_controller`，Application 选择 `Debug/chassis_controller.elf`。
+6. 连接 ST-Link 后点击 `Debug` 完成烧录并进入调试；仅需继续运行时点击 Resume。
+
+CH340 调试串口使用 `115200 8N1`，上电后通过串口查看启动自检、命令响应和遥测。
+
+### VS Code 构建
+
+VS Code 使用本机 `.vscode/tasks.json` 调用 STM32CubeIDE 的命令行程序 `stm32cubeidec.exe`，实际编译器和工程配置仍来自 STM32CubeIDE GCC 与 `.cproject`，没有改用桌面 GCC 或 CMake。
+
+- 按 `Ctrl+Shift+B` 执行默认任务 `STM32: Build Debug`，用于日常增量编译。
+- 按 `Ctrl+Shift+P`，选择 `Tasks: Run Task -> STM32: Clean Build Debug`，用于完整清理并重新编译。
+- 构建成功时终端显示 `Build Finished. 0 errors, 0 warnings.`。
+- 输出仍是 `firmware/stm32g474/Debug/chassis_controller.elf`。
+
+VS Code 构建任务当前只编译，不自动烧录。编译完成后使用 STM32CubeIDE 的 Debug Configuration 将上述 ELF 烧入开发板。
+
+若修改代码后板上行为没有变化，先检查 `Debug/chassis_controller.elf` 和相关 `.o` 的修改时间是否晚于源文件，再执行一次 `STM32: Clean Build Debug` 并重新烧录。仓库默认忽略 `.vscode/`，因此更换电脑后需要按本机 STM32CubeIDE 安装路径重新配置 `tasks.json` 中的 `stm32cubeidec.exe`。
 
 ## 开发约定
 
