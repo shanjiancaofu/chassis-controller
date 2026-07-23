@@ -2,7 +2,7 @@
 
 基于 Jetson Orin Nano 和 STM32G474VET6 的底盘控制器。Jetson 负责上层决策和控制命令，STM32 负责双电机控制、状态采集、安全停车和 CAN FD 通信。本仓库与 `cockpit-system` 独立维护。
 
-当前重点是 `firmware/stm32g474/` 裸机固件。FreeRTOS、Bootloader、完整 OTA、位置环和复杂底盘运动学将在板级外设与双电机安全链路完成实物验收后再引入。
+`firmware/stm32g474/` 的裸机基线已经完成实物验收，当前开始迁移 FreeRTOS。迁移只改变调度方式，暂不引入 Bootloader、完整 OTA、位置环和复杂底盘运动学。
 
 ## 目录结构
 
@@ -12,6 +12,7 @@ chassis-controller/
 │  └─ stm32g474/
 │     ├─ Core/              # CubeMX 生成的初始化和中断入口
 │     ├─ Drivers/           # CMSIS 与 STM32G4 HAL
+│     ├─ Middlewares/       # CubeMX 管理的 FreeRTOS 内核
 │     ├─ Application/       # CubeIDE 生成的启动和系统适配文件
 │     ├─ app/               # 主流程、自检、状态页和底盘控制
 │     ├─ bsp/               # 电机、编码器、LCD、QSPI 和 ADC 板级封装
@@ -33,15 +34,15 @@ chassis-controller/
 - 项目配置：`firmware/stm32g474/config/project_config.h`
 - 硬件与接线：`docs/硬件与接线.md`
 - CAN FD 协议：`protocol/canfd_protocol.md`
-- 裸机进度：`docs/裸机阶段进度.md`
+- 阶段进度：`docs/裸机阶段进度.md`
 
 ## 当前基线
 
 - 工具链为 STM32CubeMX 6.18、STM32CubeG4 V1.6.3、STM32CubeIDE GCC 和 ST-Link。
-- 已接入 USART DMA、RTC、QSPI、LCD SPI DMA、FDCAN 内部回环、ADC、电机 PWM、双编码器、10 ms PID、安全停车和条件喂狗。
-- LCD 封面、动态状态页、QSPI 8 MiB 识别、板级启动自检和 ADC 电压采样已经完成实物运行；准确验收状态以 `docs/裸机阶段进度.md` 为准。
+- 裸机基线 `v0.1.0-baremetal` 已完成 USART、RTC、QSPI、LCD、CAN FD、ADC、双编码器、双电机、10 ms PID、安全停车和 IWDG 的实物验收。
+- FreeRTOS 已由 CubeMX 接入：SysTick 用于内核节拍，TIM7 用于 HAL 时基，现有 `App_Run()` 由 1024 Words 静态任务执行。
+- 当前 FreeRTOS 固件已通过 STM32CubeIDE GCC Debug 完整构建，结果为 `0 errors, 0 warnings`；尚未完成烧录后的硬件回归，不能标记为实物 `PASS`。
 - 电机 Demo 默认关闭，应用上电后 TIM8 四路 PWM 比较值保持为 0，不会自动转动电机。
-- 外部 CAN、RTC 掉电保持、编码器方向和双电机控制链路仍需继续实物验证。
 
 ## 开发流程
 
