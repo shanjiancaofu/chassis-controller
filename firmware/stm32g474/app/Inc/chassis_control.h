@@ -13,6 +13,11 @@ typedef enum {
   CHASSIS_CONTROL_OPEN_LOOP_TEST
 } ChassisControlState;
 
+typedef enum {
+  CHASSIS_PID_LEFT = 0,
+  CHASSIS_PID_RIGHT
+} ChassisPidSide;
+
 enum {
   CHASSIS_FAULT_NONE = 0U,
   CHASSIS_FAULT_COMMAND_TIMEOUT = 1U << 0,
@@ -46,6 +51,10 @@ void ChassisControl_SetTargetSpeed(int32_t left_counts_per_tick,
 void ChassisControl_NotifyCommandReceived(uint32_t now_ms);
 void ChassisControl_Tick10ms(uint32_t now_ms);
 bool ChassisControl_ResetEncoderTotals(void);
+bool ChassisControl_SetPidGains(ChassisPidSide side, uint16_t kp,
+                                uint16_t ki, uint16_t kd);
+void ChassisControl_GetPidGains(ChassisPidSide side, uint16_t *kp,
+                                uint16_t *ki, uint16_t *kd);
 void ChassisControl_EmergencyStopFromIsr(void);
 bool ChassisControl_ClearEmergencyStop(void);
 void ChassisControl_LatchInternalFault(uint32_t fault);

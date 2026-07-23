@@ -8,6 +8,7 @@
 #include "chassis_control.h"
 #include "fdcan_driver.h"
 #include "main.h"
+#include "project_config.h"
 #include "quadspi.h"
 #include "rtc.h"
 #include "storage_layout.h"
@@ -65,7 +66,7 @@ static bool initial_report_sent;
 static bool report_requested;
 static bool pong_requested;
 static bool help_requested;
-static bool telemetry_enabled;
+static BoardTelemetryMode telemetry_mode;
 static bool telemetry_state_requested;
 static bool button_test_passed;
 static bool iwdg_reset_test_passed;
@@ -75,12 +76,15 @@ static BoardMotorTestRequest motor_test_request;
 static bool motor_test_report_requested;
 static bool encoder_report_requested;
 static bool fdcan_report_requested;
+static bool pid_report_requested;
+static bool pid_command_accepted;
 static uint32_t self_test_started_ms;
-static char self_test_report[768];
+static char self_test_report[1152];
 static char qspi_test_report[128];
 static char motor_test_report[96];
 static char encoder_report[96];
 static char fdcan_report[256];
+static char pid_report[160];
 
 static void QspiRunTest(uint32_t now_ms)
 {
@@ -218,7 +222,7 @@ bool BoardSelfTest_Init(void)
       HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR2) == IWDG_TEST_MARKER;
 
   self_test_started_ms = HAL_GetTick();
-  telemetry_enabled = false;
+  telemetry_mode = BOARD_TELEMETRY_OFF;
   qspi_test_state = QSPI_TEST_IDLE;
   for (size_t index = 0U; index < sizeof(qspi_test_pattern); ++index) {
     qspi_test_pattern[index] =
@@ -259,13 +263,14 @@ bool BoardSelfTest_Init(void)
   return true;
 }
 
-bool BoardSelfTest_Run(uint32_t now_ms)
+BoardTelemetryMode BoardSelfTest_Run(uint32_t now_ms)
 {
   static const uint8_t pong[] = "PONG\r\n";
-  static const uint8_t telemetry_on[] = "TELEMETRY: ON\r\n";
+  static const uint8_t telemetry_text[] = "TELEMETRY: TEXT\r\n";
+  static const uint8_t telemetry_vofa[] = "TELEMETRY: VOFA\r\n";
   static const uint8_t telemetry_off[] = "TELEMETRY: OFF\r\n";
   static const uint8_t help[] =
-      "COMMANDS: ping, status, telemetry on, telemetry off, can status, can tx confirm, encoder zero, encoder result, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
+      "COMMANDS: ping, status, telemetry text, telemetry vofa, telemetry off, can status, can tx confirm, pid show, pid left <kp> <ki> <kd>, pid right <kp> <ki> <kd>, pid target <left> <right>, pid stop, encoder zero, encoder result, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
   static const uint8_t iwdg_armed[] =
       "IWDG_RESET_TEST: ARMED, reset expected within 2 seconds\r\n";
   uint16_t dma_position = 0U;
@@ -310,11 +315,15 @@ bool BoardSelfTest_Run(uint32_t now_ms)
           pong_requested = true;
         } else if (strcmp(uart_command, "status") == 0) {
           report_requested = true;
-        } else if (strcmp(uart_command, "telemetry on") == 0) {
-          telemetry_enabled = true;
+        } else if (strcmp(uart_command, "telemetry on") == 0 ||
+                   strcmp(uart_command, "telemetry text") == 0) {
+          telemetry_mode = BOARD_TELEMETRY_TEXT;
+          telemetry_state_requested = true;
+        } else if (strcmp(uart_command, "telemetry vofa") == 0) {
+          telemetry_mode = BOARD_TELEMETRY_VOFA;
           telemetry_state_requested = true;
         } else if (strcmp(uart_command, "telemetry off") == 0) {
-          telemetry_enabled = false;
+          telemetry_mode = BOARD_TELEMETRY_OFF;
           telemetry_state_requested = true;
         } else if (strcmp(uart_command, "can status") == 0) {
           FdcanDiagnostics diagnostics;
@@ -344,6 +353,48 @@ bool BoardSelfTest_Run(uint32_t now_ms)
           (void)snprintf(fdcan_report, sizeof(fdcan_report),
                          "FDCAN_DIAG: TX_721_QUEUED\r\n");
           fdcan_report_requested = true;
+        } else if (strcmp(uart_command, "pid show") == 0) {
+          pid_command_accepted = true;
+          pid_report_requested = true;
+        } else if (strncmp(uart_command, "pid left ", 9U) == 0 ||
+                   strncmp(uart_command, "pid right ", 10U) == 0) {
+          const bool left = uart_command[4] == 'l';
+          const size_t offset = left ? 9U : 10U;
+          unsigned int kp;
+          unsigned int ki;
+          unsigned int kd;
+          int consumed = 0;
+
+          pid_command_accepted =
+              sscanf(&uart_command[offset], "%u %u %u%n",
+                     &kp, &ki, &kd, &consumed) == 3 &&
+              uart_command[offset + (size_t)consumed] == '\0' &&
+              kp <= UINT16_MAX && ki <= UINT16_MAX && kd <= UINT16_MAX &&
+              ChassisControl_SetPidGains(
+                  left ? CHASSIS_PID_LEFT : CHASSIS_PID_RIGHT,
+                  (uint16_t)kp, (uint16_t)ki, (uint16_t)kd);
+          pid_report_requested = true;
+        } else if (strncmp(uart_command, "pid target ", 11U) == 0) {
+          int left_target;
+          int right_target;
+          int consumed = 0;
+
+          if (sscanf(&uart_command[11], "%d %d%n", &left_target,
+                     &right_target, &consumed) == 2 &&
+              uart_command[11U + (size_t)consumed] == '\0' &&
+              left_target >= -MOTOR_CONTROL_TARGET_LIMIT &&
+              left_target <= MOTOR_CONTROL_TARGET_LIMIT &&
+              right_target >= -MOTOR_CONTROL_TARGET_LIMIT &&
+              right_target <= MOTOR_CONTROL_TARGET_LIMIT) {
+            ChassisControl_SetTargetSpeed(left_target, right_target);
+            ChassisControl_NotifyCommandReceived(now_ms);
+            (void)ChassisControl_Start();
+          } else {
+            help_requested = true;
+          }
+        } else if (strcmp(uart_command, "pid stop") == 0) {
+          ChassisControl_SetTargetSpeed(0, 0);
+          ChassisControl_Stop();
         } else if (strcmp(uart_command, "encoder zero") == 0) {
           const bool reset = ChassisControl_ResetEncoderTotals();
 
@@ -425,7 +476,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
   QspiRunTest(now_ms);
 
   if (huart1.gState != HAL_UART_STATE_READY) {
-    return telemetry_enabled;
+    return telemetry_mode;
   }
 
   if ((!initial_report_sent &&
@@ -531,37 +582,46 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         "MOTOR: DISABLED\r\n"
         "IWDG_RESET_TEST: %s\r\n"
         "TELEMETRY: %s\r\n"
-        "COMMANDS: ping, status, telemetry on, telemetry off, can status, can tx confirm, encoder zero, encoder result, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n",
+        "COMMANDS: ping, status, telemetry text, telemetry vofa, telemetry off, can status, can tx confirm, pid show, pid left <kp> <ki> <kd>, pid right <kp> <ki> <kd>, pid target <left> <right>, pid stop, encoder zero, encoder result, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n",
         rtc_text, qspi_text, qspi_rw_text, lcd_text, fdcan_text,
         button_test_passed ? "PASS" : "READY", iwdg_text,
-        telemetry_enabled ? "ON" : "OFF");
+        telemetry_mode == BOARD_TELEMETRY_TEXT
+            ? "TEXT"
+            : telemetry_mode == BOARD_TELEMETRY_VOFA ? "VOFA" : "OFF");
     if (length > 0 && (size_t)length < sizeof(self_test_report) &&
         HAL_UART_Transmit_DMA(&huart1, (uint8_t *)self_test_report,
                               (uint16_t)length) == HAL_OK) {
       initial_report_sent = true;
       report_requested = false;
     }
-    return telemetry_enabled;
+    return telemetry_mode;
   }
 
   if (pong_requested &&
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)pong,
                             sizeof(pong) - 1U) == HAL_OK) {
     pong_requested = false;
-    return telemetry_enabled;
+    return telemetry_mode;
   }
 
   if (telemetry_state_requested) {
     const uint8_t *message =
-        telemetry_enabled ? telemetry_on : telemetry_off;
+        telemetry_mode == BOARD_TELEMETRY_TEXT
+            ? telemetry_text
+            : telemetry_mode == BOARD_TELEMETRY_VOFA
+                  ? telemetry_vofa
+                  : telemetry_off;
     const uint16_t message_length =
-        telemetry_enabled ? sizeof(telemetry_on) - 1U
-                          : sizeof(telemetry_off) - 1U;
+        telemetry_mode == BOARD_TELEMETRY_TEXT
+            ? sizeof(telemetry_text) - 1U
+            : telemetry_mode == BOARD_TELEMETRY_VOFA
+                  ? sizeof(telemetry_vofa) - 1U
+                  : sizeof(telemetry_off) - 1U;
 
     if (HAL_UART_Transmit_DMA(&huart1, (uint8_t *)message,
                               message_length) == HAL_OK) {
       telemetry_state_requested = false;
-      return telemetry_enabled;
+      return telemetry_mode;
     }
   }
 
@@ -583,7 +643,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         HAL_UART_Transmit_DMA(&huart1, (uint8_t *)qspi_test_report,
                               (uint16_t)length) == HAL_OK) {
       qspi_test_report_requested = false;
-      return telemetry_enabled;
+      return telemetry_mode;
     }
   }
 
@@ -591,28 +651,64 @@ bool BoardSelfTest_Run(uint32_t now_ms)
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)iwdg_armed,
                             sizeof(iwdg_armed) - 1U) == HAL_OK) {
     iwdg_reset_report_requested = false;
-    return telemetry_enabled;
+    return telemetry_mode;
   }
 
   if (motor_test_report_requested &&
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)motor_test_report,
                             (uint16_t)strlen(motor_test_report)) == HAL_OK) {
     motor_test_report_requested = false;
-    return telemetry_enabled;
+    return telemetry_mode;
   }
 
   if (encoder_report_requested &&
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)encoder_report,
                             (uint16_t)strlen(encoder_report)) == HAL_OK) {
     encoder_report_requested = false;
-    return telemetry_enabled;
+    return telemetry_mode;
   }
 
   if (fdcan_report_requested &&
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)fdcan_report,
                             (uint16_t)strlen(fdcan_report)) == HAL_OK) {
     fdcan_report_requested = false;
-    return telemetry_enabled;
+    return telemetry_mode;
+  }
+
+  if (pid_report_requested) {
+    uint16_t left_kp;
+    uint16_t left_ki;
+    uint16_t left_kd;
+    uint16_t right_kp;
+    uint16_t right_ki;
+    uint16_t right_kd;
+    int length;
+
+    ChassisControl_GetPidGains(CHASSIS_PID_LEFT, &left_kp,
+                               &left_ki, &left_kd);
+    ChassisControl_GetPidGains(CHASSIS_PID_RIGHT, &right_kp,
+                               &right_ki, &right_kd);
+    if (pid_command_accepted) {
+      length = snprintf(
+          pid_report, sizeof(pid_report),
+          "PID: left kp=%u ki=%u kd=%u right kp=%u ki=%u kd=%u\r\n",
+          (unsigned int)left_kp, (unsigned int)left_ki,
+          (unsigned int)left_kd, (unsigned int)right_kp,
+          (unsigned int)right_ki, (unsigned int)right_kd);
+    } else {
+      length = snprintf(
+          pid_report, sizeof(pid_report),
+          "PID: REJECTED limits kp<=%u ki<=%u kd<=%u\r\n",
+          (unsigned int)MOTOR_PID_KP_MAX,
+          (unsigned int)MOTOR_PID_KI_MAX,
+          (unsigned int)MOTOR_PID_KD_MAX);
+    }
+    if (length > 0 && (size_t)length < sizeof(pid_report) &&
+        HAL_UART_Transmit_DMA(&huart1, (uint8_t *)pid_report,
+                              (uint16_t)length) == HAL_OK) {
+      pid_report_requested = false;
+      return telemetry_mode;
+    }
   }
 
   if (help_requested &&
@@ -620,7 +716,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
                             sizeof(help) - 1U) == HAL_OK) {
     help_requested = false;
   }
-  return telemetry_enabled;
+  return telemetry_mode;
 }
 
 void BoardSelfTest_GetStatus(BoardSelfTestStatus *status)

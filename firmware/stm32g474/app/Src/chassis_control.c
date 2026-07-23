@@ -274,6 +274,40 @@ bool ChassisControl_ResetEncoderTotals(void)
   return true;
 }
 
+bool ChassisControl_SetPidGains(ChassisPidSide side, uint16_t kp,
+                                uint16_t ki, uint16_t kd)
+{
+  SpeedPid *pid;
+
+  if ((side != CHASSIS_PID_LEFT && side != CHASSIS_PID_RIGHT) ||
+      kp > MOTOR_PID_KP_MAX || ki > MOTOR_PID_KI_MAX ||
+      kd > MOTOR_PID_KD_MAX) {
+    return false;
+  }
+
+  pid = side == CHASSIS_PID_LEFT ? &left_pid : &right_pid;
+  SpeedPid_Init(pid, (float)kp, (float)ki, (float)kd,
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT,
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT);
+  return true;
+}
+
+void ChassisControl_GetPidGains(ChassisPidSide side, uint16_t *kp,
+                                uint16_t *ki, uint16_t *kd)
+{
+  const SpeedPid *pid;
+
+  if ((side != CHASSIS_PID_LEFT && side != CHASSIS_PID_RIGHT) ||
+      kp == NULL || ki == NULL || kd == NULL) {
+    return;
+  }
+
+  pid = side == CHASSIS_PID_LEFT ? &left_pid : &right_pid;
+  *kp = (uint16_t)pid->kp;
+  *ki = (uint16_t)pid->ki;
+  *kd = (uint16_t)pid->kd;
+}
+
 void ChassisControl_EmergencyStopFromIsr(void)
 {
   emergency_stop_latched = true;

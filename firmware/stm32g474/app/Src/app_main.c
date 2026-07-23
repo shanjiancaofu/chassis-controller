@@ -67,11 +67,11 @@ void App_Run(void)
   static uint32_t last_heartbeat_ms;
   static uint32_t last_control_run_ms;
   static uint32_t last_telemetry_ms;
-  static char telemetry[192];
+  static char telemetry[256];
   ChassisControlStatus status;
   uint8_t pending_ticks;
   bool tick_overflow;
-  bool telemetry_enabled;
+  BoardTelemetryMode telemetry_mode;
   BoardMotorTestRequest motor_test_request;
   FdcanControlCommand control_command;
   uint32_t primask;
@@ -166,7 +166,7 @@ void App_Run(void)
 
   StatusDisplay_Run(now_ms);
   FdcanDriver_Run();
-  telemetry_enabled = BoardSelfTest_Run(now_ms);
+  telemetry_mode = BoardSelfTest_Run(now_ms);
 
   if (BoardSelfTest_IsIwdgResetRequested()) {
     ChassisControl_Stop();
@@ -206,25 +206,51 @@ void App_Run(void)
     BoardSelfTest_ReportMotorTestResult(motor_test_request, accepted);
   }
 
-  if (telemetry_enabled &&
-      now_ms - last_telemetry_ms >= MOTOR_TELEMETRY_PERIOD_MS) {
+  if (telemetry_mode != BOARD_TELEMETRY_OFF &&
+      now_ms - last_telemetry_ms >=
+          (telemetry_mode == BOARD_TELEMETRY_VOFA
+               ? MOTOR_VOFA_TELEMETRY_PERIOD_MS
+               : MOTOR_TELEMETRY_PERIOD_MS)) {
     uint32_t supply_mv;
     const bool supply_valid =
         BspPowerSample_ReadMillivolts(&supply_mv);
     int length;
     const int32_t vin_mv = supply_valid ? (int32_t)supply_mv : -1;
+    int32_t left_rpm_x10;
+    int32_t right_rpm_x10;
 
     last_telemetry_ms = now_ms;
     ChassisControl_GetStatus(&status);
-    length = snprintf(
-        telemetry, sizeof(telemetry),
-        "vin_mv=%ld lt=%ld ld=%ld lc=%ld lo=%d rt=%ld rd=%ld rc=%ld ro=%d state=%u fault=0x%08lx\r\n",
-        (long)vin_mv,
-        (long)status.left_target, (long)status.left_delta,
-        (long)status.left_total, (int)status.left_output,
-        (long)status.right_target, (long)status.right_delta,
-        (long)status.right_total, (int)status.right_output,
-        (unsigned int)status.state, (unsigned long)status.fault_flags);
+    left_rpm_x10 =
+        (int32_t)(((int64_t)status.left_delta * 60000) /
+                  MOTOR_ENCODER_COUNTS_PER_REVOLUTION);
+    right_rpm_x10 =
+        (int32_t)(((int64_t)status.right_delta * 60000) /
+                  MOTOR_ENCODER_COUNTS_PER_REVOLUTION);
+    if (telemetry_mode == BOARD_TELEMETRY_VOFA) {
+      length = snprintf(
+          telemetry, sizeof(telemetry),
+          "%ld,%ld,%ld,%d,%ld,%ld,%ld,%d,%ld,%u,%lu\r\n",
+          (long)status.left_target, (long)status.left_delta,
+          (long)left_rpm_x10, (int)status.left_output,
+          (long)status.right_target, (long)status.right_delta,
+          (long)right_rpm_x10, (int)status.right_output,
+          (long)vin_mv, (unsigned int)status.state,
+          (unsigned long)status.fault_flags);
+    } else {
+      length = snprintf(
+          telemetry, sizeof(telemetry),
+          "vin_mv=%ld lt=%ld ld=%ld lrpm_x10=%ld lc=%ld lo=%d rt=%ld rd=%ld rrpm_x10=%ld rc=%ld ro=%d state=%u fault=0x%08lx\r\n",
+          (long)vin_mv,
+          (long)status.left_target, (long)status.left_delta,
+          (long)left_rpm_x10, (long)status.left_total,
+          (int)status.left_output,
+          (long)status.right_target, (long)status.right_delta,
+          (long)right_rpm_x10, (long)status.right_total,
+          (int)status.right_output,
+          (unsigned int)status.state,
+          (unsigned long)status.fault_flags);
+    }
     if (length > 0 && (size_t)length < sizeof(telemetry) &&
         huart1.gState == HAL_UART_STATE_READY) {
       (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)telemetry,

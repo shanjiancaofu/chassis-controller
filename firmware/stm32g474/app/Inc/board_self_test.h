@@ -13,6 +13,13 @@ typedef struct
 
 typedef enum
 {
+  BOARD_TELEMETRY_OFF = 0,
+  BOARD_TELEMETRY_TEXT,
+  BOARD_TELEMETRY_VOFA
+} BoardTelemetryMode;
+
+typedef enum
+{
   BOARD_MOTOR_TEST_NONE = 0,
   BOARD_MOTOR_TEST_STOP,
   BOARD_MOTOR_TEST_LEFT_FORWARD,
@@ -22,7 +29,7 @@ typedef enum
 } BoardMotorTestRequest;
 
 bool BoardSelfTest_Init(void);
-bool BoardSelfTest_Run(uint32_t now_ms);
+BoardTelemetryMode BoardSelfTest_Run(uint32_t now_ms);
 void BoardSelfTest_GetStatus(BoardSelfTestStatus *status);
 void BoardSelfTest_NotifyButtonPressed(void);
 bool BoardSelfTest_IsIwdgResetRequested(void);
