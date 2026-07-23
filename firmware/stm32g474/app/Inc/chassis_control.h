@@ -26,6 +26,8 @@ typedef struct {
   int32_t right_target;
   int32_t left_delta;
   int32_t right_delta;
+  int32_t left_total;
+  int32_t right_total;
   int16_t left_output;
   int16_t right_output;
   ChassisControlState state;
@@ -43,6 +45,7 @@ void ChassisControl_SetTargetSpeed(int32_t left_counts_per_tick,
                                    int32_t right_counts_per_tick);
 void ChassisControl_NotifyCommandReceived(uint32_t now_ms);
 void ChassisControl_Tick10ms(uint32_t now_ms);
+bool ChassisControl_ResetEncoderTotals(void);
 void ChassisControl_EmergencyStopFromIsr(void);
 bool ChassisControl_ClearEmergencyStop(void);
 void ChassisControl_LatchInternalFault(uint32_t fault);

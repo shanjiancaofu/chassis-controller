@@ -5,6 +5,7 @@
 
 #include "bsp_lcd.h"
 #include "bsp_qspi_flash.h"
+#include "chassis_control.h"
 #include "fdcan_driver.h"
 #include "main.h"
 #include "quadspi.h"
@@ -72,10 +73,14 @@ static bool iwdg_reset_requested;
 static bool iwdg_reset_report_requested;
 static BoardMotorTestRequest motor_test_request;
 static bool motor_test_report_requested;
+static bool encoder_report_requested;
+static bool fdcan_report_requested;
 static uint32_t self_test_started_ms;
 static char self_test_report[768];
 static char qspi_test_report[128];
 static char motor_test_report[96];
+static char encoder_report[96];
+static char fdcan_report[256];
 
 static void QspiRunTest(uint32_t now_ms)
 {
@@ -260,14 +265,13 @@ bool BoardSelfTest_Run(uint32_t now_ms)
   static const uint8_t telemetry_on[] = "TELEMETRY: ON\r\n";
   static const uint8_t telemetry_off[] = "TELEMETRY: OFF\r\n";
   static const uint8_t help[] =
-      "COMMANDS: ping, status, telemetry on, telemetry off, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
+      "COMMANDS: ping, status, telemetry on, telemetry off, can status, can tx confirm, encoder zero, encoder result, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
   static const uint8_t iwdg_armed[] =
       "IWDG_RESET_TEST: ARMED, reset expected within 2 seconds\r\n";
   uint16_t dma_position = 0U;
   bool process_rx = false;
   uint32_t primask = __get_PRIMASK();
-  const FdcanLoopbackStatus fdcan_status =
-      FdcanDriver_GetLoopbackStatus();
+  const FdcanLinkStatus fdcan_status = FdcanDriver_GetLinkStatus();
 
   __disable_irq();
   if (uart_rx_event_pending) {
@@ -312,6 +316,50 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         } else if (strcmp(uart_command, "telemetry off") == 0) {
           telemetry_enabled = false;
           telemetry_state_requested = true;
+        } else if (strcmp(uart_command, "can status") == 0) {
+          FdcanDiagnostics diagnostics;
+
+          if (FdcanDriver_GetDiagnostics(&diagnostics)) {
+            (void)snprintf(
+                fdcan_report, sizeof(fdcan_report),
+                "FDCAN_DIAG: activity=%lu lec=%lu dlec=%lu tec=%lu rec=%lu passive=%lu warning=%lu busoff=%lu restricted=%lu rxfill=%lu txfree=%lu\r\n",
+                (unsigned long)diagnostics.activity,
+                (unsigned long)diagnostics.last_error_code,
+                (unsigned long)diagnostics.data_last_error_code,
+                (unsigned long)diagnostics.tx_error_count,
+                (unsigned long)diagnostics.rx_error_count,
+                (unsigned long)diagnostics.error_passive,
+                (unsigned long)diagnostics.warning,
+                (unsigned long)diagnostics.bus_off,
+                (unsigned long)diagnostics.restricted_mode,
+                (unsigned long)diagnostics.rx_fifo_fill,
+                (unsigned long)diagnostics.tx_fifo_free);
+          } else {
+            (void)snprintf(fdcan_report, sizeof(fdcan_report),
+                           "FDCAN_DIAG: READ_FAILED\r\n");
+          }
+          fdcan_report_requested = true;
+        } else if (strcmp(uart_command, "can tx confirm") == 0) {
+          FdcanDriver_RequestDiagnosticTransmit();
+          (void)snprintf(fdcan_report, sizeof(fdcan_report),
+                         "FDCAN_DIAG: TX_721_QUEUED\r\n");
+          fdcan_report_requested = true;
+        } else if (strcmp(uart_command, "encoder zero") == 0) {
+          const bool reset = ChassisControl_ResetEncoderTotals();
+
+          (void)snprintf(encoder_report, sizeof(encoder_report),
+                         "ENCODER_CAL: %s\r\n",
+                         reset ? "RESET" : "REJECTED, stop motor first");
+          encoder_report_requested = true;
+        } else if (strcmp(uart_command, "encoder result") == 0) {
+          ChassisControlStatus status;
+
+          ChassisControl_GetStatus(&status);
+          (void)snprintf(encoder_report, sizeof(encoder_report),
+                         "ENCODER_CAL: left=%ld right=%ld counts\r\n",
+                         (long)status.left_total,
+                         (long)status.right_total);
+          encoder_report_requested = true;
         } else if (strcmp(uart_command, "qspi test confirm") == 0) {
           if (!iwdg_reset_requested &&
               (qspi_test_state == QSPI_TEST_IDLE ||
@@ -381,7 +429,7 @@ bool BoardSelfTest_Run(uint32_t now_ms)
   }
 
   if ((!initial_report_sent &&
-       (fdcan_status != FDCAN_LOOPBACK_PENDING ||
+       (fdcan_status != FDCAN_LINK_READY ||
         now_ms - self_test_started_ms >= SELF_TEST_REPORT_DELAY_MS)) ||
       report_requested) {
     const char *fdcan_text = "READY";
@@ -402,9 +450,9 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         rtc_date.Month <= 12U && rtc_date.Date >= 1U &&
         rtc_date.Date <= 31U;
 
-    if (fdcan_status == FDCAN_LOOPBACK_PASSED) {
+    if (fdcan_status == FDCAN_LINK_PASSED) {
       fdcan_text = "PASS";
-    } else if (fdcan_status == FDCAN_LOOPBACK_FAILED) {
+    } else if (fdcan_status == FDCAN_LINK_FAILED) {
       fdcan_text = "FAIL";
     }
 
@@ -476,14 +524,14 @@ bool BoardSelfTest_Run(uint32_t now_ms)
         "QSPI_ID: %s\r\n"
         "QSPI_RW_TEST: %s\r\n"
         "LCD: %s\r\n"
-        "FDCAN_INTERNAL: %s\r\n"
-        "FDCAN_EXTERNAL: DISABLED\r\n"
+        "FDCAN_INTERNAL: DISABLED\r\n"
+        "FDCAN_EXTERNAL: %s\r\n"
         "KEY: %s\r\n"
         "ENCODER: READY\r\n"
         "MOTOR: DISABLED\r\n"
         "IWDG_RESET_TEST: %s\r\n"
         "TELEMETRY: %s\r\n"
-        "COMMANDS: ping, status, telemetry on, telemetry off, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n",
+        "COMMANDS: ping, status, telemetry on, telemetry off, can status, can tx confirm, encoder zero, encoder result, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n",
         rtc_text, qspi_text, qspi_rw_text, lcd_text, fdcan_text,
         button_test_passed ? "PASS" : "READY", iwdg_text,
         telemetry_enabled ? "ON" : "OFF");
@@ -550,6 +598,20 @@ bool BoardSelfTest_Run(uint32_t now_ms)
       HAL_UART_Transmit_DMA(&huart1, (uint8_t *)motor_test_report,
                             (uint16_t)strlen(motor_test_report)) == HAL_OK) {
     motor_test_report_requested = false;
+    return telemetry_enabled;
+  }
+
+  if (encoder_report_requested &&
+      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)encoder_report,
+                            (uint16_t)strlen(encoder_report)) == HAL_OK) {
+    encoder_report_requested = false;
+    return telemetry_enabled;
+  }
+
+  if (fdcan_report_requested &&
+      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)fdcan_report,
+                            (uint16_t)strlen(fdcan_report)) == HAL_OK) {
+    fdcan_report_requested = false;
     return telemetry_enabled;
   }
 

@@ -12,6 +12,7 @@
 
 /* Current bring-up limit: 50% of the 8500-count TIM8 PWM period. */
 #define MOTOR_CONTROL_OUTPUT_LIMIT 4250
+#define MOTOR_CONTROL_TARGET_LIMIT 100
 #define MOTOR_LEFT_ENCODER_DIRECTION -1
 #define MOTOR_RIGHT_ENCODER_DIRECTION 1
 

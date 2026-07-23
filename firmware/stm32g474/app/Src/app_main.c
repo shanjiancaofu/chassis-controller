@@ -73,10 +73,10 @@ void App_Run(void)
   bool tick_overflow;
   bool telemetry_enabled;
   BoardMotorTestRequest motor_test_request;
+  FdcanControlCommand control_command;
   uint32_t primask;
   const uint32_t now_ms = HAL_GetTick();
-  const FdcanLoopbackStatus loopback_status =
-      FdcanDriver_GetLoopbackStatus();
+  const FdcanLinkStatus fdcan_status = FdcanDriver_GetLinkStatus();
 
 #if ENABLE_BAREMETAL_MOTOR_DEMO
   if (demo_stage < 6U) {
@@ -132,6 +132,19 @@ void App_Run(void)
   }
 #endif
 
+  if (FdcanDriver_TakeControlCommand(&control_command)) {
+    if (control_command.enabled) {
+      ChassisControl_SetTargetSpeed(control_command.left_target,
+                                    control_command.right_target);
+      ChassisControl_NotifyCommandReceived(now_ms);
+      (void)ChassisControl_Start();
+    } else {
+      ChassisControl_SetTargetSpeed(0, 0);
+      ChassisControl_NotifyCommandReceived(now_ms);
+      ChassisControl_Stop();
+    }
+  }
+
   primask = __get_PRIMASK();
   __disable_irq();
   pending_ticks = control_ticks_pending;
@@ -152,6 +165,7 @@ void App_Run(void)
   }
 
   StatusDisplay_Run(now_ms);
+  FdcanDriver_Run();
   telemetry_enabled = BoardSelfTest_Run(now_ms);
 
   if (BoardSelfTest_IsIwdgResetRequested()) {
@@ -204,11 +218,12 @@ void App_Run(void)
     ChassisControl_GetStatus(&status);
     length = snprintf(
         telemetry, sizeof(telemetry),
-        "vin_mv=%ld lt=%ld ld=%ld lo=%d rt=%ld rd=%ld ro=%d state=%u fault=0x%08lx\r\n",
+        "vin_mv=%ld lt=%ld ld=%ld lc=%ld lo=%d rt=%ld rd=%ld rc=%ld ro=%d state=%u fault=0x%08lx\r\n",
         (long)vin_mv,
         (long)status.left_target, (long)status.left_delta,
-        (int)status.left_output, (long)status.right_target,
-        (long)status.right_delta, (int)status.right_output,
+        (long)status.left_total, (int)status.left_output,
+        (long)status.right_target, (long)status.right_delta,
+        (long)status.right_total, (int)status.right_output,
         (unsigned int)status.state, (unsigned long)status.fault_flags);
     if (length > 0 && (size_t)length < sizeof(telemetry) &&
         huart1.gState == HAL_UART_STATE_READY) {
@@ -221,9 +236,9 @@ void App_Run(void)
     last_heartbeat_ms = now_ms;
     HAL_GPIO_TogglePin(LED_B_GPIO_Port, LED_B_Pin);
   }
-  if (loopback_status == FDCAN_LOOPBACK_PASSED) {
+  if (fdcan_status == FDCAN_LINK_PASSED) {
     HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_RESET);
-  } else if (loopback_status == FDCAN_LOOPBACK_FAILED) {
+  } else if (fdcan_status == FDCAN_LINK_FAILED) {
     HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET);
   }
 

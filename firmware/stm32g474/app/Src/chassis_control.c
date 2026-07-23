@@ -149,6 +149,8 @@ void ChassisControl_Tick10ms(uint32_t now_ms)
 
   BspEncoder_ReadDelta(&control_status.left_delta,
                        &control_status.right_delta);
+  control_status.left_total += control_status.left_delta;
+  control_status.right_total += control_status.right_delta;
 
   if (emergency_stop_latched) {
     running = false;
@@ -259,6 +261,17 @@ void ChassisControl_Tick10ms(uint32_t now_ms)
   control_status.left_output = left_duty;
   control_status.right_output = right_duty;
   control_status.state = CHASSIS_CONTROL_RUNNING;
+}
+
+bool ChassisControl_ResetEncoderTotals(void)
+{
+  if (control_status.state != CHASSIS_CONTROL_STOPPED) {
+    return false;
+  }
+
+  control_status.left_total = 0;
+  control_status.right_total = 0;
+  return true;
 }
 
 void ChassisControl_EmergencyStopFromIsr(void)

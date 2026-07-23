@@ -44,8 +44,7 @@ void StatusDisplay_Run(uint32_t now_ms)
     RTC_TimeTypeDef time;
     RTC_DateTypeDef date;
     uint32_t supply_mv;
-    const FdcanLoopbackStatus can_status =
-        FdcanDriver_GetLoopbackStatus();
+    const FdcanLinkStatus can_status = FdcanDriver_GetLinkStatus();
 
     last_refresh_ms = now_ms;
     BoardSelfTest_GetStatus(&self_test_status);
@@ -70,9 +69,9 @@ void StatusDisplay_Run(uint32_t now_ms)
         (uint8_t)(self_test_status.qspi_capacity_bytes /
                   (1024UL * 1024UL));
     lcd_data.can_state =
-        can_status == FDCAN_LOOPBACK_PASSED
+        can_status == FDCAN_LINK_PASSED
             ? BSP_LCD_VALUE_PASS
-            : can_status == FDCAN_LOOPBACK_FAILED
+            : can_status == FDCAN_LINK_FAILED
                   ? BSP_LCD_VALUE_FAIL
                   : BSP_LCD_VALUE_READY;
     lcd_data.adc_valid = BspPowerSample_ReadMillivolts(&supply_mv);
