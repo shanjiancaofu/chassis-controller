@@ -77,3 +77,4 @@ dkms.conf
 
 # Local editor settings
 /.vscode/
+.markdownlint.json
