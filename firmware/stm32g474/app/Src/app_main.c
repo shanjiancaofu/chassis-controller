@@ -281,14 +281,12 @@ void App_FatalError(void)
   ChassisControl_LatchInternalFault(CHASSIS_FAULT_INTERNAL);
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+void App_ControlTickFromIsr(void)
 {
-  if (htim->Instance == TIM6) {
-    if (control_ticks_pending < UINT8_MAX) {
-      ++control_ticks_pending;
-    } else {
-      control_tick_overflow = true;
-    }
+  if (control_ticks_pending < UINT8_MAX) {
+    ++control_ticks_pending;
+  } else {
+    control_tick_overflow = true;
   }
 }
 
