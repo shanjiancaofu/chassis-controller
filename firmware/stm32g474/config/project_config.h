@@ -10,18 +10,18 @@
 #define MOTOR_TELEMETRY_PERIOD_MS 100U
 #define MOTOR_CONTROL_MAX_PENDING_TICKS 4U
 
-/* Current bring-up limit: 50% of the 8500-count TIM8 PWM period. */
-#define MOTOR_CONTROL_OUTPUT_LIMIT 4250
+/* Closed-loop limit: 80% of the 8500-count TIM8 PWM period. */
+#define MOTOR_CONTROL_OUTPUT_LIMIT 6800
 #define MOTOR_CONTROL_TARGET_LIMIT 100
 #define MOTOR_LEFT_ENCODER_DIRECTION -1
 #define MOTOR_RIGHT_ENCODER_DIRECTION 1
 
-/* Conservative starting values. They still require hardware tuning. */
-#define MOTOR_LEFT_PID_KP 40.0f
-#define MOTOR_LEFT_PID_KI 10.0f
+/* Initial hardware tuning values. They still require load testing. */
+#define MOTOR_LEFT_PID_KP 200.0f
+#define MOTOR_LEFT_PID_KI 300.0f
 #define MOTOR_LEFT_PID_KD 0.0f
-#define MOTOR_RIGHT_PID_KP 40.0f
-#define MOTOR_RIGHT_PID_KI 10.0f
+#define MOTOR_RIGHT_PID_KP 200.0f
+#define MOTOR_RIGHT_PID_KI 300.0f
 #define MOTOR_RIGHT_PID_KD 0.0f
 
 #define MOTOR_DEMO_TARGET_COUNTS_PER_TICK 5
