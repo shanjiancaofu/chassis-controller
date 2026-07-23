@@ -351,7 +351,7 @@ void ChassisControl_LatchInternalFault(uint32_t fault)
   control_status.right_target = 0;
   control_status.left_output = 0;
   control_status.right_output = 0;
-  BspMotor_CoastAll();
+  BspMotor_EmergencyStop();
   SpeedPid_Reset(&left_pid);
   SpeedPid_Reset(&right_pid);
 }
