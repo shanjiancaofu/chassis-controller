@@ -3,7 +3,7 @@
 基于 Jetson Orin Nano 和 STM32G474VET6 的底盘控制器。Jetson 负责上层决策和控制命令，STM32 负责双电机控制、状态采集、安全停车和 CAN FD 通信。本仓库与 `cockpit-system` 独立维护。
 
 `firmware/application/stm32g474/` 的裸机基线已经完成实物验收，FreeRTOS
-单任务基线的目录迁移也已完成，当前等待烧录后的硬件回归。迁移只改变工程组织，
+单任务基线的目录迁移和硬件回归也已完成。当前正在按架构路线拆分业务域和运行任务，
 暂不引入 Bootloader、完整 OTA、位置环和复杂底盘运动学。
 
 ## 目录结构
@@ -22,13 +22,14 @@ chassis-controller/
 │        ├─ bsp/               # 电机、编码器、LCD、QSPI 和 ADC 板级封装
 │        ├─ components/        # PID 等通用算法
 │        ├─ communication/     # FDCAN 传输与当前协议实现
-│        ├─ infrastructure/    # 状态显示等公共运行设施
-│        ├─ modules/           # 底盘控制和板级诊断
+│        ├─ infrastructure/    # Console、遥测和状态显示等运行设施
+│        ├─ modules/           # chassis、safety、parameters、diagnostics 业务域
 │        ├─ rtos/              # FreeRTOS 任务循环与应用调度入口
+│        ├─ tests/             # 需要显式确认的板上目标测试
 │        ├─ config/            # 应用、构建、控制、功能和协议配置
 │        └─ chassis_controller.ioc
 ├─ protocol/                # Jetson 与 STM32 的 CAN FD 协议
-├─ docs/                    # 硬件接线和阶段进度
+├─ docs/                    # 架构路线、硬件接线和验收基线
 ├─ picture/                 # LCD 图片原始素材与取模结果
 ├─ tools/                   # 后续主机侧调试工具
 └─ example/                 # 本地商家例程，仅供参考，不提交 Git
@@ -42,15 +43,14 @@ chassis-controller/
 - 硬件与接线：`docs/硬件与接线.md`
 - CAN FD 协议：`protocol/canfd_protocol.md`
 - 架构与路线图：`docs/chassis_controller_architecture_and_roadmap_v2.0.md`
-- 阶段进度：`docs/裸机阶段进度.md`
 
 ## 当前基线
 
 - 工具链为 STM32CubeMX 6.18、STM32CubeG4 V1.6.3、STM32CubeIDE GCC 和 ST-Link。
 - 裸机基线 `v0.1.0-baremetal` 已完成 USART、RTC、QSPI、LCD、CAN FD、ADC、双编码器、双电机、10 ms PID、安全停车和 IWDG 的实物验收。
 - FreeRTOS 已由 CubeMX 接入：SysTick 用于内核节拍，TIM7 用于 HAL 时基，1024 Words 静态任务通过 `RtosApp_Run()` 每 1 ms 调用 `ChassisApp_Run()`。
-- `board/board_config.h`、`rtos/rtos_app.c/.h` 和拆分后的 `config/` 已进入正式构建；应用生命周期 API 统一为 `ChassisApp_*`。
-- 目录迁移后的 FreeRTOS 固件已通过 STM32CubeIDE GCC Debug 和 Release 全量 clean build，两种配置均为 `0 errors, 0 warnings`；Debug 为 `205124/96/19720`，Release 为 `171268/96/19704`（text/data/bss）。尚未完成烧录后的硬件回归，不能标记为实物 `PASS`。
+- `board/`、`bsp/`、`communication/`、`infrastructure/`、四个 `modules` 业务域、`rtos/` 和 `tests/target/` 已进入正式构建；应用生命周期 API 统一为 `ChassisApp_*`。
+- 阶段 3 拆分后的 FreeRTOS 固件已通过 STM32CubeIDE GCC Debug 和 Release 全量 clean build，两种配置均为 `0 errors, 0 warnings`；Debug 为 `208852/96/29096`，Release 为 `173232/96/29072`（text/data/bss）。阶段 3 新镜像的实物回归按路线图留到代码迁移完成后统一执行。
 - 电机 Demo 默认关闭，应用上电后 TIM8 四路 PWM 比较值保持为 0，不会自动转动电机。
 
 ## 开发流程
