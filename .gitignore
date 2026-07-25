@@ -81,6 +81,5 @@ dkms.conf
 
 # Local Codex session data
 /.ai-bridge/
-/docs/rollout-*.jsonl
 
 .metadata/
