@@ -1,0 +1,22 @@
+#ifndef CONTROL_CONFIG_H
+#define CONTROL_CONFIG_H
+
+#define MOTOR_CONTROL_PERIOD_MS 10U
+
+/* Closed-loop limit: 80% of the 8500-count TIM8 PWM period. */
+#define MOTOR_CONTROL_OUTPUT_LIMIT 8000
+#define MOTOR_CONTROL_TARGET_LIMIT 100
+#define MOTOR_ENCODER_COUNTS_PER_REVOLUTION 1320
+
+/* Initial values; finish tuning with the drive wheels suspended. */
+#define MOTOR_LEFT_PID_KP 200.0f
+#define MOTOR_LEFT_PID_KI 300.0f
+#define MOTOR_LEFT_PID_KD 0.0f
+#define MOTOR_RIGHT_PID_KP 250.0f
+#define MOTOR_RIGHT_PID_KI 400.0f
+#define MOTOR_RIGHT_PID_KD 0.0f
+#define MOTOR_PID_KP_MAX 1000U
+#define MOTOR_PID_KI_MAX 5000U
+#define MOTOR_PID_KD_MAX 100U
+
+#endif

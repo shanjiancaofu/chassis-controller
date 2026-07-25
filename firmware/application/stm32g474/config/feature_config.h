@@ -1,0 +1,6 @@
+#ifndef FEATURE_CONFIG_H
+#define FEATURE_CONFIG_H
+
+#define ENABLE_MOTOR_DEMO 0
+
+#endif

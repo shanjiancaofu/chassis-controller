@@ -1,9 +1,0 @@
-#ifndef APP_MAIN_H
-#define APP_MAIN_H
-
-void App_Init(void);
-void App_Run(void);
-void App_ControlTickFromIsr(void);
-void App_FatalError(void);
-
-#endif
