@@ -7,8 +7,8 @@
 #include "components/pid/speed_pid.h"
 #include "config/app_config.h"
 #include "config/control_config.h"
-#include "config/protocol_config.h"
 #include "main.h"
+#include "modules/command_manager/command_manager.h"
 
 #if MOTOR_CONTROL_OUTPUT_LIMIT > BSP_MOTOR_COMPARE_MAX
 #error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
@@ -28,8 +28,6 @@ static int16_t open_loop_left_duty;
 static int16_t open_loop_right_duty;
 static uint32_t open_loop_started_ms;
 static uint32_t open_loop_duration_ms;
-static bool has_command;
-static uint32_t last_command_ms;
 
 void ChassisControl_Init(void)
 {
@@ -42,8 +40,6 @@ void ChassisControl_Init(void)
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
   running = false;
   open_loop_test_running = false;
-  has_command = false;
-  last_command_ms = 0U;
 
   if (HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET) {
     emergency_stop_latched = true;
@@ -57,11 +53,16 @@ void ChassisControl_Init(void)
 
 bool ChassisControl_Start(void)
 {
+  CommandManagerCommand command;
+
   if (emergency_stop_latched || ChassisControl_HasInternalFault() ||
-      open_loop_test_running || !has_command) {
+      open_loop_test_running || !CommandManager_Get(&command)) {
     return false;
   }
 
+  control_status.left_target = command.left_target;
+  control_status.right_target = command.right_target;
+  control_status.fault_flags &= ~CHASSIS_FAULT_COMMAND_TIMEOUT;
   running = true;
   control_status.state = CHASSIS_CONTROL_RUNNING;
   return true;
@@ -83,7 +84,7 @@ bool ChassisControl_StartOpenLoopTest(int16_t left_duty,
     return false;
   }
 
-  has_command = false;
+  CommandManager_Clear();
   control_status.left_target = 0;
   control_status.right_target = 0;
   open_loop_left_duty = left_duty;
@@ -104,7 +105,7 @@ void ChassisControl_Stop(void)
   open_loop_test_running = false;
   open_loop_left_duty = 0;
   open_loop_right_duty = 0;
-  has_command = false;
+  CommandManager_Clear();
   control_status.left_target = 0;
   control_status.right_target = 0;
   control_status.left_output = 0;
@@ -121,25 +122,9 @@ void ChassisControl_Stop(void)
   }
 }
 
-void ChassisControl_SetTargetSpeed(int32_t left_counts_per_tick,
-                                   int32_t right_counts_per_tick)
-{
-  control_status.left_target = left_counts_per_tick;
-  control_status.right_target = right_counts_per_tick;
-}
-
-void ChassisControl_NotifyCommandReceived(uint32_t now_ms)
-{
-  last_command_ms = now_ms;
-  has_command = true;
-  control_status.fault_flags &= ~CHASSIS_FAULT_COMMAND_TIMEOUT;
-  if (control_status.state == CHASSIS_CONTROL_COMMAND_TIMEOUT) {
-    control_status.state = CHASSIS_CONTROL_STOPPED;
-  }
-}
-
 void ChassisControl_Tick10ms(uint32_t now_ms)
 {
+  CommandManagerCommand command;
   float left_output;
   float right_output;
   int16_t left_duty;
@@ -157,7 +142,7 @@ void ChassisControl_Tick10ms(uint32_t now_ms)
   if (emergency_stop_latched) {
     running = false;
     open_loop_test_running = false;
-    has_command = false;
+    CommandManager_Clear();
     control_status.left_target = 0;
     control_status.right_target = 0;
     control_status.left_output = 0;
@@ -202,10 +187,10 @@ void ChassisControl_Tick10ms(uint32_t now_ms)
     return;
   }
 
-  if (!has_command ||
-      now_ms - last_command_ms >= MOTOR_COMMAND_TIMEOUT_MS) {
+  if (CommandManager_IsTimedOut(now_ms) ||
+      !CommandManager_Get(&command)) {
     running = false;
-    has_command = false;
+    CommandManager_Clear();
     control_status.left_target = 0;
     control_status.right_target = 0;
     control_status.left_output = 0;
@@ -217,6 +202,9 @@ void ChassisControl_Tick10ms(uint32_t now_ms)
     SpeedPid_Reset(&right_pid);
     return;
   }
+
+  control_status.left_target = command.left_target;
+  control_status.right_target = command.right_target;
 
   if (control_status.left_target == 0 && control_status.right_target == 0) {
     BspMotor_CoastAll();
@@ -348,7 +336,7 @@ void ChassisControl_LatchInternalFault(uint32_t fault)
   control_status.state = CHASSIS_CONTROL_INTERNAL_FAULT;
   running = false;
   open_loop_test_running = false;
-  has_command = false;
+  CommandManager_Clear();
   control_status.left_target = 0;
   control_status.right_target = 0;
   control_status.left_output = 0;

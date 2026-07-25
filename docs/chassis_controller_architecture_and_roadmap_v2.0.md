@@ -159,9 +159,10 @@ ChassisApp_Run()
 
 目录迁移后的 FreeRTOS 工程已于 2026-07-25 从
 `firmware/application/stm32g474/` 完成 STM32CubeIDE GCC Debug 和 Release
-全量 clean build，两种配置均为 `0 errors, 0 warnings`。完成 UART、Console 和
-Telemetry 边界拆分后，Debug 镜像为 `text=207044`、`data=96`、`bss=29184`；
-Release 镜像为 `text=172288`、`data=96`、`bss=29168`。BSS 增量主要来自
+全量 clean build，两种配置均为 `0 errors, 0 warnings`。完成 UART、Console、
+Telemetry 和 Command Manager 边界拆分后，Debug 镜像为 `text=207368`、
+`data=96`、`bss=29192`；Release 镜像为 `text=172452`、`data=96`、
+`bss=29176`。BSS 增量主要来自
 固定容量的 UART DMA 发送队列，不使用动态分配。
 
 当前 FreeRTOS 固件尚未完成烧录后的全量硬件回归。
@@ -770,6 +771,15 @@ components
 ```
 
 拆分必须渐进进行，不能一次重写整个文件。
+
+2026-07-25 已完成 `modules/command_manager/`：
+
+- 唯一保存当前有效左右轮目标、接收时间戳、命令来源和可选序号
+- 统一校验目标范围；CAN 来源必须携带序号，Console 和 Demo 来源不得伪造序号
+- 提供来源受限的时间戳刷新，避免其他入口延长 Demo 命令寿命
+- 统一执行 200 ms 新鲜度判断，但超时停车和故障状态仍由 `chassis_control` 决定
+- CAN 重复帧、跳帧、回绕和握手会话仍由 `communication/can_transport` 校验
+- `chassis_control` 不再保存 `has_command` 和 `last_command_ms`
 
 ### 9.2 `board_self_test.c`
 
@@ -1824,9 +1834,11 @@ firmware/application/stm32g474/.metadata/
 
 ### 阶段 3：拆分底盘业务模块
 
+状态：**IN PROGRESS（2026-07-25）**
+
 按顺序拆分：
 
-1. `command_manager`
+1. `command_manager`（已完成）
 2. `fault_manager`
 3. `safety_manager`
 4. `wheel_controller`

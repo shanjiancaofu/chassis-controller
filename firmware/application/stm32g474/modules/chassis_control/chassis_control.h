@@ -46,9 +46,6 @@ bool ChassisControl_StartOpenLoopTest(int16_t left_duty,
                                       uint32_t now_ms,
                                       uint32_t duration_ms);
 void ChassisControl_Stop(void);
-void ChassisControl_SetTargetSpeed(int32_t left_counts_per_tick,
-                                   int32_t right_counts_per_tick);
-void ChassisControl_NotifyCommandReceived(uint32_t now_ms);
 void ChassisControl_Tick10ms(uint32_t now_ms);
 bool ChassisControl_ResetEncoderTotals(void);
 bool ChassisControl_SetPidGains(ChassisPidSide side, uint16_t kp,

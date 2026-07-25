@@ -17,6 +17,7 @@
 #include "infrastructure/telemetry/telemetry.h"
 #include "main.h"
 #include "modules/chassis_control/chassis_control.h"
+#include "modules/command_manager/command_manager.h"
 #include "modules/diagnostics/board_self_test.h"
 #include "infrastructure/status_display/status_display.h"
 #include "tim.h"
@@ -30,6 +31,9 @@ static void WritePidReport(bool accepted);
 static void WriteEncoderResult(void);
 static void WriteCanDiagnostics(void);
 static void WriteConsoleHelp(void);
+static bool SubmitCommand(int32_t left_target, int32_t right_target,
+                          CommandSource source, uint32_t now_ms,
+                          bool has_sequence, uint8_t sequence);
 
 #if ENABLE_MOTOR_DEMO
 static uint8_t demo_stage;
@@ -62,6 +66,7 @@ void ChassisApp_Init(void)
   }
   (void)StatusDisplay_Init();
 
+  CommandManager_Init();
   ChassisControl_Init();
   if (!BoardSelfTest_Init()) {
     Error_Handler();
@@ -73,9 +78,11 @@ void ChassisApp_Init(void)
 #if ENABLE_MOTOR_DEMO
   demo_stage = 0U;
   demo_stage_started_ms = HAL_GetTick();
-  ChassisControl_SetTargetSpeed(0, 0);
-  ChassisControl_NotifyCommandReceived(demo_stage_started_ms);
-  (void)ChassisControl_Start();
+  if (!SubmitCommand(0, 0, COMMAND_SOURCE_DEMO, demo_stage_started_ms,
+                     false, 0U) ||
+      !ChassisControl_Start()) {
+    Error_Handler();
+  }
 #endif
 }
 
@@ -100,43 +107,46 @@ void ChassisApp_Run(void)
 
 #if ENABLE_MOTOR_DEMO
   if (demo_stage < 6U) {
-    ChassisControl_NotifyCommandReceived(now_ms);
+    (void)CommandManager_Refresh(COMMAND_SOURCE_DEMO, now_ms);
   }
   switch (demo_stage) {
     case 0U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        ChassisControl_SetTargetSpeed(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                                      MOTOR_DEMO_TARGET_COUNTS_PER_TICK);
+        (void)SubmitCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                            MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                            COMMAND_SOURCE_DEMO, now_ms, false, 0U);
         demo_stage = 1U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 1U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        ChassisControl_SetTargetSpeed(0, 0);
+        (void)SubmitCommand(0, 0, COMMAND_SOURCE_DEMO, now_ms, false, 0U);
         demo_stage = 2U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 2U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        ChassisControl_SetTargetSpeed(-MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                                     -MOTOR_DEMO_TARGET_COUNTS_PER_TICK);
+        (void)SubmitCommand(-MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                            -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                            COMMAND_SOURCE_DEMO, now_ms, false, 0U);
         demo_stage = 3U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 3U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        ChassisControl_SetTargetSpeed(0, 0);
+        (void)SubmitCommand(0, 0, COMMAND_SOURCE_DEMO, now_ms, false, 0U);
         demo_stage = 4U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 4U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        ChassisControl_SetTargetSpeed(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                                     -MOTOR_DEMO_TARGET_COUNTS_PER_TICK);
+        (void)SubmitCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                            -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                            COMMAND_SOURCE_DEMO, now_ms, false, 0U);
         demo_stage = 5U;
         demo_stage_started_ms = now_ms;
       }
@@ -154,13 +164,12 @@ void ChassisApp_Run(void)
 
   if (CanTransport_TakeControlCommand(&control_command)) {
     if (control_command.enabled) {
-      ChassisControl_SetTargetSpeed(control_command.left_target,
-                                    control_command.right_target);
-      ChassisControl_NotifyCommandReceived(now_ms);
-      (void)ChassisControl_Start();
+      if (SubmitCommand(control_command.left_target,
+                        control_command.right_target, COMMAND_SOURCE_CAN,
+                        now_ms, true, control_command.sequence)) {
+        (void)ChassisControl_Start();
+      }
     } else {
-      ChassisControl_SetTargetSpeed(0, 0);
-      ChassisControl_NotifyCommandReceived(now_ms);
       ChassisControl_Stop();
     }
   }
@@ -319,13 +328,13 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
           command->arguments.pid.kd));
       break;
     case CONSOLE_COMMAND_PID_TARGET:
-      ChassisControl_SetTargetSpeed(command->arguments.target.left,
-                                    command->arguments.target.right);
-      ChassisControl_NotifyCommandReceived(now_ms);
-      (void)ChassisControl_Start();
+      if (SubmitCommand(command->arguments.target.left,
+                        command->arguments.target.right,
+                        COMMAND_SOURCE_CONSOLE, now_ms, false, 0U)) {
+        (void)ChassisControl_Start();
+      }
       break;
     case CONSOLE_COMMAND_PID_STOP:
-      ChassisControl_SetTargetSpeed(0, 0);
       ChassisControl_Stop();
       break;
     case CONSOLE_COMMAND_ENCODER_ZERO:
@@ -460,6 +469,22 @@ static void WriteConsoleHelp(void)
   const char *text = Console_GetHelpText(&length);
 
   (void)BspUart_Write(text, length);
+}
+
+static bool SubmitCommand(int32_t left_target, int32_t right_target,
+                          CommandSource source, uint32_t now_ms,
+                          bool has_sequence, uint8_t sequence)
+{
+  const CommandManagerCommand command = {
+      .left_target = left_target,
+      .right_target = right_target,
+      .received_ms = now_ms,
+      .source = source,
+      .sequence = sequence,
+      .has_sequence = has_sequence,
+  };
+
+  return CommandManager_Submit(&command);
 }
 
 void ChassisApp_FatalError(void)
