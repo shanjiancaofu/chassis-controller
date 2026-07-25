@@ -1,0 +1,126 @@
+#include "modules/chassis/wheel_controller.h"
+
+#include <stddef.h>
+
+#include "bsp/motor/bsp_motor.h"
+#include "components/pid/speed_pid.h"
+#include "config/control_config.h"
+
+#if MOTOR_CONTROL_OUTPUT_LIMIT > BSP_MOTOR_COMPARE_MAX
+#error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
+#endif
+
+static SpeedPid left_pid;
+static SpeedPid right_pid;
+static WheelControllerSnapshot controller_snapshot;
+
+static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
+                           int32_t measurement, int16_t current_duty);
+
+void WheelController_Init(void)
+{
+  controller_snapshot = (WheelControllerSnapshot){0};
+  SpeedPid_Init(&left_pid, MOTOR_LEFT_PID_KP, MOTOR_LEFT_PID_KI,
+                MOTOR_LEFT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT);
+  SpeedPid_Init(&right_pid, MOTOR_RIGHT_PID_KP, MOTOR_RIGHT_PID_KI,
+                MOTOR_RIGHT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT);
+}
+
+void WheelController_Stop(void)
+{
+  BspMotor_CoastAll();
+  controller_snapshot.left_target = 0;
+  controller_snapshot.right_target = 0;
+  controller_snapshot.left_output = 0;
+  controller_snapshot.right_output = 0;
+  WheelController_Reset();
+}
+
+void WheelController_Reset(void)
+{
+  SpeedPid_Reset(&left_pid);
+  SpeedPid_Reset(&right_pid);
+}
+
+void WheelController_EmergencyStop(void)
+{
+  BspMotor_EmergencyStop();
+  controller_snapshot.left_target = 0;
+  controller_snapshot.right_target = 0;
+  controller_snapshot.left_output = 0;
+  controller_snapshot.right_output = 0;
+  WheelController_Reset();
+}
+
+bool WheelController_Update(int32_t left_target, int32_t right_target,
+                            int32_t left_measurement,
+                            int32_t right_measurement)
+{
+  int16_t left_duty;
+  int16_t right_duty;
+
+  if (left_target < -MOTOR_CONTROL_TARGET_LIMIT ||
+      left_target > MOTOR_CONTROL_TARGET_LIMIT ||
+      right_target < -MOTOR_CONTROL_TARGET_LIMIT ||
+      right_target > MOTOR_CONTROL_TARGET_LIMIT) {
+    return false;
+  }
+
+  left_duty = UpdateWheel(&left_pid, left_target, left_measurement,
+                          BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT));
+  right_duty = UpdateWheel(&right_pid, right_target, right_measurement,
+                           BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT));
+  BspMotor_SetSignedDutyBoth(left_duty, right_duty);
+  controller_snapshot.left_target = left_target;
+  controller_snapshot.right_target = right_target;
+  controller_snapshot.left_measurement = left_measurement;
+  controller_snapshot.right_measurement = right_measurement;
+  controller_snapshot.left_output = left_duty;
+  controller_snapshot.right_output = right_duty;
+  return true;
+}
+
+void WheelController_ApplyPidGains(WheelControllerSide side, uint16_t kp,
+                                   uint16_t ki, uint16_t kd)
+{
+  SpeedPid *pid;
+
+  if (side != WHEEL_CONTROLLER_LEFT && side != WHEEL_CONTROLLER_RIGHT) {
+    return;
+  }
+
+  pid = side == WHEEL_CONTROLLER_LEFT ? &left_pid : &right_pid;
+  SpeedPid_Init(pid, (float)kp, (float)ki, (float)kd,
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT,
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT);
+}
+
+void WheelController_GetSnapshot(WheelControllerSnapshot *snapshot)
+{
+  if (snapshot != NULL) {
+    *snapshot = controller_snapshot;
+  }
+}
+
+static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
+                           int32_t measurement, int16_t current_duty)
+{
+  int16_t duty;
+
+  if (target == 0) {
+    SpeedPid_Reset(pid);
+    return 0;
+  }
+
+  duty = (int16_t)SpeedPid_Update(
+      pid, (float)target, (float)measurement,
+      MOTOR_CONTROL_PERIOD_MS / 1000.0f);
+  if ((current_duty > 0 && duty < 0) ||
+      (current_duty < 0 && duty > 0)) {
+    SpeedPid_Reset(pid);
+    return 0;
+  }
+  return duty;
+}

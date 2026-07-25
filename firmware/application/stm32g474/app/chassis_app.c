@@ -14,12 +14,20 @@
 #include "config/feature_config.h"
 #include "iwdg.h"
 #include "infrastructure/console/console.h"
+#include "infrastructure/console/diagnostic_report.h"
 #include "infrastructure/telemetry/telemetry.h"
 #include "main.h"
-#include "modules/chassis_control/chassis_control.h"
-#include "modules/command_manager/command_manager.h"
-#include "modules/diagnostics/board_self_test.h"
+#include "modules/chassis/command_manager.h"
+#include "modules/chassis/odometry.h"
+#include "modules/chassis/wheel_controller.h"
+#include "modules/diagnostics/board_health.h"
+#include "modules/parameters/parameter_manager.h"
+#include "modules/safety/fault_manager.h"
+#include "modules/safety/safety_manager.h"
 #include "infrastructure/status_display/status_display.h"
+#include "tests/target/iwdg_target_test.h"
+#include "tests/target/motor_target_test.h"
+#include "tests/target/qspi_target_test.h"
 #include "tim.h"
 
 static volatile uint8_t control_ticks_pending;
@@ -31,6 +39,14 @@ static void WritePidReport(bool accepted);
 static void WriteEncoderResult(void);
 static void WriteCanDiagnostics(void);
 static void WriteConsoleHelp(void);
+static bool StartControl(void);
+static void StopControl(void);
+static void RunControlTick(uint32_t now_ms);
+static bool StartMotorTargetTest(MotorTargetTestAction action,
+                                 uint32_t now_ms);
+static void LatchInternalFault(uint32_t fault);
+static void ApplyPendingParameters(void);
+static bool ResetOdometry(void);
 static bool SubmitCommand(int32_t left_target, int32_t right_target,
                           CommandSource source, uint32_t now_ms,
                           bool has_sequence, uint8_t sequence);
@@ -67,9 +83,20 @@ void ChassisApp_Init(void)
   (void)StatusDisplay_Init();
 
   CommandManager_Init();
-  ChassisControl_Init();
-  if (!BoardSelfTest_Init()) {
-    Error_Handler();
+  FaultManager_Init();
+  SafetyManager_Init(
+      HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET);
+  ParameterManager_Init();
+  WheelController_Init();
+  Odometry_Init();
+  BoardHealth_Init();
+  QspiTargetTest_Init();
+  IwdgTargetTest_Init();
+  MotorTargetTest_Init();
+  DiagnosticReport_Init(HAL_GetTick());
+  ApplyPendingParameters();
+  if (SafetyManager_IsEmergencyStopLatched()) {
+    WheelController_EmergencyStop();
   }
   if (HAL_TIM_Base_Start_IT(&htim6) != HAL_OK) {
     Error_Handler();
@@ -80,7 +107,7 @@ void ChassisApp_Init(void)
   demo_stage_started_ms = HAL_GetTick();
   if (!SubmitCommand(0, 0, COMMAND_SOURCE_DEMO, demo_stage_started_ms,
                      false, 0U) ||
-      !ChassisControl_Start()) {
+      !StartControl()) {
     Error_Handler();
   }
 #endif
@@ -93,7 +120,6 @@ void ChassisApp_Run(void)
   ConsoleCommand console_command;
   uint8_t pending_ticks;
   bool tick_overflow;
-  BoardMotorTestRequest motor_test_request;
   CanTransportControlCommand control_command;
   uint32_t primask;
   const uint32_t now_ms = HAL_GetTick();
@@ -153,7 +179,7 @@ void ChassisApp_Run(void)
       break;
     case 5U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        ChassisControl_Stop();
+        StopControl();
         demo_stage = 6U;
       }
       break;
@@ -167,10 +193,10 @@ void ChassisApp_Run(void)
       if (SubmitCommand(control_command.left_target,
                         control_command.right_target, COMMAND_SOURCE_CAN,
                         now_ms, true, control_command.sequence)) {
-        (void)ChassisControl_Start();
+        (void)StartControl();
       }
     } else {
-      ChassisControl_Stop();
+      StopControl();
     }
   }
 
@@ -184,10 +210,10 @@ void ChassisApp_Run(void)
 
   if (tick_overflow ||
       pending_ticks > MOTOR_CONTROL_MAX_PENDING_TICKS) {
-    ChassisControl_LatchInternalFault(CHASSIS_FAULT_CONTROL_OVERRUN);
+    LatchInternalFault(CHASSIS_FAULT_CONTROL_OVERRUN);
   } else {
     while (pending_ticks > 0U) {
-      ChassisControl_Tick10ms(now_ms);
+      RunControlTick(now_ms);
       --pending_ticks;
       last_control_run_ms = now_ms;
     }
@@ -195,65 +221,42 @@ void ChassisApp_Run(void)
 
   StatusDisplay_Run(now_ms);
   CanTransport_Run();
-  BoardSelfTest_Run(now_ms);
+  QspiTargetTest_Run(now_ms);
+  MotorTargetTest_Run(now_ms);
+  DiagnosticReport_Run(now_ms);
 
-  if (BoardSelfTest_IsIwdgResetRequested()) {
-    ChassisControl_Stop();
+  if (IwdgTargetTest_IsResetRequested()) {
+    StopControl();
     BspMotor_EmergencyStop();
   }
 
-  motor_test_request = BoardSelfTest_TakeMotorTestRequest();
-  if (motor_test_request != BOARD_MOTOR_TEST_NONE) {
-    int16_t left_duty = 0;
-    int16_t right_duty = 0;
-    bool accepted = false;
-
-    if (motor_test_request == BOARD_MOTOR_TEST_STOP) {
-      ChassisControl_Stop();
-      accepted = true;
-    } else if (!BoardSelfTest_IsIwdgResetRequested()) {
-      switch (motor_test_request) {
-        case BOARD_MOTOR_TEST_LEFT_FORWARD:
-          left_duty = MOTOR_OPEN_LOOP_TEST_DUTY;
-          break;
-        case BOARD_MOTOR_TEST_LEFT_REVERSE:
-          left_duty = -MOTOR_OPEN_LOOP_TEST_DUTY;
-          break;
-        case BOARD_MOTOR_TEST_RIGHT_FORWARD:
-          right_duty = MOTOR_OPEN_LOOP_TEST_DUTY;
-          break;
-        case BOARD_MOTOR_TEST_RIGHT_REVERSE:
-          right_duty = -MOTOR_OPEN_LOOP_TEST_DUTY;
-          break;
-        default:
-          break;
-      }
-      accepted = ChassisControl_StartOpenLoopTest(
-          left_duty, right_duty, now_ms,
-          MOTOR_OPEN_LOOP_TEST_DURATION_MS);
-    }
-    BoardSelfTest_ReportMotorTestResult(motor_test_request, accepted);
-  }
-
   if (Telemetry_IsDue(now_ms)) {
-    ChassisControlStatus status;
+    WheelControllerSnapshot wheel_snapshot;
+    MotorTargetTestSnapshot motor_test_snapshot;
+    OdometrySnapshot odometry_snapshot;
     TelemetrySnapshot snapshot;
     uint32_t supply_mv;
     const bool supply_valid =
         BspPowerSample_ReadMillivolts(&supply_mv);
 
-    ChassisControl_GetStatus(&status);
-    snapshot.left_target = status.left_target;
-    snapshot.left_delta = status.left_delta;
-    snapshot.left_total = status.left_total;
-    snapshot.left_output = status.left_output;
-    snapshot.right_target = status.right_target;
-    snapshot.right_delta = status.right_delta;
-    snapshot.right_total = status.right_total;
-    snapshot.right_output = status.right_output;
+    WheelController_GetSnapshot(&wheel_snapshot);
+    MotorTargetTest_GetSnapshot(&motor_test_snapshot);
+    Odometry_GetSnapshot(&odometry_snapshot);
+    snapshot.left_target = wheel_snapshot.left_target;
+    snapshot.left_delta = odometry_snapshot.left_delta;
+    snapshot.left_total = odometry_snapshot.left_total;
+    snapshot.left_output = motor_test_snapshot.running
+                               ? motor_test_snapshot.left_duty
+                               : wheel_snapshot.left_output;
+    snapshot.right_target = wheel_snapshot.right_target;
+    snapshot.right_delta = odometry_snapshot.right_delta;
+    snapshot.right_total = odometry_snapshot.right_total;
+    snapshot.right_output = motor_test_snapshot.running
+                                ? motor_test_snapshot.right_duty
+                                : wheel_snapshot.right_output;
     snapshot.supply_mv = supply_valid ? (int32_t)supply_mv : -1;
-    snapshot.control_state = (uint32_t)status.state;
-    snapshot.fault_flags = status.fault_flags;
+    snapshot.control_state = (uint32_t)SafetyManager_GetState();
+    snapshot.fault_flags = FaultManager_GetFlags();
     Telemetry_Run(now_ms, &snapshot);
   }
 
@@ -269,8 +272,8 @@ void ChassisApp_Run(void)
 
   if (last_control_run_ms != 0U &&
       now_ms - last_control_run_ms <= 50U &&
-      !ChassisControl_HasInternalFault() &&
-      !BoardSelfTest_IsIwdgResetRequested()) {
+      !FaultManager_HasCritical() &&
+      !IwdgTargetTest_IsResetRequested()) {
     HAL_IWDG_Refresh(&hiwdg);
   }
 }
@@ -294,7 +297,7 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       (void)BspUart_WriteString(pong);
       break;
     case CONSOLE_COMMAND_STATUS:
-      BoardSelfTest_RequestReport();
+      DiagnosticReport_RequestSelfTest();
       break;
     case CONSOLE_COMMAND_TELEMETRY_TEXT:
       Telemetry_SetMode(TELEMETRY_MODE_TEXT);
@@ -320,10 +323,10 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       break;
     case CONSOLE_COMMAND_PID_SET_LEFT:
     case CONSOLE_COMMAND_PID_SET_RIGHT:
-      WritePidReport(ChassisControl_SetPidGains(
+      WritePidReport(ParameterManager_StagePidGains(
           command->type == CONSOLE_COMMAND_PID_SET_LEFT
-              ? CHASSIS_PID_LEFT
-              : CHASSIS_PID_RIGHT,
+              ? PARAMETER_WHEEL_LEFT
+              : PARAMETER_WHEEL_RIGHT,
           command->arguments.pid.kp, command->arguments.pid.ki,
           command->arguments.pid.kd));
       break;
@@ -331,15 +334,15 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       if (SubmitCommand(command->arguments.target.left,
                         command->arguments.target.right,
                         COMMAND_SOURCE_CONSOLE, now_ms, false, 0U)) {
-        (void)ChassisControl_Start();
+        (void)StartControl();
       }
       break;
     case CONSOLE_COMMAND_PID_STOP:
-      ChassisControl_Stop();
+      StopControl();
       break;
     case CONSOLE_COMMAND_ENCODER_ZERO:
       (void)snprintf(response, sizeof(response), "ENCODER_CAL: %s\r\n",
-                     ChassisControl_ResetEncoderTotals()
+                     ResetOdometry()
                          ? "RESET"
                          : "REJECTED, stop motor first");
       (void)BspUart_WriteString(response);
@@ -348,13 +351,19 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       WriteEncoderResult();
       break;
     case CONSOLE_COMMAND_QSPI_TEST:
-      if (!BoardSelfTest_RequestQspiTest()) {
+      if (IwdgTargetTest_IsResetRequested() ||
+          !QspiTargetTest_Start()) {
         WriteConsoleHelp();
+      } else {
+        DiagnosticReport_RequestQspiTest();
       }
       break;
     case CONSOLE_COMMAND_IWDG_RESET:
-      if (!BoardSelfTest_RequestIwdgReset()) {
+      if (QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING ||
+          !IwdgTargetTest_Start()) {
         WriteConsoleHelp();
+      } else {
+        DiagnosticReport_RequestIwdgArmed();
       }
       break;
     case CONSOLE_COMMAND_MOTOR_STOP:
@@ -362,20 +371,27 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
     case CONSOLE_COMMAND_MOTOR_LEFT_REVERSE:
     case CONSOLE_COMMAND_MOTOR_RIGHT_FORWARD:
     case CONSOLE_COMMAND_MOTOR_RIGHT_REVERSE: {
-      const BoardMotorTestRequest request =
+      const MotorTargetTestAction action =
           command->type == CONSOLE_COMMAND_MOTOR_STOP
-              ? BOARD_MOTOR_TEST_STOP
+              ? MOTOR_TARGET_TEST_STOP
               : command->type == CONSOLE_COMMAND_MOTOR_LEFT_FORWARD
-                    ? BOARD_MOTOR_TEST_LEFT_FORWARD
+                    ? MOTOR_TARGET_TEST_LEFT_FORWARD
                     : command->type == CONSOLE_COMMAND_MOTOR_LEFT_REVERSE
-                          ? BOARD_MOTOR_TEST_LEFT_REVERSE
+                          ? MOTOR_TARGET_TEST_LEFT_REVERSE
                           : command->type == CONSOLE_COMMAND_MOTOR_RIGHT_FORWARD
-                                ? BOARD_MOTOR_TEST_RIGHT_FORWARD
-                                : BOARD_MOTOR_TEST_RIGHT_REVERSE;
+                                ? MOTOR_TARGET_TEST_RIGHT_FORWARD
+                                : MOTOR_TARGET_TEST_RIGHT_REVERSE;
+      bool accepted;
 
-      if (!BoardSelfTest_RequestMotorTest(request)) {
-        WriteConsoleHelp();
+      if (action == MOTOR_TARGET_TEST_STOP) {
+        StopControl();
+        accepted = true;
+      } else {
+        accepted = !IwdgTargetTest_IsResetRequested() &&
+                   QspiTargetTest_GetStatus() != QSPI_TARGET_TEST_RUNNING &&
+                   StartMotorTargetTest(action, now_ms);
       }
+      DiagnosticReport_MotorTestResult(action, accepted);
       break;
     }
     case CONSOLE_COMMAND_HELP:
@@ -390,23 +406,19 @@ static void WritePidReport(bool accepted)
 {
   char response[160];
   int length;
-  uint16_t left_kp;
-  uint16_t left_ki;
-  uint16_t left_kd;
-  uint16_t right_kp;
-  uint16_t right_ki;
-  uint16_t right_kd;
+  ParameterSnapshot parameters;
 
-  ChassisControl_GetPidGains(CHASSIS_PID_LEFT, &left_kp, &left_ki, &left_kd);
-  ChassisControl_GetPidGains(CHASSIS_PID_RIGHT, &right_kp, &right_ki,
-                             &right_kd);
+  ParameterManager_GetRequested(&parameters);
   if (accepted) {
     length = snprintf(
         response, sizeof(response),
         "PID: left kp=%u ki=%u kd=%u right kp=%u ki=%u kd=%u\r\n",
-        (unsigned int)left_kp, (unsigned int)left_ki,
-        (unsigned int)left_kd, (unsigned int)right_kp,
-        (unsigned int)right_ki, (unsigned int)right_kd);
+        (unsigned int)parameters.left_pid.kp,
+        (unsigned int)parameters.left_pid.ki,
+        (unsigned int)parameters.left_pid.kd,
+        (unsigned int)parameters.right_pid.kp,
+        (unsigned int)parameters.right_pid.ki,
+        (unsigned int)parameters.right_pid.kd);
   } else {
     length = snprintf(
         response, sizeof(response),
@@ -421,14 +433,14 @@ static void WritePidReport(bool accepted)
 
 static void WriteEncoderResult(void)
 {
-  ChassisControlStatus status;
+  OdometrySnapshot snapshot;
   char response[96];
   int length;
 
-  ChassisControl_GetStatus(&status);
+  Odometry_GetSnapshot(&snapshot);
   length = snprintf(response, sizeof(response),
                     "ENCODER_CAL: left=%ld right=%ld counts\r\n",
-                    (long)status.left_total, (long)status.right_total);
+                    (long)snapshot.left_total, (long)snapshot.right_total);
   if (length > 0 && (size_t)length < sizeof(response)) {
     (void)BspUart_Write(response, (size_t)length);
   }
@@ -471,6 +483,121 @@ static void WriteConsoleHelp(void)
   (void)BspUart_Write(text, length);
 }
 
+static bool StartControl(void)
+{
+  CommandManagerCommand command;
+
+  return CommandManager_Get(&command) &&
+         SafetyManager_RequestRun(true);
+}
+
+static void StopControl(void)
+{
+  CommandManager_Clear();
+  MotorTargetTest_Stop();
+  WheelController_Stop();
+  SafetyManager_Stop();
+}
+
+static void RunControlTick(uint32_t now_ms)
+{
+  CommandManagerCommand command;
+  OdometrySnapshot odometry;
+  int32_t left_delta;
+  int32_t right_delta;
+
+  BspEncoder_ReadDelta(&left_delta, &right_delta);
+  Odometry_Update(left_delta, right_delta);
+  ApplyPendingParameters();
+
+  if (SafetyManager_IsEmergencyStopLatched()) {
+    CommandManager_Clear();
+    WheelController_EmergencyStop();
+    return;
+  }
+
+  if (FaultManager_HasCritical()) {
+    CommandManager_Clear();
+    WheelController_EmergencyStop();
+    SafetyManager_LatchInternalFault();
+    return;
+  }
+
+  if (SafetyManager_IsOpenLoopTestRunning()) {
+    WheelController_Reset();
+    return;
+  }
+
+  if (!SafetyManager_IsRunning()) {
+    WheelController_Stop();
+    return;
+  }
+
+  if (CommandManager_IsTimedOut(now_ms) ||
+      !CommandManager_Get(&command)) {
+    CommandManager_Clear();
+    WheelController_Stop();
+    SafetyManager_EnterCommandTimeout();
+    return;
+  }
+
+  Odometry_GetSnapshot(&odometry);
+  if (!WheelController_Update(command.left_target, command.right_target,
+                              odometry.left_delta,
+                              odometry.right_delta)) {
+    LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+  }
+}
+
+static bool StartMotorTargetTest(MotorTargetTestAction action,
+                                 uint32_t now_ms)
+{
+  if (!SafetyManager_RequestOpenLoopTest()) {
+    return false;
+  }
+  CommandManager_Clear();
+  WheelController_Stop();
+  if (!MotorTargetTest_Start(action, now_ms)) {
+    SafetyManager_Stop();
+    return false;
+  }
+  return true;
+}
+
+static void LatchInternalFault(uint32_t fault)
+{
+  FaultManager_Raise(fault);
+  SafetyManager_LatchInternalFault();
+  CommandManager_Clear();
+  WheelController_EmergencyStop();
+}
+
+static void ApplyPendingParameters(void)
+{
+  ParameterSnapshot parameters;
+
+  if (!ParameterManager_ApplyPending(&parameters)) {
+    return;
+  }
+
+  WheelController_ApplyPidGains(
+      WHEEL_CONTROLLER_LEFT, parameters.left_pid.kp,
+      parameters.left_pid.ki, parameters.left_pid.kd);
+  WheelController_ApplyPidGains(
+      WHEEL_CONTROLLER_RIGHT, parameters.right_pid.kp,
+      parameters.right_pid.ki, parameters.right_pid.kd);
+}
+
+static bool ResetOdometry(void)
+{
+  if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED) {
+    return false;
+  }
+
+  Odometry_Reset();
+  return true;
+}
+
 static bool SubmitCommand(int32_t left_target, int32_t right_target,
                           CommandSource source, uint32_t now_ms,
                           bool has_sequence, uint8_t sequence)
@@ -489,7 +616,29 @@ static bool SubmitCommand(int32_t left_target, int32_t right_target,
 
 void ChassisApp_FatalError(void)
 {
-  ChassisControl_LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+  LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+}
+
+bool ChassisApp_ClearEmergencyStop(void)
+{
+  uint32_t primask;
+
+  if (HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET) {
+    return false;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if (HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET) {
+    __set_PRIMASK(primask);
+    return false;
+  }
+  (void)SafetyManager_ClearEmergencyStop();
+  BspMotor_ClearEmergencyStop();
+  __set_PRIMASK(primask);
+
+  StopControl();
+  return true;
 }
 
 void ChassisApp_ControlTickFromIsr(void)
@@ -508,6 +657,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin)
   }
   if (gpio_pin == E_STOP_Pin &&
       HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET) {
-    ChassisControl_EmergencyStopFromIsr();
+    BspMotor_EmergencyStop();
+    SafetyManager_LatchEmergencyStopFromIsr();
   }
 }

@@ -159,13 +159,14 @@ ChassisApp_Run()
 
 目录迁移后的 FreeRTOS 工程已于 2026-07-25 从
 `firmware/application/stm32g474/` 完成 STM32CubeIDE GCC Debug 和 Release
-全量 clean build，两种配置均为 `0 errors, 0 warnings`。完成 UART、Console、
-Telemetry 和 Command Manager 边界拆分后，Debug 镜像为 `text=207368`、
-`data=96`、`bss=29192`；Release 镜像为 `text=172452`、`data=96`、
-`bss=29176`。BSS 增量主要来自
-固定容量的 UART DMA 发送队列，不使用动态分配。
+全量 clean build，两种配置均为 `0 errors, 0 warnings`。完成阶段 3 底盘业务
+模块按业务域收敛并拆分目标测试后，Debug 镜像为 `text=208852`、
+`data=96`、`bss=29096`；Release 镜像为 `text=173232`、`data=96`、
+`bss=29072`。BSS 主要来自
+FreeRTOS 静态对象、UART DMA 固定队列和模块状态，不使用动态分配。
 
-当前 FreeRTOS 固件尚未完成烧录后的全量硬件回归。
+阶段 3 之前的迁移固件已完成实物回归。阶段 3 新镜像的硬件回归按迁移计划
+留到代码迁移完成后统一执行，本节的 clean build 结果不替代实物验证。
 
 ### 4.3 当前自有代码位置
 
@@ -183,26 +184,34 @@ firmware/application/stm32g474/
 │  ├─ encoder/
 │  ├─ power_monitor/
 │  ├─ qspi/
+│  ├─ reset/
 │  └─ lcd/
 ├─ components/
 │  └─ pid/
 ├─ communication/
-│  └─ fdcan/
+│  └─ can_transport/
 ├─ modules/
-│  ├─ chassis_control/
-│  └─ diagnostics/
+│  ├─ chassis/
+│  ├─ diagnostics/
+│  ├─ parameters/
+│  └─ safety/
 ├─ infrastructure/
-│  └─ status_display/
+│  ├─ console/
+│  ├─ status_display/
+│  └─ telemetry/
 ├─ rtos/
 │  ├─ rtos_app.c
 │  └─ rtos_app.h
+├─ tests/
+│  └─ target/
 └─ config/
    ├─ app_config.h
    ├─ build_info.h
    ├─ control_config.h
    ├─ feature_config.h
    ├─ protocol_config.h
-   └─ storage_layout.h
+   ├─ storage_layout.h
+   └─ target_test_config.h
 ```
 
 ### 4.4 目录迁移完成状态
@@ -218,9 +227,9 @@ firmware/application/stm32g474/
 7. `services/status_display/` 已迁移到 `infrastructure/status_display/`。
 8. Debug 和 Release 均从新工程根目录完成全量 clean build，所有 BSP、modules、infrastructure 和 `rtos_app.o` 均进入链接输入。
 9. 使用临时 Git 索引验证迁移结果，不修改工作区真实暂存区。
-10. 本地 `.ai-bridge/` 和 `docs/rollout-*.jsonl` 会话数据已排除在产品提交之外。
+10. 本地 `.ai-bridge/`、IDE 工作区和构建产物已排除在产品提交之外；会话记录不属于固件源码。
 
-尚未完成的是阶段 1 的烧录和 FreeRTOS 全量硬件回归。完成该回归前，不继续大规模业务拆分。
+阶段 1 实物回归已经完成。阶段 3 拆分后的新镜像仍需在全部代码迁移完成后统一回归。
 
 ---
 
@@ -325,14 +334,9 @@ chassis-controller/
 │  │     │  └─ time_service/
 │  │     │
 │  │     ├─ modules/
-│  │     │  ├─ command_manager/
-│  │     │  ├─ differential_drive/
-│  │     │  ├─ wheel_controller/
-│  │     │  ├─ odometry/
-│  │     │  ├─ imu_manager/
-│  │     │  ├─ safety_manager/
-│  │     │  ├─ fault_manager/
-│  │     │  ├─ parameter_manager/
+│  │     │  ├─ chassis/
+│  │     │  ├─ safety/
+│  │     │  ├─ parameters/
 │  │     │  └─ diagnostics/
 │  │     │
 │  │     ├─ rtos/
@@ -565,49 +569,19 @@ BSP 不决定：
 
 `modules/` 保存底盘产品业务。
 
-`command_manager/`：
+`chassis/`：
 
-- 保存最新有效命令
-- 序号和会话状态
-- 命令时间戳
-- ARM、DISARM、ESTOP
-- 命令超时状态
+- `command_manager` 保存最新有效命令、来源、序号、时间戳和超时状态
+- `differential_drive` 完成左右轮目标混合和原始轮增量反算
+- `odometry` 根据调用者提供的编码器增量累计基础运动数据，不直接读取硬件
+- `wheel_controller` 保存左右轮目标、测量、PID 和输出，只负责正式闭环轮控
 
-`differential_drive/`：
+`safety/`：
 
-- 线速度和角速度转换为左右轮目标速度
-- 左右轮速度反算底盘运动
-- 轮径、轮距和方向参数
+- `safety_manager` 保存底盘状态、电机许可、急停和命令超时状态
+- `fault_manager` 保存故障位、等级以及锁存和清除条件
 
-`wheel_controller/`：
-
-- 左右轮目标速度
-- 测量速度
-- PID
-- 输出限幅
-- 积分清零
-- 输出到电机 BSP
-
-`safety_manager/`：
-
-- 底盘状态机
-- 电机许可
-- 急停
-- 命令超时
-- 欠压
-- 堵转
-- 超速
-- 调参模式限制
-
-`fault_manager/`：
-
-- 当前故障位
-- 历史故障位
-- 故障等级
-- 锁存和清除条件
-- 复位原因
-
-`parameter_manager/`：
+`parameters/`：
 
 - PID、轮径、轮距、编码器和限幅参数
 - 参数范围检查
@@ -617,18 +591,9 @@ BSP 不决定：
 
 `diagnostics/`：
 
-- 外设在线状态
-- CAN 错误统计
-- 编码器异常
-- 电压状态
-- IMU 状态
-- 控制周期超时
-- 任务健康状态
-
-`odometry/`：
-
-- STM32 侧基础里程计或原始运动增量
-- 为 Jetson 提供可重新计算的数据
+- `board_health` 只采集并发布板级健康快照
+- 不格式化串口报告，不执行擦写、复位或电机动作
+- 不直接访问 CubeMX 全局句柄
 
 `imu_manager/`：
 
@@ -679,6 +644,7 @@ config/  = 软件产品如何运行
 - `feature_config.h`：LCD、IMU、遥测等功能开关
 - `protocol_config.h`：CAN 超时、心跳和上报周期
 - `storage_layout.h`：QSPI 参数、日志、测试和 OTA 区域
+- `target_test_config.h`：显式确认后才能执行的板上测试参数
 - `build_info.h`：Application 当前版本和构建信息
 
 Application 与 Bootloader 分别维护自己的 `config/build_info.h`。不在 `firmware/shared/` 放当前固件版本值。
@@ -747,43 +713,49 @@ components
 
 ## 9. 当前代码拆分映射
 
-### 9.1 `chassis_control.c`
+### 9.1 底盘业务拆分
 
-当前 `modules/chassis_control/chassis_control.c` 同时包含：
-
-- 命令保存和超时
-- 控制状态机
-- 急停和内部故障
-- 编码器累计
-- 开环测试
-- PID
-- 电机输出
-
-目标拆分：
+原 `modules/chassis_control/chassis_control.c` 的职责按以下边界完成拆分：
 
 ```text
-命令缓存、序号、时间戳       → modules/command_manager/
-左右轮目标和 PID             → modules/wheel_controller/
-差速解算                     → modules/differential_drive/
-状态机和电机许可             → modules/safety_manager/
-故障位、锁存和清除           → modules/fault_manager/
-编码器累计和基础运动增量     → modules/odometry/
+命令缓存、序号、时间戳       → modules/chassis/command_manager.*
+左右轮目标和 PID             → modules/chassis/wheel_controller.*
+差速解算                     → modules/chassis/differential_drive.*
+状态机和电机许可             → modules/safety/safety_manager.*
+故障位、锁存和清除           → modules/safety/fault_manager.*
+编码器累计和基础运动增量     → modules/chassis/odometry.*
 ```
 
-拆分必须渐进进行，不能一次重写整个文件。
+拆分于 2026-07-25 分两批完成，原 `modules/chassis_control/` 已删除。
 
-2026-07-25 已完成 `modules/command_manager/`：
+第一批完成：
+
+- `fault_manager` 唯一保存当前故障位，区分可恢复故障和严重故障
+- `safety_manager` 唯一保存请求状态和急停锁存，急停与严重故障覆盖普通请求状态
+- `wheel_controller` 唯一保存左右 PID、目标、测量和输出，只执行正式闭环控制
+
+第二批完成：
+
+- `differential_drive` 提供左右轮目标混合和原始轮增量反算，当前使用无损原始 count 分量
+- `odometry` 接收控制执行链提供的编码器周期增量，保存左右累计和基础前进/转向原始增量
+- `parameter_manager` 校验 PID 范围，保存 active/pending 参数，并在 10 ms 控制周期边界应用
+- `app/chassis_app.c` 只负责命令、安全、故障、参数、里程计和轮控的运行时编排
+- 遥测和 LCD 从对应模块快照读取，不再依赖聚合状态结构
+
+`modules/chassis/command_manager.*` 已完成：
 
 - 唯一保存当前有效左右轮目标、接收时间戳、命令来源和可选序号
 - 统一校验目标范围；CAN 来源必须携带序号，Console 和 Demo 来源不得伪造序号
 - 提供来源受限的时间戳刷新，避免其他入口延长 Demo 命令寿命
-- 统一执行 200 ms 新鲜度判断，但超时停车和故障状态仍由 `chassis_control` 决定
+- 统一执行 200 ms 新鲜度判断，超时停车和故障状态由 `safety_manager` 与 `fault_manager` 决定
 - CAN 重复帧、跳帧、回绕和握手会话仍由 `communication/can_transport` 校验
-- `chassis_control` 不再保存 `has_command` 和 `last_command_ms`
 
-### 9.2 `board_self_test.c`
+当前 `parameter_manager` 完成的是运行时 PID 参数切片。轮径、轮距、编码器、
+限幅参数和 QSPI CRC 双副本持久化仍属于阶段 6，不在本次目录拆分中提前实现。
 
-2026-07-25 已完成第一轮职责拆分。原文件曾同时包含：
+### 9.2 板级健康和目标测试
+
+原 `modules/diagnostics/board_self_test.c` 曾同时包含：
 
 - UART DMA
 - 串口命令解析
@@ -801,10 +773,11 @@ components
 UART DMA 底层               → bsp/uart/
 串口命令解析                → infrastructure/console/
 VOFA+ 遥测                  → infrastructure/telemetry/
-硬件状态检查                → modules/diagnostics/
-PID 参数业务                → modules/parameter_manager/
+硬件状态检查                → modules/diagnostics/board_health.*
+PID 参数业务                → modules/parameters/parameter_manager.*
 持久化                      → infrastructure/parameter_storage/
 危险板上测试入口            → tests/target/
+自检报告格式化              → infrastructure/console/diagnostic_report.*
 ```
 
 当前已完成：
@@ -815,7 +788,12 @@ PID 参数业务                → modules/parameter_manager/
 - 串口命令成帧、语法解析和命令队列迁入 `infrastructure/console/`
 - TEXT/VOFA 遥测模式、周期和格式化迁入 `infrastructure/telemetry/`
 - PID、编码器和 CAN 命令调度由 `app/chassis_app.c` 组装，不再放在自检模块
-- `board_self_test` 仅保留启动硬件检查、QSPI/IWDG 测试、板上电机测试请求和自检报告
+- QSPI JEDEC、DMA abort、复位原因和 RTC Backup Register 访问收敛到 BSP
+- `board_health` 只发布 QSPI、复位测试和按键健康快照
+- QSPI 擦写、IWDG 复位和电机开环测试分别位于 `tests/target/`
+- 自检、QSPI 和电机测试文本由 `infrastructure/console/diagnostic_report.*` 输出
+- 电机开环测试已从正式 `wheel_controller` 删除
+- 原 `board_self_test.c/.h` 已删除
 
 ### 9.3 CAN 通信
 
@@ -833,7 +811,7 @@ PID 参数业务                → modules/parameter_manager/
 ```text
 HAL 收发和 IRQ              → bsp/fdcan/
 握手、帧解析、发送和统计    → communication/can_transport/
-命令缓存和超时              → modules/command_manager/
+命令缓存和超时              → modules/chassis/command_manager.*
 ```
 
 当前阶段不额外保留 `fdcan_driver` 或 `chassis_protocol` 转发层。CAN 通信实现统一放在 `communication/can_transport/`，BSP 只提供与业务协议无关的过滤器、原始帧收发和控制器状态读取。
@@ -1368,9 +1346,9 @@ bsp/uart
   ↓
 infrastructure/console
   ↓
-modules/parameter_manager
+modules/parameters/parameter_manager
   ↓
-modules/wheel_controller
+modules/chassis/wheel_controller
 ```
 
 遥测链路：
@@ -1826,7 +1804,7 @@ firmware/application/stm32g474/.metadata/
 
 1. `fdcan_driver` 拆出 `bsp/fdcan`。（已完成）
 2. 将握手、控制帧解析、序号状态和发送调度收敛到 `communication/can_transport`，删除转发壳。（已完成）
-3. `board_self_test` 拆出 `bsp/uart` 和 `infrastructure/console`。（已完成）
+3. 删除 `board_self_test`，拆出 `board_health`、目标测试和诊断报告。（已完成）
 4. 拆出 `infrastructure/telemetry`。（已完成）
 5. `status_display` 迁移到 `infrastructure/`。（已完成）
 
@@ -1834,19 +1812,22 @@ firmware/application/stm32g474/.metadata/
 
 ### 阶段 3：拆分底盘业务模块
 
-状态：**IN PROGRESS（2026-07-25）**
+状态：**COMPLETE（2026-07-25）**
 
 按顺序拆分：
 
 1. `command_manager`（已完成）
-2. `fault_manager`
-3. `safety_manager`
-4. `wheel_controller`
-5. `differential_drive`
-6. `odometry`
-7. `parameter_manager`
+2. `fault_manager`（已完成）
+3. `safety_manager`（已完成）
+4. `wheel_controller`（已完成）
+5. `differential_drive`（已完成）
+6. `odometry`（已完成）
+7. `parameter_manager`（已完成运行时参数边界）
 
-优先拆出可测试的纯逻辑，再调整调用链。
+原 `modules/chassis_control/` 已删除，业务模块已收敛为 `chassis`、`safety`、
+`parameters` 和 `diagnostics` 四个域。Debug 和 Release 均完成 CubeIDE
+全量 clean build，域内对象与 `tests/target` 对象均进入 `objects.list`，
+无旧聚合对象和 `board_self_test.o`。
 
 ### 阶段 4：建立独立控制任务
 

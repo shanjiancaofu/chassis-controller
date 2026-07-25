@@ -12,6 +12,7 @@ typedef enum
   BSP_QSPI_TRANSFER_FAILED
 } BspQspiTransferStatus;
 
+bool BspQspiFlash_ReadJedecId(uint8_t jedec_id[3]);
 bool BspQspiFlash_ReadDma(uint32_t address, uint8_t *data,
                           uint32_t size);
 bool BspQspiFlash_EraseSector(uint32_t address);
@@ -20,5 +21,6 @@ bool BspQspiFlash_ProgramPageDma(uint32_t address,
                                  uint32_t size);
 bool BspQspiFlash_IsBusy(bool *busy);
 BspQspiTransferStatus BspQspiFlash_GetTransferStatus(void);
+void BspQspiFlash_Abort(void);
 
 #endif

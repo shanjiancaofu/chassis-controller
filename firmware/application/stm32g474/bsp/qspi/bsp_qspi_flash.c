@@ -6,6 +6,7 @@
 #include "config/storage_layout.h"
 
 #define QSPI_WRITE_ENABLE_COMMAND 0x06U
+#define QSPI_JEDEC_ID_COMMAND 0x9FU
 #define QSPI_READ_STATUS_COMMAND 0x05U
 #define QSPI_SECTOR_ERASE_COMMAND 0x20U
 #define QSPI_FAST_READ_COMMAND 0x0BU
@@ -57,6 +58,31 @@ static bool QspiWriteEnable(void)
              HAL_OK &&
          QspiReadStatus(&status) &&
          (status & QSPI_STATUS_WRITE_ENABLE_LATCH) != 0U;
+}
+
+bool BspQspiFlash_ReadJedecId(uint8_t jedec_id[3])
+{
+  QSPI_CommandTypeDef command = {0};
+
+  if (jedec_id == NULL || BOARD_QSPI.State != HAL_QSPI_STATE_READY) {
+    return false;
+  }
+
+  command.Instruction = QSPI_JEDEC_ID_COMMAND;
+  command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+  command.AddressMode = QSPI_ADDRESS_NONE;
+  command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+  command.DataMode = QSPI_DATA_1_LINE;
+  command.DummyCycles = 0U;
+  command.NbData = 3U;
+  command.DdrMode = QSPI_DDR_MODE_DISABLE;
+  command.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
+  command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+  return HAL_QSPI_Command(&BOARD_QSPI, &command, QSPI_COMMAND_TIMEOUT_MS) ==
+             HAL_OK &&
+         HAL_QSPI_Receive(&BOARD_QSPI, jedec_id,
+                          QSPI_COMMAND_TIMEOUT_MS) == HAL_OK;
 }
 
 bool BspQspiFlash_ReadDma(uint32_t address, uint8_t *data,
@@ -173,6 +199,15 @@ bool BspQspiFlash_IsBusy(bool *busy)
 BspQspiTransferStatus BspQspiFlash_GetTransferStatus(void)
 {
   return qspi_transfer_status;
+}
+
+void BspQspiFlash_Abort(void)
+{
+  if (HAL_QSPI_Abort(&BOARD_QSPI) != HAL_OK) {
+    qspi_transfer_status = BSP_QSPI_TRANSFER_FAILED;
+  } else {
+    qspi_transfer_status = BSP_QSPI_TRANSFER_IDLE;
+  }
 }
 
 void HAL_QSPI_RxCpltCallback(QSPI_HandleTypeDef *hqspi)
