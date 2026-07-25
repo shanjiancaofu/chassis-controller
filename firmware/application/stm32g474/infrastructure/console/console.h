@@ -1,0 +1,55 @@
+#ifndef CONSOLE_H
+#define CONSOLE_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef enum {
+  CONSOLE_COMMAND_NONE = 0,
+  CONSOLE_COMMAND_PING,
+  CONSOLE_COMMAND_STATUS,
+  CONSOLE_COMMAND_TELEMETRY_TEXT,
+  CONSOLE_COMMAND_TELEMETRY_VOFA,
+  CONSOLE_COMMAND_TELEMETRY_OFF,
+  CONSOLE_COMMAND_CAN_STATUS,
+  CONSOLE_COMMAND_CAN_TRANSMIT,
+  CONSOLE_COMMAND_PID_SHOW,
+  CONSOLE_COMMAND_PID_SET_LEFT,
+  CONSOLE_COMMAND_PID_SET_RIGHT,
+  CONSOLE_COMMAND_PID_TARGET,
+  CONSOLE_COMMAND_PID_STOP,
+  CONSOLE_COMMAND_ENCODER_ZERO,
+  CONSOLE_COMMAND_ENCODER_RESULT,
+  CONSOLE_COMMAND_QSPI_TEST,
+  CONSOLE_COMMAND_IWDG_RESET,
+  CONSOLE_COMMAND_MOTOR_STOP,
+  CONSOLE_COMMAND_MOTOR_LEFT_FORWARD,
+  CONSOLE_COMMAND_MOTOR_LEFT_REVERSE,
+  CONSOLE_COMMAND_MOTOR_RIGHT_FORWARD,
+  CONSOLE_COMMAND_MOTOR_RIGHT_REVERSE,
+  CONSOLE_COMMAND_HELP
+} ConsoleCommandType;
+
+typedef struct {
+  ConsoleCommandType type;
+  union {
+    struct {
+      uint16_t kp;
+      uint16_t ki;
+      uint16_t kd;
+    } pid;
+    struct {
+      int16_t left;
+      int16_t right;
+    } target;
+  } arguments;
+} ConsoleCommand;
+
+void Console_Init(void);
+void Console_Run(void);
+bool Console_TakeCommand(ConsoleCommand *command);
+const char *Console_GetHelpText(size_t *length);
+uint32_t Console_GetDroppedCommandCount(void);
+
+#endif

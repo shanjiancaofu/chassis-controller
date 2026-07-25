@@ -159,9 +159,10 @@ ChassisApp_Run()
 
 目录迁移后的 FreeRTOS 工程已于 2026-07-25 从
 `firmware/application/stm32g474/` 完成 STM32CubeIDE GCC Debug 和 Release
-全量 clean build，两种配置均为 `0 errors, 0 warnings`。Debug 镜像为
-`text=205124`、`data=96`、`bss=19720`；Release 镜像为
-`text=171268`、`data=96`、`bss=19704`。
+全量 clean build，两种配置均为 `0 errors, 0 warnings`。完成 UART、Console 和
+Telemetry 边界拆分后，Debug 镜像为 `text=207044`、`data=96`、`bss=29184`；
+Release 镜像为 `text=172288`、`data=96`、`bss=29168`。BSS 增量主要来自
+固定容量的 UART DMA 发送队列，不使用动态分配。
 
 当前 FreeRTOS 固件尚未完成烧录后的全量硬件回归。
 
@@ -522,6 +523,8 @@ BSP 不决定：
 - 开发测试入口
 - 状态查询
 - VOFA+ 命令入口
+- 已实现固定长度行缓冲和固定深度命令队列；超长行整行丢弃，队列溢出有计数
+- 只输出结构化命令，不直接操作 CAN、电机、PID、QSPI 或 IWDG
 
 `telemetry/`：
 
@@ -529,6 +532,7 @@ BSP 不决定：
 - VOFA+ FireWater 输出
 - 控制周期统计
 - 日志和诊断快照输出
+- 已接管 TEXT、VOFA 和 OFF 模式及发送周期，只消费应用层提供的只读快照
 
 `parameter_storage/`：
 
@@ -769,7 +773,7 @@ components
 
 ### 9.2 `board_self_test.c`
 
-当前 `modules/diagnostics/board_self_test.c` 同时包含：
+2026-07-25 已完成第一轮职责拆分。原文件曾同时包含：
 
 - UART DMA
 - 串口命令解析
@@ -792,6 +796,16 @@ PID 参数业务                → modules/parameter_manager/
 持久化                      → infrastructure/parameter_storage/
 危险板上测试入口            → tests/target/
 ```
+
+当前已完成：
+
+- USART1 HAL 和 RX/TX DMA 所有权收敛到 `bsp/uart/`
+- RX 使用 128 字节循环 DMA 和 256 字节软件环形缓冲，错误后由任务上下文自动重启
+- TX 使用固定深度静态队列，DMA 完成后自动续发，不阻塞 10 ms 控制周期
+- 串口命令成帧、语法解析和命令队列迁入 `infrastructure/console/`
+- TEXT/VOFA 遥测模式、周期和格式化迁入 `infrastructure/telemetry/`
+- PID、编码器和 CAN 命令调度由 `app/chassis_app.c` 组装，不再放在自检模块
+- `board_self_test` 仅保留启动硬件检查、QSPI/IWDG 测试、板上电机测试请求和自检报告
 
 ### 9.3 CAN 通信
 
@@ -1802,9 +1816,9 @@ firmware/application/stm32g474/.metadata/
 
 1. `fdcan_driver` 拆出 `bsp/fdcan`。（已完成）
 2. 将握手、控制帧解析、序号状态和发送调度收敛到 `communication/can_transport`，删除转发壳。（已完成）
-3. `board_self_test` 拆出 `bsp/uart` 和 `infrastructure/console`。
-4. 拆出 `infrastructure/telemetry`。
-5. `status_display` 迁移到 `infrastructure/`。
+3. `board_self_test` 拆出 `bsp/uart` 和 `infrastructure/console`。（已完成）
+4. 拆出 `infrastructure/telemetry`。（已完成）
+5. `status_display` 迁移到 `infrastructure/`。（已完成）
 
 每一步都必须保持当前控制帧和硬件行为不变。
 

@@ -7,21 +7,29 @@
 #include "bsp/encoder/bsp_encoder.h"
 #include "bsp/motor/bsp_motor.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
+#include "bsp/uart/uart_bsp.h"
 #include "communication/can_transport/can_transport.h"
 #include "config/app_config.h"
 #include "config/control_config.h"
 #include "config/feature_config.h"
-#include "config/protocol_config.h"
 #include "iwdg.h"
+#include "infrastructure/console/console.h"
+#include "infrastructure/telemetry/telemetry.h"
 #include "main.h"
 #include "modules/chassis_control/chassis_control.h"
 #include "modules/diagnostics/board_self_test.h"
 #include "infrastructure/status_display/status_display.h"
 #include "tim.h"
-#include "usart.h"
 
 static volatile uint8_t control_ticks_pending;
 static volatile bool control_tick_overflow;
+
+static void HandleConsoleCommand(const ConsoleCommand *command,
+                                 uint32_t now_ms);
+static void WritePidReport(bool accepted);
+static void WriteEncoderResult(void);
+static void WriteCanDiagnostics(void);
+static void WriteConsoleHelp(void);
 
 #if ENABLE_MOTOR_DEMO
 static uint8_t demo_stage;
@@ -30,10 +38,16 @@ static uint32_t demo_stage_started_ms;
 
 void ChassisApp_Init(void)
 {
-  static const uint8_t startup_message[] = "chassis-controller started\r\n";
+  static const char startup_message[] = "chassis-controller started\r\n";
 
-  HAL_UART_Transmit(&huart1, startup_message, sizeof(startup_message) - 1U,
-                    HAL_MAX_DELAY);
+  if (!BspUart_Start()) {
+    Error_Handler();
+  }
+  Console_Init();
+  Telemetry_Init();
+  if (!BspUart_Write(startup_message, sizeof(startup_message) - 1U)) {
+    Error_Handler();
+  }
   if (CanTransport_Init() != HAL_OK) {
     Error_Handler();
   }
@@ -69,17 +83,20 @@ void ChassisApp_Run(void)
 {
   static uint32_t last_heartbeat_ms;
   static uint32_t last_control_run_ms;
-  static uint32_t last_telemetry_ms;
-  static char telemetry[256];
-  ChassisControlStatus status;
+  ConsoleCommand console_command;
   uint8_t pending_ticks;
   bool tick_overflow;
-  BoardTelemetryMode telemetry_mode;
   BoardMotorTestRequest motor_test_request;
   CanTransportControlCommand control_command;
   uint32_t primask;
   const uint32_t now_ms = HAL_GetTick();
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
+
+  BspUart_Run();
+  Console_Run();
+  while (Console_TakeCommand(&console_command)) {
+    HandleConsoleCommand(&console_command, now_ms);
+  }
 
 #if ENABLE_MOTOR_DEMO
   if (demo_stage < 6U) {
@@ -169,7 +186,7 @@ void ChassisApp_Run(void)
 
   StatusDisplay_Run(now_ms);
   CanTransport_Run();
-  telemetry_mode = BoardSelfTest_Run(now_ms);
+  BoardSelfTest_Run(now_ms);
 
   if (BoardSelfTest_IsIwdgResetRequested()) {
     ChassisControl_Stop();
@@ -209,56 +226,26 @@ void ChassisApp_Run(void)
     BoardSelfTest_ReportMotorTestResult(motor_test_request, accepted);
   }
 
-  if (telemetry_mode != BOARD_TELEMETRY_OFF &&
-      now_ms - last_telemetry_ms >=
-          (telemetry_mode == BOARD_TELEMETRY_VOFA
-               ? MOTOR_VOFA_TELEMETRY_PERIOD_MS
-               : MOTOR_TELEMETRY_PERIOD_MS)) {
+  if (Telemetry_IsDue(now_ms)) {
+    ChassisControlStatus status;
+    TelemetrySnapshot snapshot;
     uint32_t supply_mv;
     const bool supply_valid =
         BspPowerSample_ReadMillivolts(&supply_mv);
-    int length;
-    const int32_t vin_mv = supply_valid ? (int32_t)supply_mv : -1;
-    int32_t left_rpm_x10;
-    int32_t right_rpm_x10;
 
-    last_telemetry_ms = now_ms;
     ChassisControl_GetStatus(&status);
-    left_rpm_x10 =
-        (int32_t)(((int64_t)status.left_delta * 60000) /
-                  MOTOR_ENCODER_COUNTS_PER_REVOLUTION);
-    right_rpm_x10 =
-        (int32_t)(((int64_t)status.right_delta * 60000) /
-                  MOTOR_ENCODER_COUNTS_PER_REVOLUTION);
-    if (telemetry_mode == BOARD_TELEMETRY_VOFA) {
-      length = snprintf(
-          telemetry, sizeof(telemetry),
-          "%ld,%ld,%ld,%d,%ld,%ld,%ld,%d,%ld,%u,%lu\r\n",
-          (long)status.left_target, (long)status.left_delta,
-          (long)left_rpm_x10, (int)status.left_output,
-          (long)status.right_target, (long)status.right_delta,
-          (long)right_rpm_x10, (int)status.right_output,
-          (long)vin_mv, (unsigned int)status.state,
-          (unsigned long)status.fault_flags);
-    } else {
-      length = snprintf(
-          telemetry, sizeof(telemetry),
-          "vin_mv=%ld lt=%ld ld=%ld lrpm_x10=%ld lc=%ld lo=%d rt=%ld rd=%ld rrpm_x10=%ld rc=%ld ro=%d state=%u fault=0x%08lx\r\n",
-          (long)vin_mv,
-          (long)status.left_target, (long)status.left_delta,
-          (long)left_rpm_x10, (long)status.left_total,
-          (int)status.left_output,
-          (long)status.right_target, (long)status.right_delta,
-          (long)right_rpm_x10, (long)status.right_total,
-          (int)status.right_output,
-          (unsigned int)status.state,
-          (unsigned long)status.fault_flags);
-    }
-    if (length > 0 && (size_t)length < sizeof(telemetry) &&
-        huart1.gState == HAL_UART_STATE_READY) {
-      (void)HAL_UART_Transmit_DMA(&huart1, (uint8_t *)telemetry,
-                                 (uint16_t)length);
-    }
+    snapshot.left_target = status.left_target;
+    snapshot.left_delta = status.left_delta;
+    snapshot.left_total = status.left_total;
+    snapshot.left_output = status.left_output;
+    snapshot.right_target = status.right_target;
+    snapshot.right_delta = status.right_delta;
+    snapshot.right_total = status.right_total;
+    snapshot.right_output = status.right_output;
+    snapshot.supply_mv = supply_valid ? (int32_t)supply_mv : -1;
+    snapshot.control_state = (uint32_t)status.state;
+    snapshot.fault_flags = status.fault_flags;
+    Telemetry_Run(now_ms, &snapshot);
   }
 
   if (now_ms - last_heartbeat_ms >= 500U) {
@@ -277,6 +264,202 @@ void ChassisApp_Run(void)
       !BoardSelfTest_IsIwdgResetRequested()) {
     HAL_IWDG_Refresh(&hiwdg);
   }
+}
+
+static void HandleConsoleCommand(const ConsoleCommand *command,
+                                 uint32_t now_ms)
+{
+  static const char pong[] = "PONG\r\n";
+  static const char telemetry_text[] = "TELEMETRY: TEXT\r\n";
+  static const char telemetry_vofa[] = "TELEMETRY: VOFA\r\n";
+  static const char telemetry_off[] = "TELEMETRY: OFF\r\n";
+  static const char can_queued[] = "FDCAN_DIAG: TX_721_QUEUED\r\n";
+  char response[96];
+
+  if (command == NULL) {
+    return;
+  }
+
+  switch (command->type) {
+    case CONSOLE_COMMAND_PING:
+      (void)BspUart_WriteString(pong);
+      break;
+    case CONSOLE_COMMAND_STATUS:
+      BoardSelfTest_RequestReport();
+      break;
+    case CONSOLE_COMMAND_TELEMETRY_TEXT:
+      Telemetry_SetMode(TELEMETRY_MODE_TEXT);
+      (void)BspUart_WriteString(telemetry_text);
+      break;
+    case CONSOLE_COMMAND_TELEMETRY_VOFA:
+      Telemetry_SetMode(TELEMETRY_MODE_VOFA);
+      (void)BspUart_WriteString(telemetry_vofa);
+      break;
+    case CONSOLE_COMMAND_TELEMETRY_OFF:
+      Telemetry_SetMode(TELEMETRY_MODE_OFF);
+      (void)BspUart_WriteString(telemetry_off);
+      break;
+    case CONSOLE_COMMAND_CAN_STATUS:
+      WriteCanDiagnostics();
+      break;
+    case CONSOLE_COMMAND_CAN_TRANSMIT:
+      CanTransport_RequestResponse();
+      (void)BspUart_WriteString(can_queued);
+      break;
+    case CONSOLE_COMMAND_PID_SHOW:
+      WritePidReport(true);
+      break;
+    case CONSOLE_COMMAND_PID_SET_LEFT:
+    case CONSOLE_COMMAND_PID_SET_RIGHT:
+      WritePidReport(ChassisControl_SetPidGains(
+          command->type == CONSOLE_COMMAND_PID_SET_LEFT
+              ? CHASSIS_PID_LEFT
+              : CHASSIS_PID_RIGHT,
+          command->arguments.pid.kp, command->arguments.pid.ki,
+          command->arguments.pid.kd));
+      break;
+    case CONSOLE_COMMAND_PID_TARGET:
+      ChassisControl_SetTargetSpeed(command->arguments.target.left,
+                                    command->arguments.target.right);
+      ChassisControl_NotifyCommandReceived(now_ms);
+      (void)ChassisControl_Start();
+      break;
+    case CONSOLE_COMMAND_PID_STOP:
+      ChassisControl_SetTargetSpeed(0, 0);
+      ChassisControl_Stop();
+      break;
+    case CONSOLE_COMMAND_ENCODER_ZERO:
+      (void)snprintf(response, sizeof(response), "ENCODER_CAL: %s\r\n",
+                     ChassisControl_ResetEncoderTotals()
+                         ? "RESET"
+                         : "REJECTED, stop motor first");
+      (void)BspUart_WriteString(response);
+      break;
+    case CONSOLE_COMMAND_ENCODER_RESULT:
+      WriteEncoderResult();
+      break;
+    case CONSOLE_COMMAND_QSPI_TEST:
+      if (!BoardSelfTest_RequestQspiTest()) {
+        WriteConsoleHelp();
+      }
+      break;
+    case CONSOLE_COMMAND_IWDG_RESET:
+      if (!BoardSelfTest_RequestIwdgReset()) {
+        WriteConsoleHelp();
+      }
+      break;
+    case CONSOLE_COMMAND_MOTOR_STOP:
+    case CONSOLE_COMMAND_MOTOR_LEFT_FORWARD:
+    case CONSOLE_COMMAND_MOTOR_LEFT_REVERSE:
+    case CONSOLE_COMMAND_MOTOR_RIGHT_FORWARD:
+    case CONSOLE_COMMAND_MOTOR_RIGHT_REVERSE: {
+      const BoardMotorTestRequest request =
+          command->type == CONSOLE_COMMAND_MOTOR_STOP
+              ? BOARD_MOTOR_TEST_STOP
+              : command->type == CONSOLE_COMMAND_MOTOR_LEFT_FORWARD
+                    ? BOARD_MOTOR_TEST_LEFT_FORWARD
+                    : command->type == CONSOLE_COMMAND_MOTOR_LEFT_REVERSE
+                          ? BOARD_MOTOR_TEST_LEFT_REVERSE
+                          : command->type == CONSOLE_COMMAND_MOTOR_RIGHT_FORWARD
+                                ? BOARD_MOTOR_TEST_RIGHT_FORWARD
+                                : BOARD_MOTOR_TEST_RIGHT_REVERSE;
+
+      if (!BoardSelfTest_RequestMotorTest(request)) {
+        WriteConsoleHelp();
+      }
+      break;
+    }
+    case CONSOLE_COMMAND_HELP:
+      WriteConsoleHelp();
+      break;
+    default:
+      break;
+  }
+}
+
+static void WritePidReport(bool accepted)
+{
+  char response[160];
+  int length;
+  uint16_t left_kp;
+  uint16_t left_ki;
+  uint16_t left_kd;
+  uint16_t right_kp;
+  uint16_t right_ki;
+  uint16_t right_kd;
+
+  ChassisControl_GetPidGains(CHASSIS_PID_LEFT, &left_kp, &left_ki, &left_kd);
+  ChassisControl_GetPidGains(CHASSIS_PID_RIGHT, &right_kp, &right_ki,
+                             &right_kd);
+  if (accepted) {
+    length = snprintf(
+        response, sizeof(response),
+        "PID: left kp=%u ki=%u kd=%u right kp=%u ki=%u kd=%u\r\n",
+        (unsigned int)left_kp, (unsigned int)left_ki,
+        (unsigned int)left_kd, (unsigned int)right_kp,
+        (unsigned int)right_ki, (unsigned int)right_kd);
+  } else {
+    length = snprintf(
+        response, sizeof(response),
+        "PID: REJECTED limits kp<=%u ki<=%u kd<=%u\r\n",
+        (unsigned int)MOTOR_PID_KP_MAX, (unsigned int)MOTOR_PID_KI_MAX,
+        (unsigned int)MOTOR_PID_KD_MAX);
+  }
+  if (length > 0 && (size_t)length < sizeof(response)) {
+    (void)BspUart_Write(response, (size_t)length);
+  }
+}
+
+static void WriteEncoderResult(void)
+{
+  ChassisControlStatus status;
+  char response[96];
+  int length;
+
+  ChassisControl_GetStatus(&status);
+  length = snprintf(response, sizeof(response),
+                    "ENCODER_CAL: left=%ld right=%ld counts\r\n",
+                    (long)status.left_total, (long)status.right_total);
+  if (length > 0 && (size_t)length < sizeof(response)) {
+    (void)BspUart_Write(response, (size_t)length);
+  }
+}
+
+static void WriteCanDiagnostics(void)
+{
+  CanTransportDiagnostics diagnostics;
+  char response[256];
+  int length;
+
+  if (!CanTransport_GetDiagnostics(&diagnostics)) {
+    (void)BspUart_WriteString("FDCAN_DIAG: READ_FAILED\r\n");
+    return;
+  }
+  length = snprintf(
+      response, sizeof(response),
+      "FDCAN_DIAG: activity=%lu lec=%lu dlec=%lu tec=%lu rec=%lu passive=%lu warning=%lu busoff=%lu restricted=%lu rxfill=%lu txfree=%lu\r\n",
+      (unsigned long)diagnostics.activity,
+      (unsigned long)diagnostics.last_error_code,
+      (unsigned long)diagnostics.data_last_error_code,
+      (unsigned long)diagnostics.tx_error_count,
+      (unsigned long)diagnostics.rx_error_count,
+      (unsigned long)diagnostics.error_passive,
+      (unsigned long)diagnostics.warning,
+      (unsigned long)diagnostics.bus_off,
+      (unsigned long)diagnostics.restricted_mode,
+      (unsigned long)diagnostics.rx_fifo_fill,
+      (unsigned long)diagnostics.tx_fifo_free);
+  if (length > 0 && (size_t)length < sizeof(response)) {
+    (void)BspUart_Write(response, (size_t)length);
+  }
+}
+
+static void WriteConsoleHelp(void)
+{
+  size_t length;
+  const char *text = Console_GetHelpText(&length);
+
+  (void)BspUart_Write(text, length);
 }
 
 void ChassisApp_FatalError(void)
