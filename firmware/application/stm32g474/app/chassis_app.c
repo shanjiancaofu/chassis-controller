@@ -7,7 +7,7 @@
 #include "bsp/encoder/bsp_encoder.h"
 #include "bsp/motor/bsp_motor.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
-#include "communication/fdcan/fdcan_driver.h"
+#include "communication/can_transport/can_transport.h"
 #include "config/app_config.h"
 #include "config/control_config.h"
 #include "config/feature_config.h"
@@ -34,7 +34,7 @@ void ChassisApp_Init(void)
 
   HAL_UART_Transmit(&huart1, startup_message, sizeof(startup_message) - 1U,
                     HAL_MAX_DELAY);
-  if (FdcanDriver_Init() != HAL_OK) {
+  if (CanTransport_Init() != HAL_OK) {
     Error_Handler();
   }
 
@@ -76,10 +76,10 @@ void ChassisApp_Run(void)
   bool tick_overflow;
   BoardTelemetryMode telemetry_mode;
   BoardMotorTestRequest motor_test_request;
-  FdcanControlCommand control_command;
+  CanTransportControlCommand control_command;
   uint32_t primask;
   const uint32_t now_ms = HAL_GetTick();
-  const FdcanLinkStatus fdcan_status = FdcanDriver_GetLinkStatus();
+  const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
 #if ENABLE_MOTOR_DEMO
   if (demo_stage < 6U) {
@@ -135,7 +135,7 @@ void ChassisApp_Run(void)
   }
 #endif
 
-  if (FdcanDriver_TakeControlCommand(&control_command)) {
+  if (CanTransport_TakeControlCommand(&control_command)) {
     if (control_command.enabled) {
       ChassisControl_SetTargetSpeed(control_command.left_target,
                                     control_command.right_target);
@@ -168,7 +168,7 @@ void ChassisApp_Run(void)
   }
 
   StatusDisplay_Run(now_ms);
-  FdcanDriver_Run();
+  CanTransport_Run();
   telemetry_mode = BoardSelfTest_Run(now_ms);
 
   if (BoardSelfTest_IsIwdgResetRequested()) {
@@ -265,9 +265,9 @@ void ChassisApp_Run(void)
     last_heartbeat_ms = now_ms;
     HAL_GPIO_TogglePin(LED_B_GPIO_Port, LED_B_Pin);
   }
-  if (fdcan_status == FDCAN_LINK_PASSED) {
+  if (can_status == CAN_TRANSPORT_LINK_PASSED) {
     HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_RESET);
-  } else if (fdcan_status == FDCAN_LINK_FAILED) {
+  } else if (can_status == CAN_TRANSPORT_LINK_FAILED) {
     HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET);
   }
 

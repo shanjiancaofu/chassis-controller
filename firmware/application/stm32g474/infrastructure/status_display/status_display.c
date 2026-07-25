@@ -2,7 +2,7 @@
 
 #include "bsp/lcd/bsp_lcd.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
-#include "communication/fdcan/fdcan_driver.h"
+#include "communication/can_transport/can_transport.h"
 #include "main.h"
 #include "modules/chassis_control/chassis_control.h"
 #include "modules/diagnostics/board_self_test.h"
@@ -44,7 +44,7 @@ void StatusDisplay_Run(uint32_t now_ms)
     RTC_TimeTypeDef time;
     RTC_DateTypeDef date;
     uint32_t supply_mv;
-    const FdcanLinkStatus can_status = FdcanDriver_GetLinkStatus();
+    const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
     last_refresh_ms = now_ms;
     BoardSelfTest_GetStatus(&self_test_status);
@@ -69,9 +69,9 @@ void StatusDisplay_Run(uint32_t now_ms)
         (uint8_t)(self_test_status.qspi_capacity_bytes /
                   (1024UL * 1024UL));
     lcd_data.can_state =
-        can_status == FDCAN_LINK_PASSED
+        can_status == CAN_TRANSPORT_LINK_PASSED
             ? BSP_LCD_VALUE_PASS
-            : can_status == FDCAN_LINK_FAILED
+            : can_status == CAN_TRANSPORT_LINK_FAILED
                   ? BSP_LCD_VALUE_FAIL
                   : BSP_LCD_VALUE_READY;
     lcd_data.adc_valid = BspPowerSample_ReadMillivolts(&supply_mv);

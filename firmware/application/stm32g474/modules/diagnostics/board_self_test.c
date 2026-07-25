@@ -5,7 +5,7 @@
 
 #include "bsp/lcd/bsp_lcd.h"
 #include "bsp/qspi/bsp_qspi_flash.h"
-#include "communication/fdcan/fdcan_driver.h"
+#include "communication/can_transport/can_transport.h"
 #include "config/control_config.h"
 #include "config/storage_layout.h"
 #include "main.h"
@@ -276,7 +276,7 @@ BoardTelemetryMode BoardSelfTest_Run(uint32_t now_ms)
   uint16_t dma_position = 0U;
   bool process_rx = false;
   uint32_t primask = __get_PRIMASK();
-  const FdcanLinkStatus fdcan_status = FdcanDriver_GetLinkStatus();
+  const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
   __disable_irq();
   if (uart_rx_event_pending) {
@@ -326,9 +326,9 @@ BoardTelemetryMode BoardSelfTest_Run(uint32_t now_ms)
           telemetry_mode = BOARD_TELEMETRY_OFF;
           telemetry_state_requested = true;
         } else if (strcmp(uart_command, "can status") == 0) {
-          FdcanDiagnostics diagnostics;
+          CanTransportDiagnostics diagnostics;
 
-          if (FdcanDriver_GetDiagnostics(&diagnostics)) {
+          if (CanTransport_GetDiagnostics(&diagnostics)) {
             (void)snprintf(
                 fdcan_report, sizeof(fdcan_report),
                 "FDCAN_DIAG: activity=%lu lec=%lu dlec=%lu tec=%lu rec=%lu passive=%lu warning=%lu busoff=%lu restricted=%lu rxfill=%lu txfree=%lu\r\n",
@@ -349,7 +349,7 @@ BoardTelemetryMode BoardSelfTest_Run(uint32_t now_ms)
           }
           fdcan_report_requested = true;
         } else if (strcmp(uart_command, "can tx confirm") == 0) {
-          FdcanDriver_RequestDiagnosticTransmit();
+          CanTransport_RequestResponse();
           (void)snprintf(fdcan_report, sizeof(fdcan_report),
                          "FDCAN_DIAG: TX_721_QUEUED\r\n");
           fdcan_report_requested = true;
@@ -480,7 +480,7 @@ BoardTelemetryMode BoardSelfTest_Run(uint32_t now_ms)
   }
 
   if ((!initial_report_sent &&
-       (fdcan_status != FDCAN_LINK_READY ||
+       (can_status != CAN_TRANSPORT_LINK_READY ||
         now_ms - self_test_started_ms >= SELF_TEST_REPORT_DELAY_MS)) ||
       report_requested) {
     const char *fdcan_text = "READY";
@@ -501,9 +501,9 @@ BoardTelemetryMode BoardSelfTest_Run(uint32_t now_ms)
         rtc_date.Month <= 12U && rtc_date.Date >= 1U &&
         rtc_date.Date <= 31U;
 
-    if (fdcan_status == FDCAN_LINK_PASSED) {
+    if (can_status == CAN_TRANSPORT_LINK_PASSED) {
       fdcan_text = "PASS";
-    } else if (fdcan_status == FDCAN_LINK_FAILED) {
+    } else if (can_status == CAN_TRANSPORT_LINK_FAILED) {
       fdcan_text = "FAIL";
     }
 

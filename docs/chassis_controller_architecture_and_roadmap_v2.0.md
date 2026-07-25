@@ -313,7 +313,6 @@ chassis-controller/
 │  │     │
 │  │     ├─ communication/
 │  │     │  ├─ can_transport/
-│  │     │  ├─ chassis_protocol/
 │  │     │  └─ ota_transport/
 │  │     │
 │  │     ├─ infrastructure/
@@ -494,22 +493,11 @@ BSP 不决定：
 
 `can_transport/`：
 
-- RX/TX 队列
-- 发送调度
-- 收发统计
-- 总线错误状态
-- 分包和重组
-- OTA 数据重传
-
-`chassis_protocol/`：
-
-- CAN ID 和固定长度
-- 控制、状态、反馈和故障帧编解码
-- 协议版本检查
-- 长度和保留位检查
-- 参数范围检查
-- 序号语义
-- 错误响应编码
+- CAN 原始帧接收、发送调度和硬件诊断适配
+- 底盘 CAN ID、握手帧和控制帧编解码
+- 协议版本、长度、保留位和参数范围检查
+- 控制序号、握手重建和待处理命令管理
+- 后续代码量增长时在该目录内按源文件拆分，不建立只做函数转发的平行目录
 
 `ota_transport/`：
 
@@ -805,9 +793,9 @@ PID 参数业务                → modules/parameter_manager/
 危险板上测试入口            → tests/target/
 ```
 
-### 9.3 `fdcan_driver.c`
+### 9.3 CAN 通信
 
-当前 `communication/fdcan/fdcan_driver.c` 混合了：
+原 `communication/fdcan/fdcan_driver.c` 混合了：
 
 - HAL FDCAN 接入
 - 中断收发
@@ -820,10 +808,11 @@ PID 参数业务                → modules/parameter_manager/
 
 ```text
 HAL 收发和 IRQ              → bsp/fdcan/
-帧队列、发送和统计          → communication/can_transport/
-0x100 等帧编解码            → communication/chassis_protocol/
+握手、帧解析、发送和统计    → communication/can_transport/
 命令缓存和超时              → modules/command_manager/
 ```
+
+当前阶段不额外保留 `fdcan_driver` 或 `chassis_protocol` 转发层。CAN 通信实现统一放在 `communication/can_transport/`，BSP 只提供与业务协议无关的过滤器、原始帧收发和控制器状态读取。
 
 ### 9.4 其他当前文件
 
@@ -1198,7 +1187,10 @@ Jetson 可根据原始计数重新计算里程计并完成融合。
 - 11 位标准 ID
 - 仲裁速率 500 kbit/s
 - 数据速率 2 Mbit/s
-- Jetson 仲裁段和数据段采样点 80%
+- STM32 nominal 采样点 80.00%
+- STM32 data 采样点 82.35%（170 MHz FDCAN 时钟、Prescaler=5、TSEG1=13、TSEG2=3）
+- Jetson nominal/data 采样点 80.00%（mttcan）
+- 工程目标统一按 80% 配置；不将 STM32 数据段实际量化值四舍五入记录为 80%
 - 多字节整数使用小端序
 
 ### 14.2 当前已实现帧
@@ -1685,7 +1677,7 @@ firmware/application/stm32g474/.metadata/
 2. `components/limiter`
 3. `components/filters`
 4. `components/crc`
-5. `communication/chassis_protocol`
+5. `communication/can_transport`
 6. 序号回绕、重复、跳帧和旧帧判断
 7. `differential_drive`
 8. `fault_manager` 状态转换
@@ -1721,6 +1713,8 @@ firmware/application/stm32g474/.metadata/
 - 急停锁存
 - IWDG 复位
 - 长时间运行无控制节拍积压
+
+当前迁移版 Debug 固件回归状态：**PASS（2026-07-25）**。已完成并确认：非零 `0x100` 闭环及运动后编码器反馈、PD2 急停锁存/释放/复位恢复、LCD 页面和 KEY 切页、RTC 掉电保持、Release 固件实物回归、长时间运行与 Jetson CAN 错误计数稳定性，以及重复帧、丢帧、跳帧、序号回绕和握手重建测试。
 
 ### 21.4 完整底盘功能验收
 
@@ -1794,20 +1788,23 @@ firmware/application/stm32g474/.metadata/
 
 目标：证明目录迁移后的单任务 FreeRTOS 固件保持裸机行为。
 
+状态：**PASS（2026-07-25）**
+
 验收：完成第 21.3 节全部项目。
 
 在该阶段不拆分业务模块和任务。
 
 ### 阶段 2：拆分硬件、协议和调试边界
 
+状态：**IN PROGRESS（2026-07-25）**
+
 按小步顺序：
 
-1. `fdcan_driver` 拆出 `bsp/fdcan`。
-2. 建立 `communication/can_transport`。
-3. 建立 `communication/chassis_protocol`。
-4. `board_self_test` 拆出 `bsp/uart` 和 `infrastructure/console`。
-5. 拆出 `infrastructure/telemetry`。
-6. `status_display` 迁移到 `infrastructure/`。
+1. `fdcan_driver` 拆出 `bsp/fdcan`。（已完成）
+2. 将握手、控制帧解析、序号状态和发送调度收敛到 `communication/can_transport`，删除转发壳。（已完成）
+3. `board_self_test` 拆出 `bsp/uart` 和 `infrastructure/console`。
+4. 拆出 `infrastructure/telemetry`。
+5. `status_display` 迁移到 `infrastructure/`。
 
 每一步都必须保持当前控制帧和硬件行为不变。
 
