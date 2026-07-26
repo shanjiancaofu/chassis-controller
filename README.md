@@ -3,8 +3,10 @@
 基于 Jetson Orin Nano 和 STM32G474VET6 的底盘控制器。Jetson 负责上层决策和控制命令，STM32 负责双电机控制、状态采集、安全停车和 CAN FD 通信。本仓库与 `cockpit-system` 独立维护。
 
 `firmware/application/stm32g474/` 的裸机基线已经完成实物验收，FreeRTOS
-单任务基线的目录迁移和硬件回归也已完成。当前正在按架构路线拆分业务域和运行任务，
-暂不引入 Bootloader、完整 OTA、位置环和复杂底盘运动学。
+单任务基线的目录迁移和硬件回归也已完成。`chassis`、`safety`、`parameters`、
+`diagnostics` 等业务域已经落地。阶段 4 第一批已经建立独立控制任务并移除历史
+控制周期补跑；当前继续完成控制源仲裁、FDCAN 错误恢复和危险目标测试准入。
+暂不引入 Bootloader、完整 OTA、ROS 2 Bridge、位置环和复杂底盘运动学。
 
 ## 目录结构
 
@@ -48,10 +50,12 @@ chassis-controller/
 
 - 工具链为 STM32CubeMX 6.18、STM32CubeG4 V1.6.3、STM32CubeIDE GCC 和 ST-Link。
 - 裸机基线 `v0.1.0-baremetal` 已完成 USART、RTC、QSPI、LCD、CAN FD、ADC、双编码器、双电机、10 ms PID、安全停车和 IWDG 的实物验收。
-- FreeRTOS 已由 CubeMX 接入：SysTick 用于内核节拍，TIM7 用于 HAL 时基，1024 Words 静态任务通过 `RtosApp_Run()` 每 1 ms 调用 `ChassisApp_Run()`。
+- FreeRTOS 已由 CubeMX 接入：SysTick 用于内核节拍，TIM7 用于 HAL 时基；普通静态应用任务继续执行非实时轮询，新增静态高优先级 `control_task` 执行 100 Hz 实时控制。
 - `board/`、`bsp/`、`communication/`、`infrastructure/`、四个 `modules` 业务域、`rtos/` 和 `tests/target/` 已进入正式构建；应用生命周期 API 统一为 `ChassisApp_*`。
-- 阶段 3 拆分后的 FreeRTOS 固件已通过 STM32CubeIDE GCC Debug 和 Release 全量 clean build，两种配置均为 `0 errors, 0 warnings`；Debug 为 `208852/96/29096`，Release 为 `173232/96/29072`（text/data/bss）。阶段 3 新镜像的实物回归按路线图留到代码迁移完成后统一执行。
+- 阶段 4 第一批固件已通过 STM32CubeIDE GCC Debug 和 Release 全量 clean build，两种配置均为 `0 errors, 0 warnings`；Debug 为 `209872/96/31336`，Release 为 `173960/96/31312`（text/data/bss）。该结果只确认构建，尚未完成新镜像实物回归。
 - 电机 Demo 默认关闭，应用上电后 TIM8 四路 PWM 比较值保持为 0，不会自动转动电机。
+- TIM6 ISR 现在只通知 `control_task`；每次唤醒最多执行一次控制计算，积压周期不连续补跑，并记录 overrun 和 missed tick。Console、遥测、LCD、QSPI、RTC、诊断和阻塞采样仍由普通应用任务处理。
+- 当前第一优先级仍是阶段 4：补齐控制源所有权、FDCAN error-passive/bus-off 安全恢复、危险目标测试互斥和关键任务健康汇总。
 
 ## 开发流程
 

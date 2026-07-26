@@ -1,7 +1,7 @@
 # chassis-controller 架构与演进路线 v2.0
 
 > 文档状态：当前架构基线
-> 更新时间：2026-07-25
+> 更新时间：2026-07-26
 > 适用仓库：`chassis-controller`
 > 适用 MCU：STM32G474VET6
 
@@ -14,7 +14,6 @@
 - 各层职责和依赖方向
 - FreeRTOS 运行模型
 - 控制、通信、安全和时间边界
-- Bootloader 与 OTA 的演进方向
 - 后续重构顺序和验收条件
 
 后续修改仓库前，应先读取：
@@ -61,15 +60,14 @@ Jetson Orin Nano 负责：
 
 ## 2. 仓库职责范围
 
-本仓库维护：
+本仓库当前维护：
 
 - STM32G474 Application 固件
-- STM32G474 Bootloader
-- Application 与 Bootloader 共用的固件契约
 - CAN FD 协议文档
-- OTA 协议文档
 - 固件架构、安全、Bring-up 和验证文档
 - 固件构建、格式检查和单元测试配置
+
+Bootloader 和 OTA 只保留远期边界说明，尚未进入实现范围。
 
 本仓库不维护：
 
@@ -155,6 +153,12 @@ defaultTask
 RtosApp_Run()
   ↓ 每约 1 ms
 ChassisApp_Run()
+
+TIM6 ISR
+  ↓ FreeRTOS 任务通知
+control_task
+  ↓ 每次唤醒最多一次
+ChassisApp_RunControlTick()
 ```
 
 当前特征：
@@ -163,23 +167,24 @@ ChassisApp_Run()
 - `defaultTask` 使用静态分配
 - 当前任务栈为 1024 Words
 - `defaultTask` 进入 `RtosApp_Run()`，任务内部使用原生 FreeRTOS 延时接口周期调用 `ChassisApp_Run()`
+- `control_task` 使用静态分配，栈为 512 Words，优先级为 `configMAX_PRIORITIES - 2`
 - SysTick 用于 FreeRTOS 内核节拍
 - TIM7 用于 HAL 1 ms 时基
 - TIM6 继续提供 10 ms 控制节拍
-- TIM6 ISR 只增加有上限的待处理控制周期计数
-- PID 和电机控制仍在应用任务上下文执行
-- 尚未拆分独立控制、通信、诊断和控制台任务
+- TIM6 ISR 只发送原生 FreeRTOS 任务通知，急停 ISR 仍直接清零硬件 PWM
+- PID、电机控制和控制安全检查在独立 `control_task` 中执行
+- Console、UART 文本、遥测、LCD、QSPI、RTC、诊断、目标测试和阻塞采样仍在普通应用任务中执行
+- 通知积压时只执行一次有效控制计算，不连续补跑历史 PID；积压量进入诊断计数
+- 单次丢失超过 4 个周期或连续 3 次发生积压时，锁存控制 overrun 故障并安全停车
 
-目录迁移后的 FreeRTOS 工程已于 2026-07-25 从
+阶段 4 第一批固件已于 2026-07-26 从
 `firmware/application/stm32g474/` 完成 STM32CubeIDE GCC Debug 和 Release
-全量 clean build，两种配置均为 `0 errors, 0 warnings`。完成阶段 3 底盘业务
-模块按业务域收敛并拆分目标测试后，Debug 镜像为 `text=208852`、
-`data=96`、`bss=29096`；Release 镜像为 `text=173232`、`data=96`、
-`bss=29072`。BSS 主要来自
-FreeRTOS 静态对象、UART DMA 固定队列和模块状态，不使用动态分配。
+全量 clean build，两种配置均为 `0 errors, 0 warnings`。Debug 镜像为
+`text=209872`、`data=96`、`bss=31336`；Release 镜像为
+`text=173960`、`data=96`、`bss=31312`。新增 BSS 主要来自静态控制任务栈和任务对象。
 
-阶段 3 之前的迁移固件已完成实物回归。阶段 3 新镜像的硬件回归按迁移计划
-留到代码迁移完成后统一执行，本节的 clean build 结果不替代实物验证。
+阶段 3 之前的迁移固件已完成实物回归。阶段 4 第一批新镜像尚未完成 STM32
+实物压力回归，本节的 clean build 结果不替代实物验证，也不标记为 `PASS`。
 
 ### 4.3 当前自有代码位置
 
@@ -196,6 +201,8 @@ firmware/application/stm32g474/
 │  ├─ motor/
 │  ├─ encoder/
 │  ├─ power_monitor/
+│  ├─ fdcan/
+│  ├─ uart/
 │  ├─ qspi/
 │  ├─ reset/
 │  └─ lcd/
@@ -233,7 +240,9 @@ firmware/application/stm32g474/
 
 1. `.gitignore` 已覆盖新工程根目录的 Debug、Release、`.metadata`、launch 和本地索引文件。
 2. `.cproject` 的 Debug 和 Release 配置已注册当前所有实际 include path 和 source entry，包括 `board/` 与 `rtos/`。
-3. `board/board_config.h` 已集中提供 `BOARD_*` 外设句柄和引脚映射，BSP 不再直接绑定 CubeMX 全局句柄。
+3. `board/board_config.h` 已集中提供电机、编码器、ADC、LCD 和 QSPI 的主要
+   `BOARD_*` 映射；FDCAN、UART、RTC 备份寄存器和 TIM6 接入仍直接引用 CubeMX
+   全局句柄，属于待逐步收口的过渡状态，不能描述为完全解耦。
 4. `rtos/rtos_app.c/.h` 已承接静态任务循环，`defaultTask` 只进入 `RtosApp_Run()`。
 5. 应用生命周期 API 已统一为 `ChassisApp_*`，`app_main` 和旧 `App_*` 命名已清零。
 6. 原 `project_config.h` 已拆分为应用、构建、控制、功能和协议配置，`storage_layout.h` 独立保留。
@@ -243,6 +252,57 @@ firmware/application/stm32g474/
 10. 本地 `.ai-bridge/`、IDE 工作区和构建产物已排除在产品提交之外；会话记录不属于固件源码。
 
 阶段 1 实物回归已经完成。阶段 3 拆分后的新镜像仍需在全部代码迁移完成后统一回归。
+
+### 4.5 当前代码审核结论
+
+本节记录 2026-07-26 对当前 `main` 分支的代码和工程配置审核。审核只确认
+静态代码事实，不替代编译和硬件验证；本次未修改任何固件源码、`.ioc`、`.cproject`
+或其他工程配置。
+
+#### 已确认的优点
+
+- 电机上电保持零输出，`WheelController_Stop()` 和急停路径都会清零 PWM 并重置 PID。
+- PD2 急停 ISR 直接调用 `BspMotor_EmergencyStop()`，不依赖任务调度。
+- CAN 控制帧已检查版本、保留位、目标范围和序号，只有合法帧进入命令管理。
+- QSPI 目标测试使用保留扇区、非阻塞状态机和 DMA，不在中断中执行擦写。
+- `chassis`、`safety`、`parameters`、`diagnostics` 已形成实际业务域，不需要继续创建空模块。
+- Debug 和 Release 的 `.cproject` 均注册当前 `app`、`board`、`bsp`、`components`、
+  `communication`、`infrastructure`、`modules`、`rtos` 和 `tests` 源目录。
+
+#### 阶段 4 第一批已实现，待实物验证
+
+- 已建立静态高优先级 `control_task`，由 TIM6 ISR 使用任务通知直接唤醒。
+- 每次唤醒最多进行一次编码器采样和 PID 计算，不再使用
+  `control_ticks_pending` 或循环补跑历史周期。
+- 通知积压时按通知数量折算本次编码器测量，记录 overrun 和 missed tick；
+  单次或连续积压超过阈值时锁存故障并安全停车。
+- 普通应用任务继续承担 Console、显示、存储、遥测和目标测试等非实时流程。
+- Debug 和 Release 全量 clean build 均为 `0 errors, 0 warnings`。
+- 尚需烧录后验证默认零输出、100 Hz 控制、积压诊断、急停、IWDG 和高负载场景；
+  未完成这些实物回归前不能标记为 `PASS`。
+
+#### P0：阶段 4 后续必须解决
+
+| 问题 | 代码依据 | 风险 | 修复方向 | 阶段与验收 |
+|---|---|---|---|---|
+| FDCAN 错误状态没有闭环处理 | `bsp/fdcan/fdcan_bsp.c:39-43` 只启用 RX FIFO 新消息通知；`communication/can_transport/can_transport.c:87-106` 只读取诊断；没有 warning、passive、bus-off、FIFO full/lost 或协议错误回调和恢复流程 | 总线进入 error-passive 或 bus-off 时，远程会话可能仍显示有效，停车最迟依赖 200 ms 命令超时；恢复后也缺少强制重新握手 | 错误事件立即撤销 CAN 会话、目标归零并停车；bus-off 后受控停止并重启 FDCAN；恢复后必须重新握手并收到新的合法控制帧 | 阶段 4。Jetson 联调注入断线、bus-off 和恢复，确认旧目标不恢复，并记录 TEC、REC、LEC、DLEC、bus-off 和恢复次数 |
+| 危险目标测试缺少统一准入和互斥 | `app/chassis_app.c:353-367` 启动 QSPI/IWDG 测试时未统一检查 STOPPED、零 PWM、零目标和控制源；`tests/target/qspi_target_test.c:52-66` 只检查 QSPI 状态；`tests/target/iwdg_target_test.c:13-22` 只检查重复请求 | 闭环或开环运动期间可启动擦写或复位测试；测试失败、超时或复位前可能残留运动状态 | 建立一个直接、可读的目标测试准入函数或安全管理接口；先停车、清零 PWM、清空目标并撤销控制源，再互斥启动 QSPI、IWDG 或电机测试 | 阶段 4。分别在闭环、开环和另一测试运行时发命令，必须拒绝或先安全停车；结束、失败和超时后仍保持 STOPPED |
+
+#### P1：阶段 4 同步完成
+
+| 问题 | 代码依据 | 风险 | 修复方向 | 阶段与验收 |
+|---|---|---|---|---|
+| 控制源没有所有权 | `modules/chassis/command_manager.c:17-31` 后提交的合法命令直接覆盖当前命令；CAN、Console 和 Demo 都可提交目标，目标测试另走开环路径 | 不同来源可竞争，切换时没有先归零，来源退出后可能保留旧目标 | 使用简单所有权 `NONE`、`CAN_REMOTE`、`CONSOLE`、`TARGET_TEST`；任一时刻只有一个所有者；切换前归零；CAN 超时或故障释放所有权 | 阶段 4。交叉发送 CAN、Console 和测试命令，非所有者命令被拒绝；切换期间 PWM 先归零 |
+| 控制任务尚缺实物时序数据 | 已建立独立 `control_task`，但当前只完成 clean build，尚未测量最坏执行时间、抖动、栈高水位和压力场景 overrun | 栈配置或执行预算不合适时，实车负载下仍可能发生控制抖动或安全停车 | 增加最小化的运行统计并完成板上压力回归，不把 Console、显示或存储搬进控制任务 | 阶段 4。测得周期、最坏执行时间和栈高水位；LCD/QSPI/串口活动下 overrun 符合预期 |
+| Watchdog 健康条件过于集中 | 当前只有单应用任务；`Core/Src/app_freertos.c:78-99` 的栈溢出和分配失败 Hook 为空 | 任务失活或 RTOS 严重错误未必形成可诊断的安全停车和喂狗抑制 | 汇总控制任务、应用任务、通信状态和关键故障的心跳；致命 Hook 进入最小安全路径并停止正常喂狗 | 阶段 4。暂停关键任务或触发测试故障，确认 PWM 为零、看门狗不再刷新且复位原因可追踪 |
+| `AutoRetransmission = DISABLE` 尚未形成明确策略 | `Core/Src/fdcan.c:44` 明确关闭自动重传，但协议和恢复逻辑没有说明上层责任 | 单次发送失败不会由控制器自动重试，握手或状态帧可能丢失；盲目上层重试又可能形成风暴 | 阶段 4 保持 `.ioc` 不变，先明确这是受控设计还是临时默认；上层只在状态允许时有限重试，失败后撤销会话并重新握手 | Jetson 与 STM32 注入 ACK 丢失，确认有限重试、无忙循环、错误计数和会话重建符合设计 |
+
+#### P2：后续按实际收益收口
+
+| 问题 | 代码依据 | 风险 | 修复方向 | 阶段与验收 |
+|---|---|---|---|---|
+| 硬件句柄仍有过渡耦合 | `bsp/fdcan/fdcan_bsp.c` 直接使用 `hfdcan2`，`bsp/uart/uart_bsp.c` 直接使用 `huart1`，`bsp/reset/bsp_reset.c` 直接使用 `hrtc`，`app/chassis_app.c` 直接使用 `htim6` 和 `hiwdg` | 更换实例或做主机测试时影响范围较大，文档也容易高估解耦程度 | 仅在真实复用或测试需求出现时收口到 `board/` 或明确 BSP 接口，不为形式增加转发层 | 后续维护项。依赖搜索结果与文档一致，且不新增只转发一次的空壳 |
+| 顶层应用编排职责仍偏多 | `app/chassis_app.c` 同时负责初始化、命令分发、控制节拍、目标测试和 Watchdog | 阶段 4 修改时容易把非实时工作带入控制任务 | 按执行上下文拆控制入口和普通应用轮询；业务规则继续留在现有 modules，不按行数机械拆文件 | 阶段 4。控制任务调用图只包含实时控制和安全快照，普通应用任务保留其他流程 |
 
 ---
 
@@ -284,138 +344,26 @@ firmware/application/stm32g474/
 
 ---
 
-## 6. 最终目标目录结构
+## 6. 目录演进约束
 
-允许提前建立最终目录骨架。空叶目录使用 `.gitkeep`，不要创建没有实现内容的空 `.c/.h` 文件。加入真实文件后删除对应 `.gitkeep`。
+当前目录以第 4.3 节的实际仓库结构为准，不提前建立 Bootloader、OTA、ROS 2 Bridge、
+主机工具、额外 RTOS 任务或尚无逻辑的算法目录。新目录只在同时满足以下条件时创建：
+
+- 已有真实实现文件和明确职责。
+- 能形成独立业务域、硬件边界或依赖边界。
+- `.cproject` 的 Debug 和 Release 配置能够同步注册并完成构建。
+- 不只是为了转发一次调用、缩短单个文件或预留远期名称。
 
 命名约定：
 
-- CubeMX 已占用 `Drivers/` 和 `Middlewares/`，自有代码不再创建仅大小写不同的 `drivers/` 或 `middleware/`。
-- 自有目录统一使用小写 `snake_case`，避免 Windows 下的大小写、单复数和语义混淆。
-- 公共运行设施统一使用 `infrastructure/`，不再恢复旧 `services/` 命名。
-- 目录名称描述职责，不使用无法判断所有权的 `misc/`、`common/` 或泛化 `utils/`。
+- CubeMX 已占用 `Drivers/`、`Middlewares/` 和 `Application/`，自有代码不创建仅大小写不同的同名目录。
+- 自有目录统一使用小写 `snake_case`。
+- 公共运行设施使用 `infrastructure/`，不恢复旧 `services/` 命名。
+- 目录名称描述职责，不使用 `misc/`、`common/` 或泛化 `utils/`。
+- 不创建空 `.c/.h`、空模块或无实际消费者的转发层。
 
-```text
-chassis-controller/
-├─ firmware/
-│  ├─ shared/
-│  │  ├─ flash_layout.h
-│  │  ├─ firmware_image.h
-│  │  ├─ ota_metadata.h
-│  │  └─ ota_protocol.h
-│  │
-│  ├─ application/
-│  │  └─ stm32g474/
-│  │     ├─ Core/                         # CubeMX 生成
-│  │     ├─ Drivers/                      # HAL、CMSIS
-│  │     ├─ Middlewares/                  # FreeRTOS 等第三方中间件
-│  │     ├─ Application/User/             # CubeIDE 启动和系统适配
-│  │     ├─ chassis_controller.ioc
-│  │     ├─ STM32G474VETX_FLASH.ld
-│  │     │
-│  │     ├─ board/
-│  │     │
-│  │     ├─ bsp/
-│  │     │  ├─ motor/
-│  │     │  ├─ encoder/
-│  │     │  ├─ power_monitor/
-│  │     │  ├─ fdcan/
-│  │     │  ├─ uart/
-│  │     │  ├─ rtc/
-│  │     │  ├─ timebase/
-│  │     │  ├─ watchdog/
-│  │     │  ├─ lcd/
-│  │     │  ├─ qspi/
-│  │     │  └─ imu/
-│  │     │
-│  │     ├─ components/
-│  │     │  ├─ pid/
-│  │     │  ├─ limiter/
-│  │     │  ├─ filters/
-│  │     │  ├─ ring_buffer/
-│  │     │  └─ crc/
-│  │     │
-│  │     ├─ communication/
-│  │     │  ├─ can_transport/
-│  │     │  └─ ota_transport/
-│  │     │
-│  │     ├─ infrastructure/
-│  │     │  ├─ console/
-│  │     │  ├─ telemetry/
-│  │     │  ├─ parameter_storage/
-│  │     │  ├─ status_display/
-│  │     │  └─ time_service/
-│  │     │
-│  │     ├─ modules/
-│  │     │  ├─ chassis/
-│  │     │  ├─ safety/
-│  │     │  ├─ parameters/
-│  │     │  └─ diagnostics/
-│  │     │
-│  │     ├─ rtos/
-│  │     │  ├─ rtos_app.c
-│  │     │  ├─ rtos_app.h
-│  │     │  ├─ rtos_objects.c
-│  │     │  ├─ rtos_objects.h
-│  │     │  ├─ tasks/
-│  │     │  │  ├─ control_task.c
-│  │     │  │  ├─ communication_task.c
-│  │     │  │  ├─ diagnostics_task.c
-│  │     │  │  ├─ console_task.c
-│  │     │  │  ├─ display_task.c
-│  │     │  │  └─ storage_task.c
-│  │     │  └─ hooks/
-│  │     │     └─ freertos_hooks.c
-│  │     │
-│  │     ├─ app/
-│  │     │  ├─ chassis_app.c
-│  │     │  └─ chassis_app.h
-│  │     │
-│  │     ├─ config/
-│  │     │  ├─ app_config.h
-│  │     │  ├─ control_config.h
-│  │     │  ├─ feature_config.h
-│  │     │  ├─ protocol_config.h
-│  │     │  ├─ storage_layout.h
-│  │     │  └─ build_info.h
-│  │     │
-│  │     └─ tests/
-│  │        ├─ unit/
-│  │        └─ target/
-│  │
-│  └─ bootloader/
-│     └─ stm32g474/
-│        ├─ Core/
-│        ├─ Drivers/
-│        ├─ Application/User/
-│        ├─ bootloader.ioc
-│        ├─ boot/
-│        │  ├─ boot_main.c
-│        │  ├─ boot_state_machine.c
-│        │  ├─ image_validator.c
-│        │  ├─ bank_manager.c
-│        │  └─ app_launcher.c
-│        ├─ bsp/
-│        │  ├─ flash/
-│        │  ├─ fdcan/
-│        │  ├─ uart/
-│        │  └─ watchdog/
-│        ├─ components/
-│        │  ├─ crc/
-│        │  ├─ sha256/
-│        │  └─ signature/
-│        └─ config/
-│           ├─ boot_config.h
-│           └─ build_info.h
-│
-├─ protocol/
-│  ├─ canfd_protocol.md
-│  └─ ota_canfd_protocol.md
-├─ docs/
-└─ .github/workflows/
-```
-
-目录骨架可以提前创建，但实现仍按阶段逐步加入。
+阶段 4 只在 `rtos/` 中增加独立控制任务所需的最少文件。是否再拆通信、Console、
+显示或存储任务，由控制周期测量和阻塞行为决定，不预先创建完整任务目录树。
 
 ---
 
@@ -464,19 +412,19 @@ Application/User/
 
 BSP 回答“这个硬件怎么操作”。
 
-典型职责：
+当前职责：
 
 - `motor/`：PWM、方向、立即禁止输出
 - `encoder/`：计数器读取、回绕处理、方向换算
 - `power_monitor/`：ADC 采样和电压换算
 - `fdcan/`：HAL FDCAN 初始化后的底层收发封装
 - `uart/`：UART DMA 收发和底层缓冲
-- `rtc/`：RTC 读取、备份寄存器和复位标记
-- `timebase/`：单调时间和高精度计时接口
-- `watchdog/`：IWDG 初始化、刷新和复位原因
 - `lcd/`：ST7789 绘图和 SPI DMA
 - `qspi/`：JEDEC、擦除、写入、读取和 DMA
-- `imu/`：寄存器读写和底层总线
+- `reset/`：复位原因、RTC 备份寄存器和 IWDG 测试标记
+
+RTC、TIM6 和 IWDG 的部分操作目前仍在 `app/` 或现有 BSP 中直接使用 CubeMX 句柄。
+只有形成实际可复用边界时才增加新 BSP，不预建 `rtc/`、`timebase/` 或 `watchdog/`。
 
 BSP 不决定：
 
@@ -489,14 +437,8 @@ BSP 不决定：
 
 ### 7.4 `components/`
 
-放不依赖 HAL、可在 PC 上单元测试的通用组件：
-
-- PID
-- 限幅器
-- 斜坡和加速度限制
-- 滤波器
-- Ring Buffer
-- CRC
+当前只包含不依赖 HAL 的 PID。限幅器、滤波器、Ring Buffer、CRC 等只有出现实际
+复用需求时再增加。
 
 要求：
 
@@ -517,12 +459,6 @@ BSP 不决定：
 - 协议版本、长度、保留位和参数范围检查
 - 控制序号、握手重建和待处理命令管理
 - 后续代码量增长时在该目录内按源文件拆分，不建立只做函数转发的平行目录
-
-`ota_transport/`：
-
-- OTA QUERY/BEGIN/DATA/END/ABORT/RESULT
-- 块序号、偏移和重传
-- 与升级写入状态机的数据接口
 
 通信层不得：
 
@@ -552,29 +488,12 @@ BSP 不决定：
 - 日志和诊断快照输出
 - 已接管 TEXT、VOFA 和 OFF 模式及发送周期，只消费应用层提供的只读快照
 
-`parameter_storage/`：
-
-- 参数持久化
-- 格式版本
-- CRC
-- 双副本
-- 恢复默认值
-- 写入失败保护
-
-它不理解 PID、轮径、轮距等业务含义。
-
 `status_display/`：
 
 - LCD 页面组织
 - 状态、故障、版本和外设结果显示
 
 底层绘图仍在 `bsp/lcd/`。
-
-`time_service/`：
-
-- Jetson 时间同步
-- 单调时间与 UTC/RTC 时间映射
-- 跨设备时间戳转换
 
 基础设施不得决定电机是否允许运行。
 
@@ -607,14 +526,6 @@ BSP 不决定：
 - `board_health` 只采集并发布板级健康快照
 - 不格式化串口报告，不执行擦写、复位或电机动作
 - 不直接访问 CubeMX 全局句柄
-
-`imu_manager/`：
-
-- IMU 初始化和在线状态
-- 原始加速度、角速度和温度
-- 零偏
-- 基础滤波
-- 时间戳
 
 ### 7.8 `rtos/`
 
@@ -650,31 +561,25 @@ board/   = 硬件板如何连接
 config/  = 软件产品如何运行
 ```
 
-建议文件：
+当前文件：
 
 - `app_config.h`：启动策略和应用周期
 - `control_config.h`：控制周期、限幅和默认控制参数
 - `feature_config.h`：LCD、IMU、遥测等功能开关
 - `protocol_config.h`：CAN 超时、心跳和上报周期
-- `storage_layout.h`：QSPI 参数、日志、测试和 OTA 区域
+- `storage_layout.h`：当前 QSPI 分区和测试保留区
 - `target_test_config.h`：显式确认后才能执行的板上测试参数
 - `build_info.h`：Application 当前版本和构建信息
 
-Application 与 Bootloader 分别维护自己的 `config/build_info.h`。不在 `firmware/shared/` 放当前固件版本值。
-
 ### 7.11 `tests/`
 
-`tests/unit/`：
-
-- 宿主机单元测试
-- 不连接真实硬件
-- 优先覆盖纯算法和协议编解码
-
-`tests/target/`：
+当前只有 `tests/target/`：
 
 - STM32 板上测试
 - 危险操作必须显式确认
 - 不在正常启动中自动转动电机、擦除 QSPI 或触发复位
+
+宿主机单元测试目录尚未建立；出现首个可运行测试时再创建，不提前放空骨架。
 
 ---
 
@@ -852,31 +757,30 @@ app/chassis_app.*                          保留在 app/，统一旧 app_main �
 
 ```text
 TIM6 ISR
-  ↓ 增加待处理控制周期计数
+  ↓ 发送任务通知
+control_task
+  ↓ 每次唤醒最多一次
+ChassisApp_RunControlTick()
+
 1 ms defaultTask
   ↓
 RtosApp_Run()
   ↓
-ChassisApp_Run()
-  ↓
-处理 10 ms 控制周期和其他轮询逻辑
+ChassisApp_Run() 处理非实时轮询逻辑
 ```
 
-目录迁移和 FreeRTOS 基线硬件回归已经完成。该过渡调度继续保留到阶段 4，
-随后由 TIM6 ISR 使用任务通知唤醒独立高优先级控制任务。
+阶段 4 第一批调度已经实现。控制任务与普通应用任务使用两个执行上下文，
+目前不继续拆分通信、Console、显示或存储任务。
 
 ### 10.2 目标任务
 
 ```text
-control_task          100 Hz，最高业务优先级
-communication_task    事件驱动
-console_task          事件驱动或低频
- diagnostics_task     低频
- display_task         低频
- storage_task         按需运行
+control_task          100 Hz，最高业务优先级，只处理实时控制
+application_task      普通优先级，承接当前非实时轮询和分发
 ```
 
-不要求一个模块对应一个任务。
+阶段 4 先落地这两个执行上下文。不要求一个模块对应一个任务；只有测量证明某项工作
+存在独立阻塞、周期或优先级需求时，才继续拆分通信、Console、显示或存储任务。
 
 ### 10.3 控制任务
 
@@ -907,11 +811,17 @@ PID
 控制任务要求：
 
 - 固定 10 ms 周期
+- TIM6 ISR 使用原生 FreeRTOS 任务通知唤醒
+- 每次任务唤醒最多执行一次有效编码器采样和 PID 更新
+- 通知值大于 1 时丢弃过期周期，记录 control overrun，不连续补跑历史 PID
+- 连续 overrun 或积压超过阈值时，目标归零并进入锁存故障或安全停车
+- 只读取命令、安全和参数快照，不解析 Console 或 CAN 文本
 - 不执行串口格式化输出
+- 不执行 VOFA 遥测
 - 不执行 LCD 刷屏
 - 不执行 QSPI 擦写
+- 不执行 RTC 显示、大型诊断报告、目标测试流程或阻塞式 ADC 采样
 - 不等待普通互斥锁的长时间阻塞
-- 过期通知不得无限补跑
 - 发生严重超时立即进入安全停车
 
 ### 10.4 中断规则
@@ -1117,6 +1027,43 @@ watchdog health aggregator
 
 低优先级显示或遥测短暂异常不一定立即禁止喂狗，但控制、安全和关键通信健康必须纳入判定。
 
+### 12.6 控制源所有权
+
+阶段 4 使用简单所有权模型，不引入复杂运行模式系统：
+
+```text
+NONE
+CAN_REMOTE
+CONSOLE
+TARGET_TEST
+```
+
+规则：
+
+- 任一时刻只能有一个控制源拥有运动控制权。
+- 新控制源申请所有权前，旧目标必须归零，PID 必须重置，PWM 必须先回到零。
+- 非所有者只能读取状态，不能覆盖当前运动目标。
+- 危险目标测试启动前撤销普通控制源，并在结束、失败或超时后释放为 `NONE`。
+- CAN 命令超时、error-passive、bus-off、协议故障或会话失效时，立即释放
+  `CAN_REMOTE` 并停车。
+- CAN 恢复后不得恢复旧所有权或旧目标，必须重新握手并收到新的合法控制帧。
+- 当前编译期开关 Demo 视为开发测试来源；阶段 4 不为它增加独立复杂模式。
+- 后续 ROS 2 Bridge 或自动控制模块只能通过冻结后的控制协议申请所有权，不能绕过仲裁。
+
+### 12.7 危险目标测试准入
+
+QSPI 擦写、IWDG 复位和电机目标测试使用同一组前置条件和互斥规则：
+
+- 系统处于 `STOPPED`。
+- 四路电机 PWM 和已记录 applied duty 均为零。
+- 当前不存在有效运动目标。
+- 当前控制源为 `NONE`，或已先撤销并完成零输出切换。
+- 任一时刻只能运行一个危险目标测试。
+- 测试启动、结束、失败和超时后都保持停车，不自动恢复旧目标。
+
+QSPI 测试还必须限制在保留扇区；IWDG 测试必须先停车再写入测试标记并停止正常喂狗；
+电机目标测试继续保留显式确认、单电机、限时和自动清零。
+
 ---
 
 ## 13. 控制和数据链路
@@ -1311,6 +1258,23 @@ Jetson 可根据原始计数重新计算里程计并完成融合。
 - 通信恢复后，必须经过有效状态和命令检查才能重新运行。
 - 旧输出不能自动恢复。
 
+### 14.7 FDCAN 错误与恢复
+
+当前实现只激活 `FDCAN_IT_RX_FIFO0_NEW_MESSAGE`，其余状态仅能通过诊断命令读取。
+阶段 4 必须补齐：
+
+- error warning、error passive、bus-off 和错误状态变化通知。
+- RX FIFO full、RX FIFO message lost 和协议错误通知。
+- error-passive 或 bus-off 时立即撤销远程控制会话、释放 `CAN_REMOTE`、目标归零并停车。
+- bus-off 后受控停止并重新初始化或重新启动 FDCAN；恢复成功后状态回到等待握手。
+- 恢复后必须重新完成握手并收到新的合法控制帧，旧命令和非零输出不得自动恢复。
+- 累计记录 TEC、REC、LEC、DLEC、warning、passive、bus-off 次数、FIFO 丢失次数和恢复次数。
+
+当前生成代码中 `AutoRetransmission = DISABLE`。这意味着发送失败后 FDCAN 不会自动重传；
+优点是不会在错误总线上形成不可控硬件重试，代价是握手和状态帧的可靠性必须由上层状态机
+负责。阶段 4 不直接修改 `.ioc`，先确认该策略并实现有限重试、失败停车和重新握手；禁止
+忙循环或无上限重发。
+
 ---
 
 ## 15. Console、遥测和 PID 调参
@@ -1443,6 +1407,10 @@ void PidController_Reset(PidController *pid);
 
 当前测试扇区 `0x007FF000` 只用于受控测试，不得用于参数、日志和 OTA 正式分区。
 
+`qspi test confirm` 启动前必须通过第 12.7 节统一准入：系统已停车、PWM 为零、
+无运动目标、控制源已释放且没有其他危险测试运行。擦写期间不得启动闭环、开环电机测试
+或 IWDG 复位测试；测试结束、失败或超时后继续保持停车。
+
 目标 QSPI 布局由 `config/storage_layout.h` 定义，至少区分：
 
 - 参数主副本
@@ -1521,99 +1489,16 @@ STM32 当前不优先实现复杂 EKF。姿态估计、坐标变换和轮速融�
 
 ## 19. Bootloader 与 OTA
 
-### 19.1 工程边界
-
-Application 和 Bootloader 使用两个独立 CubeMX 工程，因为它们具有不同的：
-
-- 启动入口
-- 向量表
-- 链接脚本
-- Flash 地址
-- 外设配置
-- 编译产物
-- 版本周期
-
-Bootloader 保持尽可能小。
-
-### 19.2 当前内存状态
-
-当前 Application 链接脚本仍使用：
+当前不创建 Bootloader、OTA、`firmware/shared/` 或相关空目录。Application 链接脚本仍使用：
 
 ```text
 FLASH ORIGIN = 0x08000000
 FLASH LENGTH = 512K
 ```
 
-即 Application 当前占用完整内部 Flash 地址空间，没有为 Bootloader、Metadata 和 A/B Slot 预留区域。
-
-在实现 Bootloader 前，必须先完成：
-
-1. STM32G474 实际 Flash 容量核对。
-2. Bootloader 大小预算。
-3. Metadata 区布局。
-4. Application Slot A/B 大小。
-5. 向量表重定位。
-6. Application 链接地址修改。
-7. 失败回滚和试运行次数定义。
-
-不得复制其他 STM32 型号或开源项目的 Flash 地址。
-
-### 19.3 `firmware/shared/`
-
-仅保存 Bootloader 与 Application 的稳定契约：
-
-- `flash_layout.h`
-- `firmware_image.h`
-- `ota_metadata.h`
-- `ota_protocol.h`
-
-不把普通 BSP、业务模块和当前版本值放入 `shared/`。
-
-### 19.4 版本管理
-
-Application：
-
-```text
-firmware/application/stm32g474/config/build_info.h
-```
-
-Bootloader：
-
-```text
-firmware/bootloader/stm32g474/config/build_info.h
-```
-
-两者独立维护版本。Application 可以声明最低兼容 Bootloader 版本。
-
-### 19.5 OTA V1
-
-目标流程：
-
-```text
-Jetson
-  ↓ CAN FD
-Application 进入 UPDATE，禁止电机
-  ↓
-接收固件并写入非活动 Slot
-  ↓
-校验长度、CRC、SHA-256 和签名
-  ↓
-写入 UPDATE_READY
-  ↓
-重启
-  ↓
-Bootloader 校验并试运行新镜像
-  ↓
-Application 完成启动自检
-  ↓
-CONFIRMED 或 ROLLBACK
-```
-
-V1 中 Bootloader 不直接通过 CAN FD 接收完整固件。
-
-### 19.6 OTA V2
-
-V2 再增加 Bootloader CAN FD Recovery。当前 `ota_protocol.h` 可以预留帧定义，但不提前实现完整 Recovery 状态机。
+因此当前没有为 Bootloader、Metadata 或 A/B Slot 预留内部 Flash。该方向排在阶段 4
+及底盘正式控制链路之后；进入实施前必须单独冻结 Flash 容量、布局、向量表、镜像格式、
+校验、确认和回滚策略。不得复制其他芯片的地址，也不在当前阶段预留代码或协议文件。
 
 ---
 
@@ -1681,6 +1566,10 @@ firmware/application/stm32g474/.metadata/
 
 仅看到旧 ELF 文件存在，不代表当前源码已被编译。
 
+阶段 4 每个可运行步骤都必须完成 Debug 和 Release clean build，检查 `0 errors`、
+新增警告、ELF/MAP、任务静态内存、栈高水位和所有新增对象确实进入链接。构建通过只能
+记为“已实现”，不能代替 STM32 实物回归或 Jetson CAN FD 联调。
+
 ---
 
 ## 21. 测试和验收
@@ -1718,6 +1607,9 @@ firmware/application/stm32g474/.metadata/
 - 启动阶段只允许读取 QSPI JEDEC ID 和容量；擦写测试只能使用保留扇区 `0x007FF000`。
 - 电机开环测试只能通过带 `confirm` 的明确命令启动，每次仅驱动一个电机，50% PWM，1 秒后自动清零。
 - `motor stop`、PD2 急停、内部故障和 IWDG 测试准备阶段均必须清零四路 PWM。
+- QSPI、IWDG 和电机目标测试必须通过第 12.7 节统一准入并互斥运行。
+- 测试命令到达时若仍存在控制所有者、运动目标或非零 PWM，必须拒绝或先完成安全停车，
+  不能直接进入测试状态。
 - IWDG 测试只能通过 `iwdg reset confirm` 启动，并同时使用 RTC Backup Register 标记和 RCC 复位原因判断结果。
 - QSPI 参数区、日志区和升级包区不得占用人工测试扇区。
 - 没有硬件读回能力的项目不能只根据 HAL 返回值标记为 `PASS`；LCD、USART 物理链路、RTC 掉电保持、编码器和电机需要人工或外部仪器验收。
@@ -1742,6 +1634,12 @@ firmware/application/stm32g474/.metadata/
 - 急停锁存
 - IWDG 复位
 - 长时间运行无控制节拍积压
+- 人工阻塞普通应用任务时，控制任务仍保持 100 Hz；通知积压只记录一次 overrun，
+  不补跑历史 PID
+- FDCAN error-passive、bus-off、恢复和重新握手，确认旧控制目标不恢复
+- CAN、Console 和目标测试的所有权竞争、切换归零和释放
+- QSPI、IWDG、电机目标测试的准入、互斥、失败和超时停车
+- 控制任务、应用任务和通信健康汇总能够正确决定是否喂狗
 
 阶段 3 拆分前的 FreeRTOS 迁移基线回归状态：**PASS（2026-07-25）**。已完成并确认：非零 `0x100` 闭环及运动后编码器反馈、PD2 急停锁存/释放/复位恢复、LCD 页面和 KEY 切页、RTC 掉电保持、Release 固件实物回归、长时间运行与 Jetson CAN 错误计数稳定性，以及重复帧、丢帧、跳帧、序号回绕和握手重建测试。阶段 3 新镜像仅完成构建验证，实物回归留到当前代码迁移完成后统一执行。
 
@@ -1858,34 +1756,41 @@ firmware/application/stm32g474/.metadata/
 
 ### 阶段 4：建立独立控制任务
 
-- TIM6 ISR 改为原生任务通知。
-- 建立 100 Hz 高优先级 `control_task`。
-- 将通信解析和低优先级诊断移出控制执行链。
-- 建立任务健康和 Watchdog 汇总。
+当前第一优先级。第 1 至 5 项已完成代码实现和构建验证，但尚未完成实物回归；
+后续按以下顺序继续，每一步都保持可构建、可烧录和默认零输出：
+
+1. [已实现] 建立静态分配、最高业务优先级的 100 Hz `control_task`。
+2. [已实现] TIM6 ISR 改为原生 FreeRTOS 任务通知；急停 ISR 继续直接清零硬件 PWM。
+3. [已实现] 控制任务每次唤醒只读取一次编码器、检查一次快照并执行一次 PID，不补跑历史周期。
+4. [已实现] 增加 control overrun 计数、连续积压阈值和安全停车。
+5. [已实现] 保留普通 `application_task` 承接 Console、UART 文本、VOFA、LCD、QSPI、RTC、
+   阻塞 ADC、诊断报告和目标测试流程。
+6. 增加 `NONE`、`CAN_REMOTE`、`CONSOLE`、`TARGET_TEST` 控制源所有权和切换归零。
+7. 增加 FDCAN warning、passive、bus-off、FIFO full/lost、协议错误处理、受控恢复和重新握手。
+8. 统一 QSPI、IWDG、电机目标测试的停车准入与互斥。
+9. 建立关键任务健康汇总，由汇总结果决定是否刷新 IWDG。
+10. 完成 Debug/Release clean build，再执行 STM32 实物和 Jetson CAN FD 回归。
 
 验收：
 
-- 控制周期稳定
-- 无长期通知积压
-- 显示、串口和 QSPI 不影响控制
-- 急停和故障停车保持立即有效
+- 100 Hz 控制周期稳定，测得最坏执行时间、抖动和栈高水位。
+- 通知积压时不连续补跑；overrun 可观测，连续超限安全停车。
+- 显示、串口、VOFA、QSPI、RTC、ADC 和诊断活动不进入或阻塞控制任务。
+- CAN error-passive 和 bus-off 立即停车，恢复后必须重新握手和接收新命令。
+- 控制源互斥，切换前零目标、零 PWM，旧目标不恢复。
+- 危险目标测试只能在 STOPPED、零 PWM、无所有者时启动，并且彼此互斥。
+- 急停和故障停车保持立即有效，不依赖任务调度。
+- Watchdog 只在关键任务和通信状态健康时刷新。
+- Debug 和 Release 均全量 clean build；阶段 4 新镜像完成 STM32 实物回归和
+  Jetson 与 STM32 CAN FD 联调后，才能标记为 `PASS`。
 
 ### 阶段 5：正式底盘协议和运动学
 
-- 冻结 `TWIST` 控制帧
-- 修正序号语义
-- 增加状态、轮速、编码器和故障反馈
-- 完成差速运动学
-- 增加目标斜坡和限幅
-- 与 Jetson ROS 2 Bridge 联调
+阶段 4 验收后再冻结正式底盘协议、序号语义、运动学和反馈；本阶段暂不展开实现细节。
 
 ### 阶段 6：参数和遥测
 
-- `parameter_manager`
-- `parameter_storage`
-- VOFA+ 参数 pending/apply/save/reset
-- 控制快照和遥测
-- 参数 CRC 和双副本
+阶段 5 稳定后再规划参数持久化和正式遥测；本阶段暂不创建存储模块。
 
 ### 阶段 7：IMU 和里程计
 
@@ -1897,13 +1802,7 @@ firmware/application/stm32g474/.metadata/
 
 ### 阶段 8：Bootloader 与 OTA
 
-- 冻结 Flash Layout
-- 独立 Bootloader 工程
-- A/B Slot
-- 镜像头、校验和签名
-- Trial Boot、Confirm、Rollback
-- OTA V1
-- V2 再增加 Bootloader CAN FD Recovery
+底盘实时控制和正式通信链路稳定后另立设计评审，不提前创建目录、协议或代码。
 
 ---
 
@@ -1941,7 +1840,7 @@ Codex 修改仓库时必须：
 6. 不修改 CubeMX 自动生成区域，除非接口接入确实需要。
 7. 修改生成区域时必须位于 `USER CODE` 区或说明原因。
 8. 新模块必须说明所属层、职责和依赖。
-9. 不创建假的空 `.c/.h`；空目录只使用 `.gitkeep`。
+9. 不创建假的空 `.c/.h`、空模块或仅用于占位的目录。
 10. 构建后说明使用的配置、错误数和警告数。
 11. 未做硬件验证时明确标记为未验证。
 12. 协议变更必须同步更新 `protocol/` 文档。
@@ -1986,14 +1885,8 @@ app/
 下一阶段 FreeRTOS：
 独立高优先级 control_task + 通信/诊断边界
 
-Application 与 Bootloader：
-两个独立 CubeMX 工程
-
-firmware/shared/：
-只保存 Flash、镜像、Metadata 和 OTA 稳定契约
-
-版本：
-Application 与 Bootloader 分别使用 config/build_info.h
+Bootloader 与 OTA：
+当前不创建目录和代码，待底盘实时控制与正式通信链路稳定后单独规划
 
 ROS 2：
 Bridge、融合和高层里程计在 Jetson
@@ -2002,14 +1895,9 @@ PID 调参：
 Windows + USB 串口 + VOFA+
 参数默认只修改 RAM，确认后保存
 
-OTA V1：
-Application 接收镜像，Bootloader 校验、切换、确认和回滚
-
-OTA V2：
-以后增加 Bootloader CAN FD Recovery
 ```
 
 当前第一优先级：
 
-> 进入阶段 4，拆分 `chassis_app.c` 中的控制流水线、命令分发、遥测发布和中断桥接，
-> 建立独立高优先级 `control_task`。全部迁移代码完成后，再统一执行新镜像实物回归。
+> 继续阶段 4：先完成控制源所有权和危险目标测试准入，再补齐 FDCAN
+> error-passive/bus-off 安全恢复与重新握手，随后执行控制任务时序测量和新镜像实物回归。

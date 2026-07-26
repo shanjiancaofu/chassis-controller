@@ -219,11 +219,14 @@ static bool WriteSelfTestReport(void)
       "KEY: %s\r\n"
       "ENCODER: READY\r\n"
       "MOTOR: DISABLED\r\n"
+      "CONTROL_OVERRUN: count=%lu missed=%lu\r\n"
       "IWDG_RESET_TEST: %s\r\n"
       "TELEMETRY: %s\r\n"
       "%s",
       rtc_text, qspi_text, qspi_rw_text, lcd_text, fdcan_text,
-      health.button_test_passed ? "PASS" : "READY", iwdg_text,
+      health.button_test_passed ? "PASS" : "READY",
+      (unsigned long)health.control_overrun_count,
+      (unsigned long)health.control_missed_tick_count, iwdg_text,
       telemetry_mode == TELEMETRY_MODE_TEXT
           ? "TEXT"
           : telemetry_mode == TELEMETRY_MODE_VOFA ? "VOFA" : "OFF",

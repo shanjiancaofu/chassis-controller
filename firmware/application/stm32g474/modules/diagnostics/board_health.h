@@ -11,10 +11,13 @@ typedef struct {
   uint32_t qspi_capacity_bytes;
   bool iwdg_reset_test_passed;
   bool button_test_passed;
+  uint32_t control_overrun_count;
+  uint32_t control_missed_tick_count;
 } BoardHealthSnapshot;
 
 void BoardHealth_Init(void);
 void BoardHealth_NotifyButtonPressed(void);
+void BoardHealth_RecordControlOverrun(uint32_t missed_ticks);
 void BoardHealth_GetSnapshot(BoardHealthSnapshot *snapshot);
 
 #endif

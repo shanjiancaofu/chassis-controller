@@ -33,6 +33,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app/chassis_app.h"
+#include "rtos/rtos_app.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -211,7 +212,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 1 */
   if (htim->Instance == TIM6)
   {
-    ChassisApp_ControlTickFromIsr();
+    RtosApp_NotifyControlFromIsr();
   }
   /* USER CODE END Callback 1 */
 }

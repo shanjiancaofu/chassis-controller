@@ -8,6 +8,8 @@
 #include "config/target_test_config.h"
 
 static BoardHealthSnapshot board_health;
+static uint32_t control_overrun_count;
+static uint32_t control_missed_tick_count;
 
 void BoardHealth_Init(void)
 {
@@ -16,6 +18,8 @@ void BoardHealth_Init(void)
       IWDG_TEST_MARKER;
 
   board_health = (BoardHealthSnapshot){0};
+  __atomic_store_n(&control_overrun_count, 0U, __ATOMIC_RELAXED);
+  __atomic_store_n(&control_missed_tick_count, 0U, __ATOMIC_RELAXED);
   board_health.iwdg_reset_test_passed =
       BspReset_WasIndependentWatchdog() && marker_present;
   if (marker_present) {
@@ -41,9 +45,20 @@ void BoardHealth_NotifyButtonPressed(void)
   board_health.button_test_passed = true;
 }
 
+void BoardHealth_RecordControlOverrun(uint32_t missed_ticks)
+{
+  (void)__atomic_fetch_add(&control_overrun_count, 1U, __ATOMIC_RELAXED);
+  (void)__atomic_fetch_add(&control_missed_tick_count, missed_ticks,
+                           __ATOMIC_RELAXED);
+}
+
 void BoardHealth_GetSnapshot(BoardHealthSnapshot *snapshot)
 {
   if (snapshot != NULL) {
     *snapshot = board_health;
+    snapshot->control_overrun_count =
+        __atomic_load_n(&control_overrun_count, __ATOMIC_RELAXED);
+    snapshot->control_missed_tick_count =
+        __atomic_load_n(&control_missed_tick_count, __ATOMIC_RELAXED);
   }
 }
