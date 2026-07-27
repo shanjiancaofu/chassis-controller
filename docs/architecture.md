@@ -42,24 +42,21 @@ chassis-controller/
 │  │     ├─ chassis_controller.ioc
 │  │     │
 │  │     ├─ board/                   # 当前硬件板资源映射
-│  │     │  ├─ board_config.h
-│  │     │  ├─ board_init.c
-│  │     │  └─ board_pins.h
+│  │     │  └─ board_config.h
 │  │     │
 │  │     ├─ bsp/                     # 板级外设和具体设备驱动
-│  │     │  ├─ motor/
 │  │     │  ├─ encoder/
-│  │     │  ├─ power_monitor/
 │  │     │  ├─ fdcan/
-│  │     │  ├─ uart/
 │  │     │  ├─ lcd/
+│  │     │  ├─ motor/
+│  │     │  ├─ power_monitor/
 │  │     │  ├─ qspi/
-│  │     │  └─ imu/
+│  │     │  ├─ reset/
+│  │     │  ├─ uart/
+│  │     │  └─ imu/                  # 硬件确认后再创建
 │  │     │
 │  │     ├─ components/              # 不依赖 HAL 的通用算法组件
 │  │     │  ├─ pid/
-│  │     │  ├─ limiter/
-│  │     │  ├─ filters/
 │  │     │  ├─ ring_buffer/
 │  │     │  └─ crc/
 │  │     │
@@ -68,22 +65,34 @@ chassis-controller/
 │  │     │  ├─ chassis_protocol/
 │  │     │  └─ ota_transport/
 │  │     │
-│  │     ├─ services/                # 通用运行服务
+│  │     ├─ infrastructure/          # 非实时运行基础设施
 │  │     │  ├─ console/
 │  │     │  ├─ telemetry/
-│  │     │  ├─ parameter_storage/
-│  │     │  └─ status_display/
+│  │     │  ├─ status_display/
+│  │     │  └─ parameter_storage/    # 参数持久化落地时创建
 │  │     │
 │  │     ├─ modules/                 # 底盘产品业务模块
-│  │     │  ├─ command_manager/
-│  │     │  ├─ differential_drive/
-│  │     │  ├─ wheel_controller/
-│  │     │  ├─ odometry/
-│  │     │  ├─ imu_manager/
-│  │     │  ├─ safety_manager/
-│  │     │  ├─ fault_manager/
-│  │     │  ├─ parameter_manager/
-│  │     │  └─ diagnostics/
+│  │     │  ├─ chassis/
+│  │     │  │  ├─ command_manager.c
+│  │     │  │  ├─ command_manager.h
+│  │     │  │  ├─ differential_drive.c
+│  │     │  │  ├─ differential_drive.h
+│  │     │  │  ├─ wheel_controller.c
+│  │     │  │  ├─ wheel_controller.h
+│  │     │  │  ├─ odometry.c
+│  │     │  │  └─ odometry.h
+│  │     │  ├─ diagnostics/
+│  │     │  │  ├─ board_health.c
+│  │     │  │  └─ board_health.h
+│  │     │  ├─ parameters/
+│  │     │  │  ├─ parameter_manager.c
+│  │     │  │  └─ parameter_manager.h
+│  │     │  ├─ safety/
+│  │     │  │  ├─ safety_manager.c
+│  │     │  │  ├─ safety_manager.h
+│  │     │  │  ├─ fault_manager.c
+│  │     │  │  └─ fault_manager.h
+│  │     │  └─ imu/                  # IMU 阶段再创建
 │  │     │
 │  │     ├─ rtos/                    # FreeRTOS 对象、任务和 hooks
 │  │     │  ├─ rtos_app.c
@@ -109,6 +118,8 @@ chassis-controller/
 │  │     │  ├─ control_config.h
 │  │     │  ├─ feature_config.h
 │  │     │  ├─ protocol_config.h
+│  │     │  ├─ storage_layout.h
+│  │     │  ├─ target_test_config.h
 │  │     │  └─ build_info.h
 │  │     │
 │  │     └─ tests/
@@ -191,14 +202,15 @@ BSP 不决定是否允许车辆运动，也不持有业务状态机。
 处理总线帧、字段校验、序号、握手和链路状态。线协议以
 `protocol/canfd_protocol.md` 为准。
 
-### `services`
+### `infrastructure`
 
 提供 Console、诊断文本、遥测和 LCD 状态页。这些能力不得进入实时控制任务。
 
 ### `modules`
 
-每个产品业务能力独立拥有状态和规则，包括命令管理、差速目标、轮速控制、里程计、
-IMU 管理、安全、故障、参数和诊断。模块通过接口协作，不直接操作 CubeMX 句柄。
+按 `chassis`、`safety`、`parameters`、`diagnostics` 业务域聚合相关状态和规则。
+域内文件职责明确，域之间通过接口协作，不直接操作 CubeMX 句柄。IMU 在硬件确认后
+建立独立业务域。
 
 ### `rtos`
 
@@ -227,7 +239,7 @@ Bootloader 是独立 CubeMX/CubeIDE 工程，拥有独立入口、向量表、�
 
 - CubeMX 已使用 `Drivers/` 和 `Middlewares/`，自定义层不再使用同名小写目录。
 - 自定义代码统一使用 `board/`、`bsp/`、`components/`、`communication/`、
-  `services/`、`modules/`、`rtos/`、`app/` 和 `config/`。
+  `infrastructure/`、`modules/`、`rtos/`、`app/` 和 `config/`。
 - 文件名使用 `snake_case`，目录按业务或设备命名。
 - 不按文件行数拆层；只有职责、复用或依赖边界成立时才拆分。
 
@@ -235,7 +247,7 @@ Bootloader 是独立 CubeMX/CubeIDE 工程，拥有独立入口、向量表、�
 
 ```text
 app / rtos
-  -> modules / services / communication
+  -> modules / infrastructure / communication
   -> components / bsp
   -> board
   -> CubeMX HAL
@@ -246,25 +258,21 @@ app / rtos
 - `components` 不依赖 HAL、业务模块或 Console。
 - `bsp` 不依赖 `modules`。
 - `modules` 不直接操作 CubeMX 全局句柄。
-- `services` 可以读取模块快照，但不能决定电机安全状态。
+- `infrastructure` 可以读取模块快照，但不能决定电机安全状态。
 - Bootloader 与 Application 只共享固定 OTA 数据格式，不共享业务代码。
 
 ## 运行模型
 
-最终运行模型按职责建立任务，不按模块数量机械建任务：
+当前运行模型只建立两个职责明确的任务：
 
 | 任务 | 作用 |
 |---|---|
 | `control_task` | 最高业务优先级，100 Hz 轮速控制 |
-| `communication_task` | CAN FD 收发、会话和协议处理 |
-| `diagnostics_task` | 故障、任务健康和诊断快照 |
-| `console_task` | UART 命令和 VOFA+ |
-| `display_task` | LCD 状态页 |
-| `storage_task` | 参数、日志和 OTA QSPI 操作 |
+| Application task | Console、通信、诊断、遥测、LCD 和非实时流程 |
 
 TIM6 ISR 只发送任务通知。通知积压时不补跑历史 PID；控制任务记录 missed tick，
-连续超限后进入内部故障。急停 ISR 直接清零硬件 PWM，不等待任务调度。任务只在
-对应职责出现并需要独立调度时创建；当前过渡实现仍是 `control_task` 加 Application task。
+连续超限后进入内部故障。急停 ISR 直接清零硬件 PWM，不等待任务调度。
+只有出现明确的阻塞隔离、优先级或周期需求时才新增任务，不按模块数量机械拆任务。
 
 ## 控制与安全
 
