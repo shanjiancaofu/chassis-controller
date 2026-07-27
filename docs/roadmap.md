@@ -11,27 +11,25 @@
 - 关键任务健康汇总和条件喂狗
 - `chassis`、`safety`、`parameters`、`diagnostics` 业务域
 
-Debug 和 Release 曾完成 clean build。是否需要重新回归由实际固件改动决定，
-历史结果见 `verification.md`。
+Debug 和 Release 曾完成 clean build。历史结果见 `verification.md`；OTA 相关代码
+落地后必须重新构建和回归。
 
 ## 当前结构到最终结构
 
-`architecture.md` 中的完整目录树是最终设计，不因当前尚未实现而删除或缩写。
-当前代码按以下顺序迁移，只有对应逻辑落地时才创建目录和文件：
+`architecture.md` 中的完整目录树是最终设计。只有对应逻辑落地时才创建目录和文件：
 
 | 当前实际状态 | 最终位置或变化 | 时机 |
 |---|---|---|
-| `firmware/shared/ota/ota_image.h` | 拆为 `firmware/shared/` 下四个固定 ABI 头文件 | OTA ABI 冻结时 |
-| `components/pid/` | 增加 OTA 所需的 ring buffer、crc | 组件被实际复用时 |
-| `communication/can_transport/` | 增加 `chassis_protocol/`、`ota_transport/` | 正式底盘协议和 OTA 传输实现时 |
+| 四个 `firmware/shared/*.h` | Bootloader、Application 和主机工具共用固定 ABI | 已完成首版，后续兼容修改必须提升格式版本 |
+| `components/pid/` | 按真实复用需求增加 crc 等组件 | Bootloader 校验代码落地时 |
+| `communication/can_transport/` | 增加 `chassis_protocol/`、`ota_transport/` | 正式协议或 OTA 会话实现时 |
 | `infrastructure/` | 保留现有命名，后续增加参数存储 | 参数持久化实现时 |
 | `modules/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
-| `rtos/rtos_app.c/h` 两任务模型 | 保持现状；仅按真实调度需求新增任务 | 出现明确阻塞或周期要求时 |
+| `rtos/rtos_app.c/h` 两任务模型 | 仅按真实阻塞或周期需求新增任务 | OTA 接收需要独立非实时任务时 |
 | 仅有 `tests/target/` | 增加 `tests/unit/` | 首个无 HAL 组件测试落地时 |
-| 尚无 Bootloader 工程 | 建立独立 `firmware/bootloader/stm32g474/` | 当前 OTA 阶段 |
-| 文档当前按唯一职责平铺 | 达到多个同类文档后再迁入分类目录 | 文档数量产生真实分类需求时 |
+| 尚无 Bootloader 工程 | 建立独立 `firmware/bootloader/stm32g474/` | 下一批 |
 
-迁移不改变协议和底盘行为，不批量创建空目录，不建立只转发调用的空层。
+迁移不改变底盘行为，不批量创建空目录，不建立只转发调用的空层。
 
 ## 当前阶段：Bootloader 与 OTA
 
@@ -40,21 +38,23 @@ Debug 和 Release 曾完成 clean build。是否需要重新回归由实际固�
 已完成：
 
 - 决定内部 32 KiB Bootloader + 480 KiB 单 Application
-- 建立 64 字节 OTA 镜像头和基础元数据 ABI
+- 建立 64 字节镜像头和双副本 OTA 元数据 ABI
+- 将板载 QSPI OTA 区划分为物理 Slot A 和 Slot B
+- 由元数据分配 confirmed/candidate 角色，不把角色写死到物理地址
 - 建立主机固件打包工具
 - 确定 UART 与 CAN FD 都是 OTA V1 正式传输
+- UART 已具备 circular DMA、IDLE 接收、软件环形缓冲和 TX DMA 队列
 
 下一批按顺序执行：
 
-1. 将 QSPI OTA 区改为已确认/候选双固件槽。
-2. 扩展元数据状态：候选、安装中、试运行、确认、回滚。
-3. 建立独立 `firmware/bootloader/stm32g474/` CubeMX/CubeIDE 工程。
-4. 实现 QSPI 校验、内部 Flash 安装、断电重试和严格 Application 跳转。
-5. 将 Application 链接地址和 VTOR 一起迁移到 `0x08008000`。
-6. 实现 Application OTA 会话、停车准入和 QSPI 分块写入。
-7. 实现 UART DMA circular + IDLE + 环形缓冲区传输。
-8. 实现 CAN FD OTA 传输；两种入口复用同一 OTA 状态机。
-9. 分别完成 UART、CAN FD、断电恢复、未确认回滚和损坏镜像拒绝实物验证。
+1. 建立独立 `firmware/bootloader/stm32g474/` CubeMX/CubeIDE 工程。
+2. 实现元数据双副本读取、CRC 和 sequence 选择。
+3. 实现 QSPI 镜像校验、内部 Flash 安装、断电重试和严格 Application 跳转。
+4. 将 Application 链接地址和 VTOR 一起迁移到 `0x08008000`。
+5. 实现 Application OTA 会话、停车准入、传输源互斥和 QSPI 分块写入。
+6. 在现有 UART BSP 上接入 OTA 帧解析，不复制第二套 DMA 或环形缓冲。
+7. 实现 CAN FD OTA 分块传输；UART 与 CAN FD 复用同一 OTA 状态机。
+8. 完成 UART、CAN FD、断电恢复、未确认回滚和损坏镜像拒绝实物验证。
 
 ## 后续阶段
 

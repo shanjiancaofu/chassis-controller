@@ -14,7 +14,7 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 ```text
 firmware/
 ├─ application/stm32g474/   # 正式 Application CubeMX/CubeIDE 工程
-└─ shared/ota/              # Bootloader、Application、打包器共用 OTA ABI
+└─ shared/                  # Bootloader、Application、打包器共用固定 ABI
 docs/                       # 架构、路线、硬件、验证和 OTA 设计
 protocol/                   # CAN FD 线协议
 tools/ota/                  # 固件打包工具

@@ -1,0 +1,38 @@
+#ifndef FLASH_LAYOUT_H
+#define FLASH_LAYOUT_H
+
+#define OTA_BOOTLOADER_START 0x08000000UL
+#define OTA_BOOTLOADER_SIZE 0x00008000UL
+#define OTA_APPLICATION_START 0x08008000UL
+#define OTA_APPLICATION_SIZE 0x00078000UL
+
+#define OTA_QSPI_METADATA_A_START 0x00400000UL
+#define OTA_QSPI_METADATA_B_START 0x00401000UL
+#define OTA_QSPI_SLOT_A_START 0x00402000UL
+#define OTA_QSPI_SLOT_A_SIZE 0x001FE000UL
+#define OTA_QSPI_SLOT_B_START 0x00600000UL
+#define OTA_QSPI_SLOT_B_SIZE 0x001FF000UL
+
+#define OTA_QSPI_SECTOR_SIZE 0x00001000UL
+
+#if (OTA_QSPI_METADATA_A_START % OTA_QSPI_SECTOR_SIZE) != 0
+#error "OTA metadata A is not sector aligned"
+#endif
+
+#if (OTA_QSPI_METADATA_B_START % OTA_QSPI_SECTOR_SIZE) != 0
+#error "OTA metadata B is not sector aligned"
+#endif
+
+#if (OTA_QSPI_SLOT_A_START % OTA_QSPI_SECTOR_SIZE) != 0
+#error "OTA slot A is not sector aligned"
+#endif
+
+#if (OTA_QSPI_SLOT_B_START % OTA_QSPI_SECTOR_SIZE) != 0
+#error "OTA slot B is not sector aligned"
+#endif
+
+#if (OTA_QSPI_SLOT_A_START + OTA_QSPI_SLOT_A_SIZE) > OTA_QSPI_SLOT_B_START
+#error "OTA slot A overlaps slot B"
+#endif
+
+#endif
