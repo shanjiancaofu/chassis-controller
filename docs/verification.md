@@ -32,7 +32,7 @@
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
 | 低速 PID 闭环 | `NOT VERIFIED` | 尚无最终稳定性验收记录 |
 | FreeRTOS 阶段 4 实物回归 | `NOT VERIFIED` | 代码和构建完成，未重复执行硬件回归 |
-| Bootloader/OTA | `NOT VERIFIED` | Bootloader 尚未创建 |
+| Bootloader/OTA | `NOT VERIFIED` | 已建立首批纯逻辑代码，尚未 CubeIDE 构建和实物验证 |
 
 ## 构建基线
 
@@ -193,3 +193,21 @@ Bootloader 落地后至少验证：
 - 无有效 Application 时停留 Bootloader
 - 更新全程保持零 PWM
 - Bootloader 和 Application 版本、复位原因可诊断
+
+## Bootloader 单元测试
+
+当前已有 PC 单元测试入口：
+
+```text
+firmware/bootloader/stm32g474/tests/unit/bootloader_core_test.c
+```
+
+覆盖内容：
+
+- CRC32 标准向量 `123456789 -> 0xCBF43926`
+- OTA 镜像头、payload CRC 和向量表校验
+- OTA 元数据双副本 CRC 校验和最新 sequence 选择
+
+本机 PATH 中未找到 `gcc`、`clang` 或 `cl`，也未找到 STM32CubeIDE 自带
+`arm-none-eabi-gcc`，因此本批只完成代码落地和人工检查，不能标记为
+`BUILD PASS`。后续接入 CubeIDE Bootloader 工程后必须补做 Debug/Release 构建。

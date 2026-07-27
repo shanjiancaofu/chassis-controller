@@ -6,8 +6,8 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前进入 Bootloader 与 OTA 阶段；完成状态、下一步和验证结果分别见
-`docs/roadmap.md` 与 `docs/verification.md`。
+当前进入 Bootloader 与 OTA 阶段，已落地首批 Bootloader 纯逻辑代码；
+完成状态、下一步和验证结果分别见 `docs/roadmap.md` 与 `docs/verification.md`。
 
 ## 目录
 

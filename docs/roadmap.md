@@ -44,12 +44,17 @@ Debug 和 Release 曾完成 clean build。历史结果见 `verification.md`；OT
 - 建立主机固件打包工具
 - 确定 UART 与 CAN FD 都是 OTA V1 正式传输
 - UART 已具备 circular DMA、IDLE 接收、软件环形缓冲和 TX DMA 队列
+- 建立 Bootloader 纯逻辑首批代码：CRC32、镜像头/载荷校验、向量表校验、
+  OTA 元数据双副本校验和 sequence 选择
+- 建立 Bootloader PC 单元测试入口；当前本机未找到 C 编译器，尚未形成
+  `BUILD PASS`
 
 下一批按顺序执行：
 
-1. 建立独立 `firmware/bootloader/stm32g474/` CubeMX/CubeIDE 工程。
-2. 实现元数据双副本读取、CRC 和 sequence 选择。
-3. 实现 QSPI 镜像校验、内部 Flash 安装、断电重试和严格 Application 跳转。
+1. 建立独立 `firmware/bootloader/stm32g474/` CubeMX/CubeIDE 工程，
+   接入最小启动代码、链接脚本、IWDG 和 QSPI 初始化。
+2. 将已落地的 Bootloader 纯逻辑接到 QSPI 元数据读取和镜像读取。
+3. 实现内部 Flash 安装、写后校验、断电重试和严格 Application 跳转。
 4. 将 Application 链接地址和 VTOR 一起迁移到 `0x08008000`。
 5. 实现 Application OTA 会话、停车准入、传输源互斥和 QSPI 分块写入。
 6. 在现有 UART BSP 上接入 OTA 帧解析，不复制第二套 DMA 或环形缓冲。
