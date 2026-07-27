@@ -1,11 +1,8 @@
 # Bootloader 与 OTA
 
-## 当前结论
+## 方案
 
-项目从阶段 5 开始优先建设 Bootloader 与 OTA，IMU、里程计、ROS 2 Bridge 和复杂运动学后移。
-
-STM32G474VET6 只有 512 KiB 内部 Flash，当前 Release Application 已超过 170 KiB，
-因此不照搬 STM32F411 示例的内部双 Application Bank。当前方案采用：
+STM32G474VET6 使用以下 OTA 结构：
 
 - 内部 Flash：独立 Bootloader + 单 Application。
 - 板载 8 MiB QSPI：双副本升级元数据、已确认镜像、候选镜像和升级日志。
@@ -14,18 +11,6 @@ STM32G474VET6 只有 512 KiB 内部 Flash，当前 Release Application 已超过
   已确认镜像恢复，不在内部 Flash 伪造双 Application Bank。
 - 第一版只使用 CRC32 做传输和存储损坏检测，不把 CRC32 描述成安全认证。
 - 第二版先加入数字签名与防回滚，再评估是否需要镜像加密。
-
-参考仓库的 UART DMA、状态机、SHA-256 和签名分层可作为设计输入，但芯片地址、
-Flash 擦除单位、向量表和密钥方案必须以当前 STM32G474 工程为准。
-
-参考取舍：
-
-- [`freertos_uart_output`](https://github.com/ParacosmYy/GS_ETERNALCHIP_Mcu/tree/freertos_uart_output)：
-  保留 DMA/IDLE 中断只投递数据、任务上下文解析的原则；当前 UART DMA 已具备同类边界。
-- [`OTA_Bootloader`](https://github.com/ParacosmYy/GS_ETERNALCHIP_Mcu/tree/OTA_Bootloader)：
-  参考镜像校验、状态记录和跳转顺序，不复制 F411 分区，也不接受校验失败后的宽松跳转。
-- [`OTA_Encrypted_Upgrade`](https://github.com/ParacosmYy/GS_ETERNALCHIP_Mcu/tree/OTA_Encrypted_Upgrade)：
-  参考验证、传输、平台和实现层的职责划分；AES、ECDSA 和密钥配置放到阶段 6。
 
 ## OTA V1 传输
 
@@ -164,40 +149,19 @@ EMPTY -> STAGED -> INSTALLING -> TRIAL
 - OTA 接收不进入 `control_task`，不得阻塞 100 Hz 控制。
 - 下载、校验、提交和复位前都必须满足停车与危险操作互斥规则。
 
-## 实施批次
+## 版本边界
 
-### 批次 1：格式与布局
+OTA V1 包含：
 
-- [ ] 将已确认/候选 QSPI 双固件槽同步到共享布局。
-- [ ] 将试运行、确认和回滚状态同步到共享元数据 ABI。
-- [x] 建立主机打包与基本合法性检查。
-- [x] 将 IMU 后移并把 OTA 提升为阶段 5。
+- Application 通过 UART 或 CAN FD 接收固件；
+- QSPI 已确认/候选双镜像；
+- CRC32、断电重装、试运行确认和回滚；
+- Bootloader 从 QSPI 安装到内部单 Application。
 
-### 批次 2：独立 Bootloader
+OTA V2 再增加：
 
-- [ ] 使用 CubeMX 建立 `firmware/bootloader/stm32g474/` 独立 CubeIDE 工程。
-- [ ] 只启用时钟、GPIO、USART1、QUADSPI 和内部 Flash 所需 HAL。
-- [ ] 实现双副本元数据、CRC32、内部 Flash 安装和严格跳转。
-- [ ] 完成 Debug/Release 构建，不与 Application 共用链接脚本。
+- Bootloader CAN FD Recovery；
+- 数字签名和防回滚；
+- 发布链路稳定后再评估镜像加密。
 
-### 批次 3：Application OTA 接收
-
-- [ ] 将 Application 链接到 `0x08008000` 并同步 VTOR。
-- [ ] 增加非实时 OTA 接收状态机和分块写入。
-- [ ] 使用 USART1 RX DMA circular + IDLE + 软件环形缓冲区打通本地 OTA。
-- [ ] 使用 USART1 TX DMA 返回流控、进度和错误响应。
-- [ ] 同时完成 UART 和 CAN FD 两种正式传输，两种入口复用同一状态机并分别验收。
-- [ ] 下载期间允许底盘保持停车诊断，但不允许运动控制和危险目标测试。
-
-### 批次 4：实物验证
-
-- [ ] 正常升级。
-- [ ] 错误 magic、地址、长度和 CRC 均拒绝。
-- [ ] QSPI 写入、内部擦除和内部写入阶段分别断电后可恢复安装。
-- [ ] 候选镜像未确认、连续异常复位后可恢复已确认镜像。
-- [ ] UART 环形缓冲区溢出、乱序、超时和传输切换均安全中止。
-- [ ] UART 和 CAN FD 均可独立完成同一固件包的接收、校验、提交和安装。
-- [ ] 无有效 Application 时停留 Bootloader。
-- [ ] 有效 Application 可稳定跳转，复位原因和版本可诊断。
-
-签名、防回滚和可选加密在上述基础链路稳定后单独实施，不与第一版混在一起。
+实施顺序见 `roadmap.md`，构建和实物验收见 `verification.md`。

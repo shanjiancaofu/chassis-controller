@@ -1,115 +1,67 @@
 # chassis-controller
 
-基于 Jetson Orin Nano 和 STM32G474VET6 的底盘控制器。Jetson 负责上层决策和控制命令，STM32 负责双电机控制、状态采集、安全停车和 CAN FD 通信。本仓库与 `cockpit-system` 独立维护。
+STM32G474VET6 底盘控制器。STM32 负责双电机闭环、安全停车、板级采集和
+CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。本仓库与
+`cockpit-system` 独立维护。
 
-`firmware/application/stm32g474/` 的裸机基线已经完成实物验收，FreeRTOS
-单任务基线的目录迁移和硬件回归也已完成。`chassis`、`safety`、`parameters`、
-`diagnostics` 等业务域已经落地。阶段 4 的实时调度、控制源仲裁、FDCAN
-错误恢复、危险目标测试准入和关键任务健康汇总均已完成代码实现。
-当前进入阶段 5，优先建设独立 Bootloader 与 QSPI 暂存 OTA；IMU、ROS 2 Bridge、
-位置环和复杂底盘运动学后移。
+## 当前状态
 
-## 目录结构
+当前进入 Bootloader 与 OTA 阶段；完成状态、下一步和验证结果分别见
+`docs/roadmap.md` 与 `docs/verification.md`。
 
-```text
-chassis-controller/
-├─ firmware/
-│  ├─ application/
-│  │  └─ stm32g474/
-│  │     ├─ Core/              # CubeMX 生成的初始化和中断入口
-│  │     ├─ Drivers/           # CMSIS 与 STM32G4 HAL
-│  │     ├─ Middlewares/       # CubeMX 管理的 FreeRTOS 内核
-│  │     ├─ Application/       # CubeIDE 生成的启动和系统适配文件
-│  │     ├─ app/               # 系统组装与应用生命周期
-│  │     ├─ board/             # 当前板卡的外设句柄和引脚映射
-│  │     ├─ bsp/               # 电机、编码器、LCD、QSPI 和 ADC 板级封装
-│  │     ├─ components/        # PID 等通用算法
-│  │     ├─ communication/     # FDCAN 传输与当前协议实现
-│  │     ├─ infrastructure/    # Console、遥测和状态显示等运行设施
-│  │     ├─ modules/           # chassis、safety、parameters、diagnostics 业务域
-│  │     ├─ rtos/              # FreeRTOS 任务循环与应用调度入口
-│  │     ├─ tests/             # 需要显式确认的板上目标测试
-│  │     ├─ config/            # 应用、构建、控制、功能和协议配置
-│  │     └─ chassis_controller.ioc
-│  └─ shared/
-│     └─ ota/                  # Bootloader、Application 和打包器共用的 OTA ABI
-├─ protocol/                # Jetson 与 STM32 的 CAN FD 协议
-├─ docs/                    # 架构路线、硬件接线和验收基线
-├─ picture/                 # LCD 图片原始素材与取模结果
-├─ tools/                   # OTA 打包及后续主机侧调试工具
-└─ example/                 # 本地商家例程，仅供参考，不提交 Git
-```
-
-## 工程入口
-
-- CubeMX 配置：`firmware/application/stm32g474/chassis_controller.ioc`
-- 应用入口：`firmware/application/stm32g474/app/chassis_app.c`
-- 应用配置：`firmware/application/stm32g474/config/`
-- 硬件与接线：`docs/硬件与接线.md`
-- CAN FD 协议：`protocol/canfd_protocol.md`
-- 架构与路线图：`docs/chassis_controller_architecture_and_roadmap_v2.0.md`
-- Bootloader 与 OTA：`docs/bootloader_and_ota.md`
-
-## 当前基线
-
-- 工具链为 STM32CubeMX 6.18、STM32CubeG4 V1.6.3、STM32CubeIDE GCC 和 ST-Link。
-- 裸机基线 `v0.1.0-baremetal` 已完成 USART、RTC、QSPI、LCD、CAN FD、ADC、双编码器、双电机、10 ms PID、安全停车和 IWDG 的实物验收。
-- FreeRTOS 已由 CubeMX 接入：SysTick 用于内核节拍，TIM7 用于 HAL 时基；普通静态应用任务继续执行非实时轮询，新增静态高优先级 `control_task` 执行 100 Hz 实时控制。
-- `board/`、`bsp/`、`communication/`、`infrastructure/`、四个 `modules` 业务域、`rtos/` 和 `tests/target/` 已进入正式构建；应用生命周期 API 统一为 `ChassisApp_*`。
-- 阶段 4 固件已实现独立控制任务、控制源所有权、危险测试互斥、FDCAN 错误恢复和关键任务健康汇总。Debug 和 Release 全量 clean build 均为 `0 errors, 0 warnings`；镜像分别为 `211964/96/31384` 和 `175436/96/31368`（text/data/bss）。构建结果不等同于实物验证。
-- 电机 Demo 默认关闭，应用上电后 TIM8 四路 PWM 比较值保持为 0，不会自动转动电机。
-- TIM6 ISR 现在只通知 `control_task`；每次唤醒最多执行一次控制计算，积压周期不连续补跑，并记录 overrun 和 missed tick。Console、遥测、LCD、QSPI、RTC、诊断和阻塞采样仍由普通应用任务处理。
-- 阶段 4 代码实现已完成。按当前决定，不重复执行零输出、PID、电机、急停和 IWDG 回归。
-- 阶段 5 已冻结 32 KiB Bootloader、480 KiB Application 和 QSPI 暂存布局，并建立
-  64 字节镜像/元数据 ABI 与主机打包工具。Application 尚未迁移到 `0x08008000`，
-  独立 Bootloader 尚未生成和实物验证。
-
-## 开发流程
-
-### CubeMX 生成工程
-
-1. 使用 CubeMX 打开 `firmware/application/stm32g474/chassis_controller.ioc`。
-2. `Toolchain / IDE` 选择 `STM32CubeIDE`，勾选 `Generate Under Root`。
-3. 生成代码后检查自定义源文件和头文件路径仍在 `.cproject` 中。
-4. CubeMX 生成文件只在 `USER CODE BEGIN/END` 区域内手工修改；自有代码按职责放入 `app/`、`board/`、`bsp/`、`components/`、`communication/`、`infrastructure/`、`modules/`、`rtos/` 或 `config/`。
-
-### STM32CubeIDE 构建和烧录
-
-首次打开时选择 `File -> Import -> Existing Projects into Workspace`，根目录填写：
+## 目录
 
 ```text
-E:\code\github\chassis-controller\firmware\application\stm32g474
+firmware/
+├─ application/stm32g474/   # 正式 Application CubeMX/CubeIDE 工程
+└─ shared/ota/              # Bootloader、Application、打包器共用 OTA ABI
+docs/                       # 架构、路线、硬件、验证和 OTA 设计
+protocol/                   # CAN FD 线协议
+tools/ota/                  # 固件打包工具
+picture/                    # LCD 素材
+example/                    # 本地参考例程，不提交
 ```
 
-导入 `chassis_controller` 后：
+Application 自有代码位于：
 
-1. 在 `Project -> Build Configurations -> Set Active` 选择 `Debug`。
-2. 日常编译使用 `Project -> Build Project`。
-3. 修改公共头文件、CubeMX 配置或怀疑仍在使用旧目标文件时，先执行 `Project -> Clean...`，再执行 `Project -> Build Project`。
-4. Console 出现 `Build Finished. 0 errors` 后，Debug 固件位于 `firmware/application/stm32g474/Debug/chassis_controller.elf`。
-5. 打开 `Run -> Debug Configurations -> STM32 C/C++ Application`，Project 选择 `chassis_controller`，Application 选择 `Debug/chassis_controller.elf`。
-6. 连接 ST-Link 后点击 `Debug` 完成烧录并进入调试；仅需继续运行时点击 Resume。
+```text
+app/  board/  bsp/  components/  communication/
+infrastructure/  modules/  rtos/  tests/  config/
+```
 
-CH340 调试串口使用 `115200 8N1`，上电后通过串口查看启动自检、命令响应和遥测。
+## 文档
 
-### VS Code 构建
+- [系统架构](docs/architecture.md)
+- [开发路线](docs/roadmap.md)
+- [硬件与接线](docs/hardware.md)
+- [构建与实物验证](docs/verification.md)
+- [Bootloader 与 OTA](docs/bootloader_and_ota.md)
+- [CAN FD 协议](protocol/canfd_protocol.md)
+- [Codex/AI 修改规则](AGENTS.md)
 
-VS Code 使用本机 `.vscode/tasks.json` 调用 STM32CubeIDE 的命令行程序 `stm32cubeidec.exe`，实际编译器和工程配置仍来自 STM32CubeIDE GCC 与 `.cproject`，没有改用桌面 GCC 或 CMake。
+同一信息只在一份文档中维护。代码和配置发生变化时，按上述职责更新对应文档。
 
-- 按 `Ctrl+Shift+B` 执行默认任务 `STM32: Build Debug`，用于日常增量编译。
-- 按 `Ctrl+Shift+P`，选择 `Tasks: Run Task -> STM32: Clean Build Debug`，用于完整清理并重新编译。
-- 构建成功时终端显示 `Build Finished. 0 errors, 0 warnings.`。
-- 输出仍是 `firmware/application/stm32g474/Debug/chassis_controller.elf`。
+## 构建
 
-VS Code 构建任务当前只编译，不自动烧录。编译完成后使用 STM32CubeIDE 的 Debug Configuration 将上述 ELF 烧入开发板。
+工具链：
 
-若修改代码后板上行为没有变化，先检查 `Debug/chassis_controller.elf` 和相关 `.o` 的修改时间是否晚于源文件，再执行一次 `STM32: Clean Build Debug` 并重新烧录。仓库默认忽略 `.vscode/`，因此更换电脑后需要按本机 STM32CubeIDE 安装路径重新配置 `tasks.json` 中的 `stm32cubeidec.exe`。
+- STM32CubeMX 6.18
+- STM32CubeG4 V1.6.3
+- STM32CubeIDE GCC
+- ST-Link 或 STM32CubeProgrammer
 
-## 开发约定
+CubeIDE 导入目录：
 
-- 正式硬件配置以 `.ioc` 和 `docs/硬件与接线.md` 为准。
-- `Core/`、`Drivers/` 和 `Application/` 保持生成代码职责，不堆放控制业务。
-- 不因代码行数机械拆文件，不提前创建无实现的模块和转调 helper。
-- 不直接复制完整商家工程，只提取经过芯片、引脚、时钟和外设核对的配置。
-- 危险或破坏性测试必须默认关闭，并通过明确命令或编译开关启用。
-- 未经过真实硬件测试的功能只能记录为已实现或 READY，不能记录为 PASS。
+```text
+firmware/application/stm32g474
+```
+
+日常流程：
+
+1. 在 CubeIDE 选择 `Debug` 或 `Release`。
+2. 修改 `.ioc` 或公共头文件后执行 Clean Build。
+3. 确认 `0 errors, 0 warnings` 后烧录对应 ELF。
+4. CH340 使用 `115200 8N1` 查看启动、自检、命令和遥测。
+
+CubeMX 生成代码时使用 `STM32CubeIDE` 并勾选 `Generate Under Root`。
+生成文件只在 `USER CODE BEGIN/END` 区域内手工修改。
