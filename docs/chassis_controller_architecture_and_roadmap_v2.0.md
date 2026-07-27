@@ -42,8 +42,8 @@ STM32 负责：
 - 命令超时停车
 - 急停、故障和看门狗安全链路
 - 电压、RTC、QSPI、LCD、按键等板级资源
+- Bootloader、Application OTA 接收和升级状态管理
 - 后续 IMU 原始数据采集
-- 后续 Application OTA 接收和升级状态管理
 
 Jetson Orin Nano 负责：
 
@@ -63,11 +63,13 @@ Jetson Orin Nano 负责：
 本仓库当前维护：
 
 - STM32G474 Application 固件
+- Bootloader/OTA 共享 ABI、存储布局和固件打包工具
 - CAN FD 协议文档
 - 固件架构、安全、Bring-up 和验证文档
 - 固件构建、格式检查和单元测试配置
 
-Bootloader 和 OTA 只保留远期边界说明，尚未进入实现范围。
+Bootloader 与 OTA 已进入阶段 5，实现范围和存储 ABI 见
+`docs/bootloader_and_ota.md`。
 
 本仓库不维护：
 
@@ -233,6 +235,12 @@ firmware/application/stm32g474/
    ├─ protocol_config.h
    ├─ storage_layout.h
    └─ target_test_config.h
+
+firmware/shared/ota/
+└─ ota_image.h
+
+tools/ota/
+└─ package_firmware.py
 ```
 
 ### 4.4 目录迁移完成状态
@@ -355,8 +363,10 @@ firmware/application/stm32g474/
 
 ## 6. 目录演进约束
 
-当前目录以第 4.3 节的实际仓库结构为准，不提前建立 Bootloader、OTA、ROS 2 Bridge、
-主机工具、额外 RTOS 任务或尚无逻辑的算法目录。新目录只在同时满足以下条件时创建：
+当前目录以第 4.3 节的实际仓库结构为准。阶段 5 已建立有实际 ABI 的
+`firmware/shared/ota/` 和有实际打包逻辑的 `tools/ota/`；独立 Bootloader 工程在
+CubeMX 配置和构建入口同时落地时创建。仍不提前建立 ROS 2 Bridge、额外 RTOS 任务
+或尚无逻辑的算法目录。新目录只在同时满足以下条件时创建：
 
 - 已有真实实现文件和明确职责。
 - 能形成独立业务域、硬件边界或依赖边界。
@@ -678,7 +688,7 @@ components
 - CAN 重复帧、跳帧、回绕和握手会话仍由 `communication/can_transport` 校验
 
 当前 `parameter_manager` 完成的是运行时 PID 参数切片。轮径、轮距、编码器、
-限幅参数和 QSPI CRC 双副本持久化仍属于阶段 6，不在本次目录拆分中提前实现。
+限幅参数和 QSPI CRC 双副本参数持久化属于阶段 7，不与阶段 5 的 OTA 元数据混用。
 
 ### 9.2 板级健康和目标测试
 
@@ -1480,6 +1490,9 @@ STM32 可提供基础里程计，但 Jetson 必须能够根据原始编码器数
 
 ## 18. IMU 路线
 
+IMU 暂不实施，排在 Bootloader/OTA、正式发布链路和底盘协议收口之后。本节只保留
+边界，不创建驱动、任务或空目录。
+
 IMU 第一阶段只实现：
 
 - 设备识别
@@ -1498,16 +1511,22 @@ STM32 当前不优先实现复杂 EKF。姿态估计、坐标变换和轮速融�
 
 ## 19. Bootloader 与 OTA
 
-当前不创建 Bootloader、OTA、`firmware/shared/` 或相关空目录。Application 链接脚本仍使用：
+Bootloader 与 OTA 自 2026-07-27 起提升为当前第一优先级。详细布局、镜像格式、
+状态机、安全边界和实施批次统一维护在 `docs/bootloader_and_ota.md`。
 
-```text
-FLASH ORIGIN = 0x08000000
-FLASH LENGTH = 512K
-```
+已冻结的目标布局为：
 
-因此当前没有为 Bootloader、Metadata 或 A/B Slot 预留内部 Flash。该方向排在阶段 4
-及底盘正式控制链路之后；进入实施前必须单独冻结 Flash 容量、布局、向量表、镜像格式、
-校验、确认和回滚策略。不得复制其他芯片的地址，也不在当前阶段预留代码或协议文件。
+- 内部 32 KiB 独立 Bootloader；
+- 内部 480 KiB 单 Application；
+- 8 MiB QSPI 中使用双副本元数据和已确认/候选双固件槽；
+- 第一版 CRC32 检错，支持安装断电后重试、试运行确认和恢复已确认镜像；
+- Application 正式支持 CAN FD 与 UART DMA + 环形缓冲区两种 OTA 传输，
+  两种入口复用同一 OTA 状态机并分别验收；
+- 第二版先增加数字签名和防回滚，再评估镜像加密。
+
+当前只落地共享 ABI、QSPI 分区和主机打包工具。Application 仍从 `0x08000000`
+启动，必须等独立 Bootloader 可构建后，才与 VTOR 一起迁移到 `0x08008000`。
+不照搬 STM32F411 示例地址，不伪造内部 A/B，不允许校验失败后宽松跳转。
 
 ---
 
@@ -1795,25 +1814,43 @@ firmware/application/stm32g474/.metadata/
 - Debug 和 Release 均全量 clean build。未执行的实物故障注入、时序测量和
   回归项目保持“未验证”，不得标记为 `PASS`。
 
-### 阶段 5：正式底盘协议和运动学
+### 阶段 5：Bootloader 与 QSPI 双镜像 OTA
 
-阶段 4 代码与构建完成后，冻结正式底盘协议、序号语义、运动学和反馈；本阶段暂不展开实现细节。
+状态：**IN PROGRESS（基础格式已完成，双镜像与传输设计待同步，2026-07-27）**
 
-### 阶段 6：参数和遥测
+1. [待同步] 保留 32 KiB Bootloader 和 480 KiB Application，将 QSPI OTA 区调整为
+   已确认/候选双固件槽。
+2. [已完成] 建立 64 字节镜像头、双副本元数据 ABI 和主机打包工具。
+3. [待完成] 扩展共享元数据，支持候选、试运行、确认和恢复已确认镜像。
+4. [待完成] 用 CubeMX 建立独立、可单独构建的 Bootloader CubeIDE 工程。
+5. [待完成] 实现 QSPI 读取、内部 Flash 安装、CRC32 复核和严格向量跳转。
+6. [待完成] Application 链接地址与 VTOR 同步迁移到 `0x08008000`。
+7. [待完成] 实现 Application 非实时 OTA 接收、提交和安全复位状态机。
+8. [待完成] 正式支持 USART1 RX DMA circular + IDLE + 软件环形缓冲区，以及
+   CAN FD OTA；两种传输复用同一 OTA 会话和分块处理并分别验收。
+9. [待完成] 完成正常升级、损坏镜像拒绝、安装阶段断电恢复、未确认回滚和
+   传输异常实物验证。
 
-阶段 5 稳定后再规划参数持久化和正式遥测；本阶段暂不创建存储模块。
+阶段 5 第一版不实现内部双 Bank、Bootloader CAN FD Recovery、加密和远程无人值守
+发布。V1 的回滚通过 QSPI 已确认镜像重新安装内部单 Application 完成。
 
-### 阶段 7：IMU 和里程计
+### 阶段 6：签名、防回滚与发布链路
+
+阶段 5 稳定后增加数字签名、防回滚计数和 Jetson 发布流程。Bootloader 只保存公钥，
+私钥不得进入仓库或设备；加密不能替代签名，是否增加 AES 在签名链路验收后决定。
+
+### 阶段 7：正式底盘协议与运行参数
+
+冻结 Jetson 与 STM32 的正式控制协议、序号语义、差速运动学、参数持久化和正式遥测。
+不得让 OTA 传输绕过阶段 4 已建立的停车准入、控制所有权和危险操作互斥。
+
+### 阶段 8：IMU 和里程计
 
 - IMU 原始数据
 - 单调时间戳
 - 基础滤波和掉线检测
 - 编码器与 IMU 原始数据上报
 - Jetson 侧里程计和融合
-
-### 阶段 8：Bootloader 与 OTA
-
-底盘实时控制和正式通信链路稳定后另立设计评审，不提前创建目录、协议或代码。
 
 ---
 
@@ -1894,7 +1931,9 @@ app/
 静态 application_task + 独立高优先级 control_task + TIM6 任务通知
 
 Bootloader 与 OTA：
-当前不创建目录和代码，待底盘实时控制与正式通信链路稳定后单独规划
+阶段 5 当前第一优先级；采用内部单 Application + QSPI 已确认/候选双固件槽，
+Application 支持 CAN FD 与 UART DMA + 环形缓冲区双传输入口，
+独立 Bootloader、共享 ABI 调整与 Application 地址迁移待完成
 
 ROS 2：
 Bridge、融合和高层里程计在 Jetson
@@ -1907,6 +1946,7 @@ Windows + USB 串口 + VOFA+
 
 当前第一优先级：
 
-> 阶段 4 代码实现和 Debug/Release 构建已完成。下一步进入阶段 5，
-> 先冻结 Jetson 与 STM32 的正式底盘控制协议、控制序号语义和差速运动学边界，
-> 不提前展开 Bootloader、OTA 或 ROS 2 Bridge 实现。
+> 阶段 4 代码实现和 Debug/Release 构建已完成。当前执行阶段 5：
+> 先建立独立 Bootloader，再同步迁移 Application 链接地址与 VTOR，
+> 随后打通 QSPI 已确认/候选双镜像的安全安装、确认、回滚和断电恢复。
+> IMU 与 ROS 2 Bridge 后移。

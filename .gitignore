@@ -75,6 +75,9 @@ dkms.conf
 /firmware/application/stm32g474/chassis_controller.launch
 /.cubeide-workspace/
 
+# Generated firmware packages
+/_output/
+
 # Local editor settings
 /.vscode/
 .markdownlint.json

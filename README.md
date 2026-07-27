@@ -6,34 +6,37 @@
 单任务基线的目录迁移和硬件回归也已完成。`chassis`、`safety`、`parameters`、
 `diagnostics` 等业务域已经落地。阶段 4 的实时调度、控制源仲裁、FDCAN
 错误恢复、危险目标测试准入和关键任务健康汇总均已完成代码实现。
-暂不引入 Bootloader、完整 OTA、ROS 2 Bridge、位置环和复杂底盘运动学。
+当前进入阶段 5，优先建设独立 Bootloader 与 QSPI 暂存 OTA；IMU、ROS 2 Bridge、
+位置环和复杂底盘运动学后移。
 
 ## 目录结构
 
 ```text
 chassis-controller/
 ├─ firmware/
-│  └─ application/
-│     └─ stm32g474/
-│        ├─ Core/              # CubeMX 生成的初始化和中断入口
-│        ├─ Drivers/           # CMSIS 与 STM32G4 HAL
-│        ├─ Middlewares/       # CubeMX 管理的 FreeRTOS 内核
-│        ├─ Application/       # CubeIDE 生成的启动和系统适配文件
-│        ├─ app/               # 系统组装与应用生命周期
-│        ├─ board/             # 当前板卡的外设句柄和引脚映射
-│        ├─ bsp/               # 电机、编码器、LCD、QSPI 和 ADC 板级封装
-│        ├─ components/        # PID 等通用算法
-│        ├─ communication/     # FDCAN 传输与当前协议实现
-│        ├─ infrastructure/    # Console、遥测和状态显示等运行设施
-│        ├─ modules/           # chassis、safety、parameters、diagnostics 业务域
-│        ├─ rtos/              # FreeRTOS 任务循环与应用调度入口
-│        ├─ tests/             # 需要显式确认的板上目标测试
-│        ├─ config/            # 应用、构建、控制、功能和协议配置
-│        └─ chassis_controller.ioc
+│  ├─ application/
+│  │  └─ stm32g474/
+│  │     ├─ Core/              # CubeMX 生成的初始化和中断入口
+│  │     ├─ Drivers/           # CMSIS 与 STM32G4 HAL
+│  │     ├─ Middlewares/       # CubeMX 管理的 FreeRTOS 内核
+│  │     ├─ Application/       # CubeIDE 生成的启动和系统适配文件
+│  │     ├─ app/               # 系统组装与应用生命周期
+│  │     ├─ board/             # 当前板卡的外设句柄和引脚映射
+│  │     ├─ bsp/               # 电机、编码器、LCD、QSPI 和 ADC 板级封装
+│  │     ├─ components/        # PID 等通用算法
+│  │     ├─ communication/     # FDCAN 传输与当前协议实现
+│  │     ├─ infrastructure/    # Console、遥测和状态显示等运行设施
+│  │     ├─ modules/           # chassis、safety、parameters、diagnostics 业务域
+│  │     ├─ rtos/              # FreeRTOS 任务循环与应用调度入口
+│  │     ├─ tests/             # 需要显式确认的板上目标测试
+│  │     ├─ config/            # 应用、构建、控制、功能和协议配置
+│  │     └─ chassis_controller.ioc
+│  └─ shared/
+│     └─ ota/                  # Bootloader、Application 和打包器共用的 OTA ABI
 ├─ protocol/                # Jetson 与 STM32 的 CAN FD 协议
 ├─ docs/                    # 架构路线、硬件接线和验收基线
 ├─ picture/                 # LCD 图片原始素材与取模结果
-├─ tools/                   # 后续主机侧调试工具
+├─ tools/                   # OTA 打包及后续主机侧调试工具
 └─ example/                 # 本地商家例程，仅供参考，不提交 Git
 ```
 
@@ -45,6 +48,7 @@ chassis-controller/
 - 硬件与接线：`docs/硬件与接线.md`
 - CAN FD 协议：`protocol/canfd_protocol.md`
 - 架构与路线图：`docs/chassis_controller_architecture_and_roadmap_v2.0.md`
+- Bootloader 与 OTA：`docs/bootloader_and_ota.md`
 
 ## 当前基线
 
@@ -55,7 +59,10 @@ chassis-controller/
 - 阶段 4 固件已实现独立控制任务、控制源所有权、危险测试互斥、FDCAN 错误恢复和关键任务健康汇总。Debug 和 Release 全量 clean build 均为 `0 errors, 0 warnings`；镜像分别为 `211964/96/31384` 和 `175436/96/31368`（text/data/bss）。构建结果不等同于实物验证。
 - 电机 Demo 默认关闭，应用上电后 TIM8 四路 PWM 比较值保持为 0，不会自动转动电机。
 - TIM6 ISR 现在只通知 `control_task`；每次唤醒最多执行一次控制计算，积压周期不连续补跑，并记录 overrun 和 missed tick。Console、遥测、LCD、QSPI、RTC、诊断和阻塞采样仍由普通应用任务处理。
-- 阶段 4 代码实现已完成。按当前决定，不重复执行零输出、PID、电机、急停和 IWDG 回归；后续进入阶段 5 前仍需明确正式 CAN FD 控制协议和运动学边界。
+- 阶段 4 代码实现已完成。按当前决定，不重复执行零输出、PID、电机、急停和 IWDG 回归。
+- 阶段 5 已冻结 32 KiB Bootloader、480 KiB Application 和 QSPI 暂存布局，并建立
+  64 字节镜像/元数据 ABI 与主机打包工具。Application 尚未迁移到 `0x08008000`，
+  独立 Bootloader 尚未生成和实物验证。
 
 ## 开发流程
 
