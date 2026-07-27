@@ -80,9 +80,6 @@ dkms.conf
 
 # Local editor settings
 /.vscode/
-.markdownlint.json
 
-# Local Codex session data
-/.ai-bridge/
 
 .metadata/

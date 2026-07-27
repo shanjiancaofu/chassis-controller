@@ -271,7 +271,7 @@ app / rtos
 当前运行模型只建立两个职责明确的任务：
 
 | 任务 | 作用 |
-|---|---|
+| --- | --- |
 | `control_task` | 最高业务优先级，100 Hz 轮速控制 |
 | Application task | Console、通信、诊断、遥测、LCD 和非实时流程 |
 

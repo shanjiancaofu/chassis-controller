@@ -19,7 +19,7 @@ Debug 和 Release 曾完成 clean build。历史结果见 `verification.md`；OT
 `architecture.md` 中的完整目录树是最终设计。只有对应逻辑落地时才创建目录和文件：
 
 | 当前实际状态 | 最终位置或变化 | 时机 |
-|---|---|---|
+| --- | --- | --- |
 | 四个 `firmware/shared/*.h` | Bootloader、Application 和主机工具共用固定 ABI | 已完成首版，后续兼容修改必须提升格式版本 |
 | `components/pid/` | 按真实复用需求增加 crc 等组件 | Bootloader 校验代码落地时 |
 | `communication/can_transport/` | 增加 `chassis_protocol/`、`ota_transport/` | 正式协议或 OTA 会话实现时 |
