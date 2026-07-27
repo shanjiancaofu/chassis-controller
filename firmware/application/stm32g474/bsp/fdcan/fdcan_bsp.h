@@ -30,6 +30,7 @@ typedef struct {
 
 HAL_StatusTypeDef BspFdcan_Start(const uint32_t *accepted_standard_ids,
                                  size_t accepted_id_count);
+HAL_StatusTypeDef BspFdcan_Restart(void);
 HAL_StatusTypeDef BspFdcan_ReadRxFrame(BspFdcanFrame *frame);
 HAL_StatusTypeDef BspFdcan_SendFrame(const BspFdcanFrame *frame);
 bool BspFdcan_GetDiagnostics(BspFdcanDiagnostics *diagnostics);

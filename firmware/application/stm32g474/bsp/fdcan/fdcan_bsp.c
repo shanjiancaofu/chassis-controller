@@ -36,8 +36,22 @@ HAL_StatusTypeDef BspFdcan_Start(const uint32_t *accepted_standard_ids,
                                    FDCAN_REJECT_REMOTE) != HAL_OK) {
     return HAL_ERROR;
   }
-  if (HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_RX_FIFO0_NEW_MESSAGE,
-                                     0U) != HAL_OK) {
+  if (HAL_FDCAN_ActivateNotification(
+          &hfdcan2,
+          FDCAN_IT_RX_FIFO0_NEW_MESSAGE | FDCAN_IT_RX_FIFO0_FULL |
+              FDCAN_IT_RX_FIFO0_MESSAGE_LOST | FDCAN_IT_ERROR_WARNING |
+              FDCAN_IT_ERROR_PASSIVE | FDCAN_IT_BUS_OFF |
+              FDCAN_IT_ARB_PROTOCOL_ERROR |
+              FDCAN_IT_DATA_PROTOCOL_ERROR,
+          0U) != HAL_OK) {
+    return HAL_ERROR;
+  }
+  return HAL_FDCAN_Start(&hfdcan2);
+}
+
+HAL_StatusTypeDef BspFdcan_Restart(void)
+{
+  if (HAL_FDCAN_Stop(&hfdcan2) != HAL_OK) {
     return HAL_ERROR;
   }
   return HAL_FDCAN_Start(&hfdcan2);

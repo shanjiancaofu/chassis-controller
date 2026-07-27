@@ -25,13 +25,13 @@
 #include "modules/parameters/parameter_manager.h"
 #include "modules/safety/fault_manager.h"
 #include "modules/safety/safety_manager.h"
+#include "rtos/rtos_app.h"
 #include "infrastructure/status_display/status_display.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/motor_target_test.h"
 #include "tests/target/qspi_target_test.h"
 #include "task.h"
 
-static uint32_t last_control_run_ms;
 static uint32_t consecutive_control_overruns;
 
 static void HandleConsoleCommand(const ConsoleCommand *command,
@@ -44,6 +44,8 @@ static bool StartControl(void);
 static void StopControl(void);
 static bool StartMotorTargetTest(MotorTargetTestAction action,
                                  uint32_t now_ms);
+static bool PrepareTargetTest(void);
+static void ReleaseCompletedTargetTest(void);
 static void LatchInternalFault(uint32_t fault);
 static void ApplyPendingParameters(void);
 static bool ResetOdometry(void);
@@ -94,7 +96,6 @@ void ChassisApp_Init(void)
   IwdgTargetTest_Init();
   MotorTargetTest_Init();
   DiagnosticReport_Init(HAL_GetTick());
-  last_control_run_ms = 0U;
   consecutive_control_overruns = 0U;
   if (SafetyManager_IsEmergencyStopLatched()) {
     WheelController_EmergencyStop();
@@ -102,7 +103,8 @@ void ChassisApp_Init(void)
 #if ENABLE_MOTOR_DEMO
   demo_stage = 0U;
   demo_stage_started_ms = HAL_GetTick();
-  if (!SubmitCommand(0, 0, COMMAND_SOURCE_DEMO, demo_stage_started_ms,
+  if (!SubmitCommand(0, 0, COMMAND_SOURCE_TARGET_TEST,
+                     demo_stage_started_ms,
                      false, 0U) ||
       !StartControl()) {
     Error_Handler();
@@ -115,7 +117,6 @@ void ChassisApp_Run(void)
   static uint32_t last_heartbeat_ms;
   ConsoleCommand console_command;
   CanTransportControlCommand control_command;
-  uint32_t control_run_ms;
   const uint32_t now_ms = HAL_GetTick();
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
@@ -128,7 +129,7 @@ void ChassisApp_Run(void)
 #if ENABLE_MOTOR_DEMO
   if (demo_stage < 6U) {
     taskENTER_CRITICAL();
-    (void)CommandManager_Refresh(COMMAND_SOURCE_DEMO, now_ms);
+    (void)CommandManager_Refresh(COMMAND_SOURCE_TARGET_TEST, now_ms);
     taskEXIT_CRITICAL();
   }
   switch (demo_stage) {
@@ -136,14 +137,15 @@ void ChassisApp_Run(void)
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
         (void)SubmitCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
                             MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            COMMAND_SOURCE_DEMO, now_ms, false, 0U);
+                            COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
         demo_stage = 1U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 1U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        (void)SubmitCommand(0, 0, COMMAND_SOURCE_DEMO, now_ms, false, 0U);
+        (void)SubmitCommand(0, 0, COMMAND_SOURCE_TARGET_TEST, now_ms,
+                            false, 0U);
         demo_stage = 2U;
         demo_stage_started_ms = now_ms;
       }
@@ -152,14 +154,15 @@ void ChassisApp_Run(void)
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
         (void)SubmitCommand(-MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
                             -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            COMMAND_SOURCE_DEMO, now_ms, false, 0U);
+                            COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
         demo_stage = 3U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 3U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        (void)SubmitCommand(0, 0, COMMAND_SOURCE_DEMO, now_ms, false, 0U);
+        (void)SubmitCommand(0, 0, COMMAND_SOURCE_TARGET_TEST, now_ms,
+                            false, 0U);
         demo_stage = 4U;
         demo_stage_started_ms = now_ms;
       }
@@ -168,7 +171,7 @@ void ChassisApp_Run(void)
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
         (void)SubmitCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
                             -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            COMMAND_SOURCE_DEMO, now_ms, false, 0U);
+                            COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
         demo_stage = 5U;
         demo_stage_started_ms = now_ms;
       }
@@ -184,22 +187,34 @@ void ChassisApp_Run(void)
   }
 #endif
 
+  CanTransport_Run();
+  if (CanTransport_TakeSessionInvalidated()) {
+    taskENTER_CRITICAL();
+    if (CommandManager_GetOwner() == COMMAND_SOURCE_CAN_REMOTE) {
+      taskEXIT_CRITICAL();
+      StopControl();
+    } else {
+      taskEXIT_CRITICAL();
+    }
+  }
   if (CanTransport_TakeControlCommand(&control_command)) {
     if (control_command.enabled) {
       if (SubmitCommand(control_command.left_target,
-                        control_command.right_target, COMMAND_SOURCE_CAN,
+                        control_command.right_target,
+                        COMMAND_SOURCE_CAN_REMOTE,
                         now_ms, true, control_command.sequence)) {
         (void)StartControl();
       }
-    } else {
+    } else if (CommandManager_GetOwner() ==
+               COMMAND_SOURCE_CAN_REMOTE) {
       StopControl();
     }
   }
 
   StatusDisplay_Run(now_ms);
-  CanTransport_Run();
   QspiTargetTest_Run(now_ms);
   MotorTargetTest_Run(now_ms);
+  ReleaseCompletedTargetTest();
   DiagnosticReport_Run(now_ms);
 
   if (IwdgTargetTest_IsResetRequested()) {
@@ -249,11 +264,9 @@ void ChassisApp_Run(void)
     HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET);
   }
 
-  control_run_ms =
-      __atomic_load_n(&last_control_run_ms, __ATOMIC_RELAXED);
-  if (control_run_ms != 0U &&
-      now_ms - control_run_ms <= 50U &&
+  if (RtosApp_AreCriticalTasksHealthy() &&
       !FaultManager_HasCritical() &&
+      CanTransport_IsOperational() &&
       !IwdgTargetTest_IsResetRequested()) {
     HAL_IWDG_Refresh(&hiwdg);
   }
@@ -338,16 +351,22 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       WriteEncoderResult();
       break;
     case CONSOLE_COMMAND_QSPI_TEST:
-      if (IwdgTargetTest_IsResetRequested() ||
+      if (!PrepareTargetTest() ||
           !QspiTargetTest_Start()) {
+        taskENTER_CRITICAL();
+        CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
+        taskEXIT_CRITICAL();
         WriteConsoleHelp();
       } else {
         DiagnosticReport_RequestQspiTest();
       }
       break;
     case CONSOLE_COMMAND_IWDG_RESET:
-      if (QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING ||
+      if (!PrepareTargetTest() ||
           !IwdgTargetTest_Start()) {
+        taskENTER_CRITICAL();
+        CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
+        taskEXIT_CRITICAL();
         WriteConsoleHelp();
       } else {
         DiagnosticReport_RequestIwdgArmed();
@@ -374,9 +393,13 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
         StopControl();
         accepted = true;
       } else {
-        accepted = !IwdgTargetTest_IsResetRequested() &&
-                   QspiTargetTest_GetStatus() != QSPI_TARGET_TEST_RUNNING &&
+        accepted = PrepareTargetTest() &&
                    StartMotorTargetTest(action, now_ms);
+        if (!accepted) {
+          taskENTER_CRITICAL();
+          CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
+          taskEXIT_CRITICAL();
+        }
       }
       DiagnosticReport_MotorTestResult(action, accepted);
       break;
@@ -440,7 +463,7 @@ static void WriteEncoderResult(void)
 static void WriteCanDiagnostics(void)
 {
   CanTransportDiagnostics diagnostics;
-  char response[256];
+  char response[320];
   int length;
 
   if (!CanTransport_GetDiagnostics(&diagnostics)) {
@@ -449,7 +472,7 @@ static void WriteCanDiagnostics(void)
   }
   length = snprintf(
       response, sizeof(response),
-      "FDCAN_DIAG: activity=%lu lec=%lu dlec=%lu tec=%lu rec=%lu passive=%lu warning=%lu busoff=%lu restricted=%lu rxfill=%lu txfree=%lu\r\n",
+      "FDCAN_DIAG: activity=%lu lec=%lu dlec=%lu tec=%lu rec=%lu passive=%lu warning=%lu busoff=%lu restricted=%lu rxfill=%lu txfree=%lu counts[w=%lu p=%lu bo=%lu pe=%lu full=%lu lost=%lu recover=%lu fail=%lu]\r\n",
       (unsigned long)diagnostics.activity,
       (unsigned long)diagnostics.last_error_code,
       (unsigned long)diagnostics.data_last_error_code,
@@ -460,7 +483,15 @@ static void WriteCanDiagnostics(void)
       (unsigned long)diagnostics.bus_off,
       (unsigned long)diagnostics.restricted_mode,
       (unsigned long)diagnostics.rx_fifo_fill,
-      (unsigned long)diagnostics.tx_fifo_free);
+      (unsigned long)diagnostics.tx_fifo_free,
+      (unsigned long)diagnostics.warning_count,
+      (unsigned long)diagnostics.error_passive_count,
+      (unsigned long)diagnostics.bus_off_count,
+      (unsigned long)diagnostics.protocol_error_count,
+      (unsigned long)diagnostics.rx_fifo_full_count,
+      (unsigned long)diagnostics.rx_fifo_lost_count,
+      (unsigned long)diagnostics.recovery_count,
+      (unsigned long)diagnostics.recovery_failure_count);
   if (length > 0 && (size_t)length < sizeof(response)) {
     (void)BspUart_Write(response, (size_t)length);
   }
@@ -532,8 +563,6 @@ void ChassisApp_RunControlTick(uint32_t notification_count)
   left_measurement = left_delta / (int32_t)notification_count;
   right_measurement = right_delta / (int32_t)notification_count;
   ApplyPendingParameters();
-  __atomic_store_n(&last_control_run_ms, now_ms, __ATOMIC_RELAXED);
-
   if (SafetyManager_IsEmergencyStopLatched()) {
     taskENTER_CRITICAL();
     CommandManager_Clear();
@@ -587,7 +616,6 @@ static bool StartMotorTargetTest(MotorTargetTestAction action,
     return false;
   }
   taskENTER_CRITICAL();
-  CommandManager_Clear();
   WheelController_Stop();
   taskEXIT_CRITICAL();
   if (!MotorTargetTest_Start(action, now_ms)) {
@@ -595,6 +623,50 @@ static bool StartMotorTargetTest(MotorTargetTestAction action,
     return false;
   }
   return true;
+}
+
+static bool PrepareTargetTest(void)
+{
+  MotorTargetTestSnapshot motor_test;
+
+  MotorTargetTest_GetSnapshot(&motor_test);
+  if (IwdgTargetTest_IsResetRequested() ||
+      QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING ||
+      motor_test.running) {
+    return false;
+  }
+
+  StopControl();
+  BspMotor_CoastAll();
+  if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED ||
+      BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT) != 0 ||
+      BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT) != 0) {
+    return false;
+  }
+
+  taskENTER_CRITICAL();
+  const bool acquired =
+      CommandManager_Acquire(COMMAND_SOURCE_TARGET_TEST);
+  taskEXIT_CRITICAL();
+  return acquired;
+}
+
+static void ReleaseCompletedTargetTest(void)
+{
+  MotorTargetTestSnapshot motor_test;
+
+  if (IwdgTargetTest_IsResetRequested() ||
+      QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING) {
+    return;
+  }
+  MotorTargetTest_GetSnapshot(&motor_test);
+  if (motor_test.running) {
+    return;
+  }
+
+  taskENTER_CRITICAL();
+  CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
+  taskEXIT_CRITICAL();
 }
 
 static void LatchInternalFault(uint32_t fault)

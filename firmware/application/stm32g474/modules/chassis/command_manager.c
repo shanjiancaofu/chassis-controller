@@ -7,22 +7,54 @@
 
 static CommandManagerCommand active_command;
 static bool command_valid;
+static CommandSource control_owner;
 
 void CommandManager_Init(void)
 {
   active_command = (CommandManagerCommand){0};
   command_valid = false;
+  control_owner = COMMAND_SOURCE_NONE;
+}
+
+bool CommandManager_Acquire(CommandSource source)
+{
+  if (source == COMMAND_SOURCE_NONE ||
+      source > COMMAND_SOURCE_TARGET_TEST ||
+      (control_owner != COMMAND_SOURCE_NONE && control_owner != source)) {
+    return false;
+  }
+
+  control_owner = source;
+  return true;
+}
+
+void CommandManager_Release(CommandSource source)
+{
+  if (source == COMMAND_SOURCE_NONE || control_owner != source) {
+    return;
+  }
+
+  active_command = (CommandManagerCommand){0};
+  command_valid = false;
+  control_owner = COMMAND_SOURCE_NONE;
+}
+
+CommandSource CommandManager_GetOwner(void)
+{
+  return control_owner;
 }
 
 bool CommandManager_Submit(const CommandManagerCommand *command)
 {
   if (command == NULL || command->source == COMMAND_SOURCE_NONE ||
-      command->source > COMMAND_SOURCE_DEMO ||
-      (command->source == COMMAND_SOURCE_CAN) != command->has_sequence ||
+      command->source > COMMAND_SOURCE_TARGET_TEST ||
+      (command->source == COMMAND_SOURCE_CAN_REMOTE) !=
+          command->has_sequence ||
       command->left_target < -MOTOR_CONTROL_TARGET_LIMIT ||
       command->left_target > MOTOR_CONTROL_TARGET_LIMIT ||
       command->right_target < -MOTOR_CONTROL_TARGET_LIMIT ||
-      command->right_target > MOTOR_CONTROL_TARGET_LIMIT) {
+      command->right_target > MOTOR_CONTROL_TARGET_LIMIT ||
+      !CommandManager_Acquire(command->source)) {
     return false;
   }
 
@@ -46,6 +78,7 @@ void CommandManager_Clear(void)
 {
   active_command = (CommandManagerCommand){0};
   command_valid = false;
+  control_owner = COMMAND_SOURCE_NONE;
 }
 
 bool CommandManager_Get(CommandManagerCommand *command)

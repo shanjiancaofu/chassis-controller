@@ -6,9 +6,9 @@
 
 typedef enum {
   COMMAND_SOURCE_NONE = 0,
-  COMMAND_SOURCE_CAN,
+  COMMAND_SOURCE_CAN_REMOTE,
   COMMAND_SOURCE_CONSOLE,
-  COMMAND_SOURCE_DEMO
+  COMMAND_SOURCE_TARGET_TEST
 } CommandSource;
 
 typedef struct {
@@ -21,6 +21,9 @@ typedef struct {
 } CommandManagerCommand;
 
 void CommandManager_Init(void);
+bool CommandManager_Acquire(CommandSource source);
+void CommandManager_Release(CommandSource source);
+CommandSource CommandManager_GetOwner(void);
 bool CommandManager_Submit(const CommandManagerCommand *command);
 bool CommandManager_Refresh(CommandSource source, uint32_t now_ms);
 void CommandManager_Clear(void);
