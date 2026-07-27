@@ -1,7 +1,7 @@
 #ifndef LCD_COVER_IMAGE_H
 #define LCD_COVER_IMAGE_H
 
-#include "../../../../../picture/tafei/picture_tafei.h"
+#include "assets/tafei/picture_tafei.h"
 
 #define LCD_COVER_IMAGE_WIDTH 247U
 #define LCD_COVER_IMAGE_HEIGHT 240U

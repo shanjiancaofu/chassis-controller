@@ -18,7 +18,6 @@ firmware/
 docs/                       # 架构、路线、硬件、验证和 OTA 设计
 protocol/                   # CAN FD 线协议
 tools/ota/                  # 固件打包工具
-picture/                    # LCD 素材
 example/                    # 本地参考例程，不提交
 ```
 

@@ -48,6 +48,7 @@ chassis-controller/
 │  │     │  ├─ encoder/
 │  │     │  ├─ fdcan/
 │  │     │  ├─ lcd/
+│  │     │  │  └─ assets/            # LCD 图片和取模素材
 │  │     │  ├─ motor/
 │  │     │  ├─ power_monitor/
 │  │     │  ├─ qspi/
@@ -234,6 +235,10 @@ Bootloader 是独立 CubeMX/CubeIDE 工程，拥有独立入口、向量表、�
 
 `protocol` 保存线上兼容契约，`docs` 保存架构、路线、硬件、验证和升级设计。
 当前文档按唯一职责平铺；同类文档形成实际集合后，再迁入最终分类目录。
+
+`protocol/` 保持仓库顶层，因为 CAN FD 和 OTA 传输协议同时约束 STM32、
+Jetson 和主机工具，不属于某个固件工程。LCD 图片素材跟随使用者放在
+`firmware/application/stm32g474/bsp/lcd/assets/`，不再放仓库顶层。
 
 ## 命名规则
 
