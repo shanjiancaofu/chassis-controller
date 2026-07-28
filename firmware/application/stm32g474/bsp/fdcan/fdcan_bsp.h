@@ -7,11 +7,13 @@
 
 #include "stm32g4xx_hal.h"
 
-#define BSP_FDCAN_DATA_SIZE 8U
+#define BSP_FDCAN_MAX_DATA_SIZE 64U
+#define BSP_FDCAN_CONTROL_DATA_SIZE 8U
 
 typedef struct {
   uint32_t identifier;
-  uint8_t data[BSP_FDCAN_DATA_SIZE];
+  uint8_t length;
+  uint8_t data[BSP_FDCAN_MAX_DATA_SIZE];
 } BspFdcanFrame;
 
 typedef struct {
@@ -33,6 +35,7 @@ HAL_StatusTypeDef BspFdcan_Start(const uint32_t *accepted_standard_ids,
 HAL_StatusTypeDef BspFdcan_Restart(void);
 HAL_StatusTypeDef BspFdcan_ReadRxFrame(BspFdcanFrame *frame);
 HAL_StatusTypeDef BspFdcan_SendFrame(const BspFdcanFrame *frame);
+bool BspFdcan_IsTxIdle(void);
 bool BspFdcan_GetDiagnostics(BspFdcanDiagnostics *diagnostics);
 
 #endif

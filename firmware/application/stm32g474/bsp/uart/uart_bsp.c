@@ -5,7 +5,7 @@
 #include "usart.h"
 
 #define UART_DMA_RX_BUFFER_SIZE 128U
-#define UART_RX_RING_SIZE 256U
+#define UART_RX_RING_SIZE 1024U
 #define UART_TX_QUEUE_DEPTH 8U
 #define UART_TX_MESSAGE_SIZE 1200U
 
@@ -118,6 +118,17 @@ bool BspUart_Write(const void *data, size_t length)
 bool BspUart_WriteString(const char *text)
 {
   return text != NULL && BspUart_Write(text, strlen(text));
+}
+
+bool BspUart_IsTxIdle(void)
+{
+  uint32_t primask = __get_PRIMASK();
+  bool idle;
+
+  __disable_irq();
+  idle = tx_count == 0U && !tx_active;
+  __set_PRIMASK(primask);
+  return idle;
 }
 
 void BspUart_GetDiagnostics(BspUartDiagnostics *diagnostics)

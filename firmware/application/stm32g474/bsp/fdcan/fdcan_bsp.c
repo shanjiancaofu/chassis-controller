@@ -4,6 +4,9 @@
 
 #include "fdcan.h"
 
+static bool LengthToDlc(uint8_t length, uint32_t *dlc);
+static uint8_t DlcToLength(uint32_t dlc);
+
 HAL_StatusTypeDef BspFdcan_Start(const uint32_t *accepted_standard_ids,
                                  size_t accepted_id_count)
 {
@@ -11,21 +14,28 @@ HAL_StatusTypeDef BspFdcan_Start(const uint32_t *accepted_standard_ids,
   size_t index;
 
   if (accepted_standard_ids == NULL || accepted_id_count == 0U ||
-      accepted_id_count > hfdcan2.Init.StdFiltersNbr) {
+      accepted_id_count > hfdcan2.Init.StdFiltersNbr * 2U) {
     return HAL_ERROR;
   }
 
   filter.IdType = FDCAN_STANDARD_ID;
-  filter.FilterType = FDCAN_FILTER_MASK;
   filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-  filter.FilterID2 = 0x7FFU;
-  for (index = 0U; index < accepted_id_count; ++index) {
-    if (accepted_standard_ids[index] > 0x7FFU) {
+  for (index = 0U; index < accepted_id_count; index += 2U) {
+    if (accepted_standard_ids[index] > 0x7FFU ||
+        (index + 1U < accepted_id_count &&
+         accepted_standard_ids[index + 1U] > 0x7FFU)) {
       return HAL_ERROR;
     }
 
-    filter.FilterIndex = (uint32_t)index;
+    filter.FilterIndex = (uint32_t)(index / 2U);
     filter.FilterID1 = accepted_standard_ids[index];
+    if (index + 1U < accepted_id_count) {
+      filter.FilterType = FDCAN_FILTER_DUAL;
+      filter.FilterID2 = accepted_standard_ids[index + 1U];
+    } else {
+      filter.FilterType = FDCAN_FILTER_MASK;
+      filter.FilterID2 = 0x7FFU;
+    }
     if (HAL_FDCAN_ConfigFilter(&hfdcan2, &filter) != HAL_OK) {
       return HAL_ERROR;
     }
@@ -64,36 +74,76 @@ HAL_StatusTypeDef BspFdcan_ReadRxFrame(BspFdcanFrame *frame)
   if (frame == NULL ||
       HAL_FDCAN_GetRxMessage(&hfdcan2, FDCAN_RX_FIFO0, &header,
                              frame->data) != HAL_OK ||
-      header.DataLength != FDCAN_DLC_BYTES_8 ||
       header.FDFormat != FDCAN_FD_CAN ||
       header.BitRateSwitch != FDCAN_BRS_ON) {
     return HAL_ERROR;
   }
 
   frame->identifier = header.Identifier;
+  frame->length = DlcToLength(header.DataLength);
+  if (frame->length == 0U && header.DataLength != FDCAN_DLC_BYTES_0) {
+    return HAL_ERROR;
+  }
   return HAL_OK;
 }
 
 HAL_StatusTypeDef BspFdcan_SendFrame(const BspFdcanFrame *frame)
 {
   FDCAN_TxHeaderTypeDef header = {0};
-  uint8_t data[BSP_FDCAN_DATA_SIZE];
+  uint8_t data[BSP_FDCAN_MAX_DATA_SIZE] = {0};
+  uint32_t dlc;
 
-  if (frame == NULL || frame->identifier > 0x7FFU) {
+  if (frame == NULL || frame->identifier > 0x7FFU ||
+      !LengthToDlc(frame->length, &dlc)) {
     return HAL_ERROR;
   }
 
-  memcpy(data, frame->data, sizeof(data));
+  memcpy(data, frame->data, frame->length);
   header.Identifier = frame->identifier;
   header.IdType = FDCAN_STANDARD_ID;
   header.TxFrameType = FDCAN_DATA_FRAME;
-  header.DataLength = FDCAN_DLC_BYTES_8;
+  header.DataLength = dlc;
   header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
   header.BitRateSwitch = FDCAN_BRS_ON;
   header.FDFormat = FDCAN_FD_CAN;
   header.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
   header.MessageMarker = 0U;
   return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &header, data);
+}
+
+bool BspFdcan_IsTxIdle(void)
+{
+  return hfdcan2.Instance->TXBRP == 0U;
+}
+
+static bool LengthToDlc(uint8_t length, uint32_t *dlc)
+{
+  static const uint8_t lengths[] = {
+      0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U,
+      8U, 12U, 16U, 20U, 24U, 32U, 48U, 64U,
+  };
+  uint32_t index;
+
+  if (dlc == NULL) {
+    return false;
+  }
+  for (index = 0U; index < sizeof(lengths); ++index) {
+    if (lengths[index] == length) {
+      *dlc = index;
+      return true;
+    }
+  }
+  return false;
+}
+
+static uint8_t DlcToLength(uint32_t dlc)
+{
+  static const uint8_t lengths[] = {
+      0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U,
+      8U, 12U, 16U, 20U, 24U, 32U, 48U, 64U,
+  };
+
+  return dlc < sizeof(lengths) ? lengths[dlc] : 0U;
 }
 
 bool BspFdcan_GetDiagnostics(BspFdcanDiagnostics *diagnostics)

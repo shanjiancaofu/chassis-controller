@@ -11,8 +11,8 @@
 - 关键任务健康汇总和条件喂狗
 - `chassis`、`safety`、`parameters`、`diagnostics` 业务域
 
-Debug 和 Release 曾完成 clean build。历史结果见 `verification.md`；OTA 相关代码
-落地后必须重新构建和回归。
+Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重新 clean build。
+构建尺寸和未完成的实物回归见 `verification.md`。
 
 ## 当前结构到最终结构
 
@@ -21,13 +21,13 @@ Debug 和 Release 曾完成 clean build。历史结果见 `verification.md`；OT
 | 当前实际状态 | 最终位置或变化 | 时机 |
 | --- | --- | --- |
 | 四个 `firmware/shared/*.h` | Bootloader、Application 和主机工具共用固定 ABI | 已完成首版，后续兼容修改必须提升格式版本 |
-| `components/pid/` | 按真实复用需求增加 crc 等组件 | Bootloader 校验代码落地时 |
-| `communication/can_transport/` | 增加 `chassis_protocol/`、`ota_transport/` | 正式协议或 OTA 会话实现时 |
+| Application `components/pid/`、`components/crc/` | Bootloader 保持独立 CRC 实现 | 已按独立工程边界拆分 |
+| `communication/can_transport/`、`communication/ota_transport/` | 增加 `chassis_protocol/` | 正式底盘协议编解码落地时 |
 | `infrastructure/` | 保留现有命名，后续增加参数存储 | 参数持久化实现时 |
 | `modules/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
 | `rtos/rtos_app.c/h` 两任务模型 | 仅按真实阻塞或周期需求新增任务 | OTA 接收需要独立非实时任务时 |
 | 仅有 `tests/target/` | 增加 `tests/unit/` | 首个无 HAL 组件测试落地时 |
-| 尚无 Bootloader 工程 | 建立独立 `firmware/bootloader/stm32g474/` | 下一批 |
+| 独立 Bootloader 工程 | 继续与 Application 保持独立 CubeMX、链接脚本和构建配置 | 已完成首版 |
 
 迁移不改变底盘行为，不批量创建空目录，不建立只转发调用的空层。
 
@@ -46,20 +46,33 @@ Debug 和 Release 曾完成 clean build。历史结果见 `verification.md`；OT
 - UART 已具备 circular DMA、IDLE 接收、软件环形缓冲和 TX DMA 队列
 - 建立 Bootloader 纯逻辑首批代码：CRC32、镜像头/载荷校验、向量表校验、
   OTA 元数据双副本校验和 sequence 选择
-- 建立 Bootloader PC 单元测试入口；当前本机未找到 C 编译器，尚未形成
-  `BUILD PASS`
+- 建立独立裸机 Bootloader CubeMX/CubeIDE 工程，只启用 QSPI、IWDG、SWD 和时钟
+- Bootloader 链接区限制为 `0x08000000` 起始的 32 KiB
+- 接入 W25Q64 JEDEC 检查、元数据双副本读取和交替提交
+- 实现候选镜像流式 CRC 校验、内部 Flash 双 Bank 擦写、写后校验和严格跳转
+- 实现 `STAGED -> INSTALLING -> TRIAL`、试运行计数和 confirmed 镜像回滚路径
+- Debug 与 Release 均完成 clean build，结果见 `verification.md`
+- Application 链接区迁移到 `0x08008000`、大小限制为 480 KiB，Debug/Release 的
+  VTOR 均经 ELF 反汇编确认写入 `0x08008000`
+- Application 增加非实时试运行确认状态机：连续 5 秒关键任务健康后读取双副本元数据，
+  仅将合法 `TRIAL` 交替提交为 `CONFIRMED`，并与人工 QSPI 擦写测试互斥
+- 当前 Release BIN 已通过 OTA 打包器的向量表、地址、长度和 CRC32 校验
+- Application 已实现统一 OTA 会话、停车维护锁、UART 二进制帧解析、CAN FD 64 字节
+  分块传输、QSPI DMA 写入、整包/镜像校验和 `STAGED` 元数据提交
+- UART 进入二进制模式后 30 秒内未收到 BEGIN 会自动退出并释放维护锁
+- 失败或中止时等待 QSPI 内部擦写结束后才释放维护锁；最终响应提交并排空后才复位
+- 已提供 UART 和 SocketCAN CAN FD stop-and-wait 主机发送工具
+- 已生成并校验 Bootloader + relocated Application 首次组合烧录产物
+- 已使用 DFU 烧录正式组合镜像，验证 Bootloader 普通启动可跳转到 relocated Application
+- Bootloader 固定使用 16 MHz HSI；普通启动不启用 Bootloader IWDG，安装和回滚时
+  按需启用，并在完成后通过系统复位进入干净的 Application 启动路径
 
 下一批按顺序执行：
 
-1. 建立独立 `firmware/bootloader/stm32g474/` CubeMX/CubeIDE 工程，
-   接入最小启动代码、链接脚本、IWDG 和 QSPI 初始化。
-2. 将已落地的 Bootloader 纯逻辑接到 QSPI 元数据读取和镜像读取。
-3. 实现内部 Flash 安装、写后校验、断电重试和严格 Application 跳转。
-4. 将 Application 链接地址和 VTOR 一起迁移到 `0x08008000`。
-5. 实现 Application OTA 会话、停车准入、传输源互斥和 QSPI 分块写入。
-6. 在现有 UART BSP 上接入 OTA 帧解析，不复制第二套 DMA 或环形缓冲。
-7. 实现 CAN FD OTA 分块传输；UART 与 CAN FD 复用同一 OTA 状态机。
-8. 完成 UART、CAN FD、断电恢复、未确认回滚和损坏镜像拒绝实物验证。
+1. 使用 UART 完成首个真实 `.ota` 升级并检查 `STAGED -> TRIAL -> CONFIRMED`。
+2. 使用 Jetson SocketCAN 完成同一镜像的 CAN FD 升级。
+3. 验证错误头、错误 CRC、会话超时和 CAN 错误均保持停车且不会安装。
+4. 验证 QSPI 暂存、内部安装期间断电恢复，以及未确认试运行回滚。
 
 ## 后续阶段
 

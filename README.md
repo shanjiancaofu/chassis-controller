@@ -6,18 +6,21 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前进入 Bootloader 与 OTA 阶段，已落地首批 Bootloader 纯逻辑代码；
-完成状态、下一步和验证结果分别见 `docs/roadmap.md` 与 `docs/verification.md`。
+当前处于 Bootloader 与 OTA V1 实物验证阶段。独立 Bootloader、Application 重定位、
+UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建；首次联合
+烧录及 Bootloader 到 Application 的普通启动已通过实物验证，真实升级尚未验证。进度与验证结果分别见 `docs/roadmap.md` 和
+`docs/verification.md`。
 
 ## 目录
 
 ```text
 firmware/
 ├─ application/stm32g474/   # 正式 Application CubeMX/CubeIDE 工程
+├─ bootloader/stm32g474/    # 裸机 Bootloader CubeMX/CubeIDE 工程
 └─ shared/                  # Bootloader、Application、打包器共用固定 ABI
 docs/                       # 架构、路线、硬件、验证和 OTA 设计
 protocol/                   # CAN FD 线协议
-tools/ota/                  # 固件打包工具
+tools/ota/                  # 打包、首次组合镜像和 UART/CAN FD 发送工具
 example/                    # 本地参考例程，不提交
 ```
 
@@ -36,6 +39,7 @@ infrastructure/  modules/  rtos/  tests/  config/
 - [构建与实物验证](docs/verification.md)
 - [Bootloader 与 OTA](docs/bootloader_and_ota.md)
 - [CAN FD 协议](protocol/canfd_protocol.md)
+- [OTA V1 传输协议](protocol/ota_canfd_protocol.md)
 - [Codex/AI 修改规则](AGENTS.md)
 
 同一信息只在一份文档中维护。代码和配置发生变化时，按上述职责更新对应文档。
@@ -49,10 +53,11 @@ infrastructure/  modules/  rtos/  tests/  config/
 - STM32CubeIDE GCC
 - ST-Link 或 STM32CubeProgrammer
 
-CubeIDE 导入目录：
+CubeIDE 工作区使用仓库的 `firmware/`，导入两个独立工程：
 
 ```text
 firmware/application/stm32g474
+firmware/bootloader/stm32g474
 ```
 
 日常流程：

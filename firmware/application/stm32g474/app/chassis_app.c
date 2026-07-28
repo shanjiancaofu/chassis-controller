@@ -10,6 +10,10 @@
 #include "bsp/power_monitor/bsp_power_sample.h"
 #include "bsp/uart/uart_bsp.h"
 #include "communication/can_transport/can_transport.h"
+#include "communication/ota_transport/ota_can_transport.h"
+#include "communication/ota_transport/ota_confirmation.h"
+#include "communication/ota_transport/ota_session.h"
+#include "communication/ota_transport/ota_uart_transport.h"
 #include "config/app_config.h"
 #include "config/control_config.h"
 #include "config/feature_config.h"
@@ -32,7 +36,13 @@
 #include "tests/target/qspi_target_test.h"
 #include "task.h"
 
+#define OTA_UART_ARM_TIMEOUT_MS 30000U
+
 static uint32_t consecutive_control_overruns;
+static uint32_t ota_uart_armed_ms;
+static bool ota_terminal_cleaned;
+static bool ota_response_waiting;
+static OtaResponse ota_response;
 
 static void HandleConsoleCommand(const ConsoleCommand *command,
                                  uint32_t now_ms);
@@ -45,6 +55,9 @@ static void StopControl(void);
 static bool StartMotorTargetTest(MotorTargetTestAction action,
                                  uint32_t now_ms);
 static bool PrepareTargetTest(void);
+static bool PrepareOta(void);
+static void ReleaseOta(void);
+static void RunOtaTransports(uint32_t now_ms);
 static void ReleaseCompletedTargetTest(void);
 static void LatchInternalFault(uint32_t fault);
 static void ApplyPendingParameters(void);
@@ -73,6 +86,12 @@ void ChassisApp_Init(void)
   if (CanTransport_Init() != HAL_OK) {
     Error_Handler();
   }
+  OtaCanTransport_Init();
+  OtaUartTransport_Init();
+  OtaSession_Init();
+  ota_uart_armed_ms = 0U;
+  ota_terminal_cleaned = true;
+  ota_response_waiting = false;
 
   BspMotor_Init();
   if (!BspMotor_Start()) {
@@ -92,6 +111,7 @@ void ChassisApp_Init(void)
   WheelController_Init();
   Odometry_Init();
   BoardHealth_Init();
+  OtaConfirmation_Init();
   QspiTargetTest_Init();
   IwdgTargetTest_Init();
   MotorTargetTest_Init();
@@ -121,7 +141,11 @@ void ChassisApp_Run(void)
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
   BspUart_Run();
-  Console_Run();
+  if (OtaUartTransport_IsEnabled()) {
+    OtaUartTransport_Run();
+  } else {
+    Console_Run();
+  }
   while (Console_TakeCommand(&console_command)) {
     HandleConsoleCommand(&console_command, now_ms);
   }
@@ -189,6 +213,8 @@ void ChassisApp_Run(void)
 
   CanTransport_Run();
   if (CanTransport_TakeSessionInvalidated()) {
+    OtaCanTransport_Invalidate();
+    OtaSession_AbortSource(OTA_SOURCE_CAN_FD, now_ms);
     taskENTER_CRITICAL();
     if (CommandManager_GetOwner() == COMMAND_SOURCE_CAN_REMOTE) {
       taskEXIT_CRITICAL();
@@ -197,6 +223,7 @@ void ChassisApp_Run(void)
       taskEXIT_CRITICAL();
     }
   }
+  RunOtaTransports(now_ms);
   if (CanTransport_TakeControlCommand(&control_command)) {
     if (control_command.enabled) {
       if (SubmitCommand(control_command.left_target,
@@ -213,6 +240,17 @@ void ChassisApp_Run(void)
 
   StatusDisplay_Run(now_ms);
   QspiTargetTest_Run(now_ms);
+  {
+    BoardHealthSnapshot health;
+
+    BoardHealth_GetSnapshot(&health);
+    OtaConfirmation_Run(
+        now_ms,
+        health.qspi_id_valid && RtosApp_AreCriticalTasksHealthy() &&
+            !FaultManager_HasCritical(),
+        QspiTargetTest_GetStatus() != QSPI_TARGET_TEST_RUNNING &&
+            !OtaSession_IsUsingQspi());
+  }
   MotorTargetTest_Run(now_ms);
   ReleaseCompletedTargetTest();
   DiagnosticReport_Run(now_ms);
@@ -220,6 +258,16 @@ void ChassisApp_Run(void)
   if (IwdgTargetTest_IsResetRequested()) {
     StopControl();
     BspMotor_EmergencyStop();
+  }
+
+  if (OtaSession_IsResetRequested(now_ms) &&
+      ((OtaSession_GetSource() == OTA_SOURCE_UART &&
+        OtaUartTransport_IsTxIdle()) ||
+       (OtaSession_GetSource() == OTA_SOURCE_CAN_FD &&
+        OtaCanTransport_IsTxIdle()))) {
+    StopControl();
+    BspMotor_CoastAll();
+    NVIC_SystemReset();
   }
 
   if (Telemetry_IsDue(now_ms)) {
@@ -349,6 +397,20 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       break;
     case CONSOLE_COMMAND_ENCODER_RESULT:
       WriteEncoderResult();
+      break;
+    case CONSOLE_COMMAND_OTA_UART:
+      if (PrepareOta()) {
+        static const char ready[] =
+            "OTA_UART: READY, binary mode\r\n";
+
+        Telemetry_SetMode(TELEMETRY_MODE_OFF);
+        (void)BspUart_WriteString(ready);
+        OtaUartTransport_Enable();
+        ota_uart_armed_ms = now_ms;
+        ota_terminal_cleaned = false;
+      } else {
+        (void)BspUart_WriteString("OTA_UART: REJECTED\r\n");
+      }
       break;
     case CONSOLE_COMMAND_QSPI_TEST:
       if (!PrepareTargetTest() ||
@@ -632,6 +694,8 @@ static bool PrepareTargetTest(void)
   MotorTargetTest_GetSnapshot(&motor_test);
   if (IwdgTargetTest_IsResetRequested() ||
       QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING ||
+      OtaConfirmation_IsUsingQspi() ||
+      OtaSession_IsActive() || OtaUartTransport_IsEnabled() ||
       motor_test.running) {
     return false;
   }
@@ -649,6 +713,106 @@ static bool PrepareTargetTest(void)
       CommandManager_Acquire(COMMAND_SOURCE_TARGET_TEST);
   taskEXIT_CRITICAL();
   return acquired;
+}
+
+static bool PrepareOta(void)
+{
+  MotorTargetTestSnapshot motor_test;
+
+  MotorTargetTest_GetSnapshot(&motor_test);
+  if (IwdgTargetTest_IsResetRequested() ||
+      QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING ||
+      OtaConfirmation_IsUsingQspi() || OtaSession_IsActive() ||
+      motor_test.running) {
+    return false;
+  }
+
+  StopControl();
+  BspMotor_CoastAll();
+  if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED ||
+      BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT) != 0 ||
+      BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT) != 0) {
+    return false;
+  }
+
+  taskENTER_CRITICAL();
+  const bool acquired = CommandManager_Acquire(COMMAND_SOURCE_OTA);
+  taskEXIT_CRITICAL();
+  if (acquired) {
+    ota_terminal_cleaned = false;
+  }
+  return acquired;
+}
+
+static void ReleaseOta(void)
+{
+  taskENTER_CRITICAL();
+  CommandManager_Release(COMMAND_SOURCE_OTA);
+  taskEXIT_CRITICAL();
+}
+
+static void RunOtaTransports(uint32_t now_ms)
+{
+  OtaMessage message;
+  bool begin_allowed;
+  bool prepared_here;
+  bool response_submitted;
+
+  if (!ota_response_waiting &&
+      (OtaCanTransport_TakeMessage(&message) ||
+       OtaUartTransport_TakeMessage(&message))) {
+    prepared_here = false;
+    if (message.type == OTA_MESSAGE_BEGIN && !OtaSession_IsActive() &&
+        CommandManager_GetOwner() != COMMAND_SOURCE_OTA) {
+      prepared_here = PrepareOta();
+    }
+    begin_allowed = CommandManager_GetOwner() == COMMAND_SOURCE_OTA;
+    if (message.type == OTA_MESSAGE_BEGIN &&
+        OtaUartTransport_IsEnabled() &&
+        message.source != OTA_SOURCE_UART) {
+      begin_allowed = false;
+    }
+    (void)OtaSession_Submit(&message, now_ms, begin_allowed);
+    if (prepared_here && !OtaSession_IsActive()) {
+      ReleaseOta();
+    }
+  }
+
+  OtaSession_Run(now_ms);
+  if (!ota_response_waiting) {
+    ota_response_waiting = OtaSession_TakeResponse(&ota_response);
+  }
+  if (ota_response_waiting) {
+    response_submitted =
+        ota_response.source == OTA_SOURCE_CAN_FD
+            ? OtaCanTransport_SendResponse(&ota_response)
+            : ota_response.source == OTA_SOURCE_UART
+                  ? OtaUartTransport_SendResponse(&ota_response)
+                  : false;
+    if (response_submitted) {
+      ota_response_waiting = false;
+      OtaSession_ResponseSubmitted();
+    }
+  }
+
+  if (!ota_terminal_cleaned && !ota_response_waiting &&
+      (OtaSession_GetState() == OTA_TRANSFER_ABORTED ||
+       OtaSession_GetState() == OTA_TRANSFER_FAILED) &&
+      !OtaSession_IsActive()) {
+    if (OtaSession_GetSource() == OTA_SOURCE_UART) {
+      OtaUartTransport_Disable();
+    }
+    ReleaseOta();
+    ota_terminal_cleaned = true;
+  }
+
+  if (OtaUartTransport_IsEnabled() && !OtaSession_IsActive() &&
+      now_ms - ota_uart_armed_ms >= OTA_UART_ARM_TIMEOUT_MS) {
+    OtaUartTransport_Disable();
+    ReleaseOta();
+    ota_terminal_cleaned = true;
+    (void)BspUart_WriteString("OTA_UART: TIMEOUT, text mode\r\n");
+  }
 }
 
 static void ReleaseCompletedTargetTest(void)

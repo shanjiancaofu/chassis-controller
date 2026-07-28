@@ -21,6 +21,7 @@ void BspUart_Run(void);
 size_t BspUart_Read(uint8_t *data, size_t capacity);
 bool BspUart_Write(const void *data, size_t length);
 bool BspUart_WriteString(const char *text);
+bool BspUart_IsTxIdle(void);
 void BspUart_GetDiagnostics(BspUartDiagnostics *diagnostics);
 
 #endif

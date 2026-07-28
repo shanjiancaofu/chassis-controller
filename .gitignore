@@ -73,6 +73,11 @@ dkms.conf
 /firmware/application/stm32g474/.settings/language.settings.xml
 /firmware/application/stm32g474/.settings/stm32cubeide.project.prefs
 /firmware/application/stm32g474/chassis_controller.launch
+/firmware/bootloader/stm32g474/Debug/
+/firmware/bootloader/stm32g474/Release/
+/firmware/bootloader/stm32g474/.settings/language.settings.xml
+/firmware/bootloader/stm32g474/.settings/stm32cubeide.project.prefs
+/firmware/bootloader/stm32g474/bootloader.launch
 firmware/.metadata/
 /.cubeide-workspace/
 

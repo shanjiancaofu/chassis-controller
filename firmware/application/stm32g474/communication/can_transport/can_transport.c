@@ -4,7 +4,9 @@
 
 #include "bsp/fdcan/fdcan_bsp.h"
 #include "config/control_config.h"
+#include "communication/ota_transport/ota_can_transport.h"
 #include "fdcan.h"
+#include "../../../../shared/ota_protocol.h"
 
 #define CAN_HANDSHAKE_REQUEST_ID 0x720U
 #define CAN_HANDSHAKE_RESPONSE_ID 0x721U
@@ -46,8 +48,10 @@ static uint8_t recovery_attempts;
 static bool recovery_pending;
 static bool recovery_failed;
 
-static void HandleHandshakeFrame(const uint8_t data[BSP_FDCAN_DATA_SIZE]);
-static void HandleControlFrame(const uint8_t data[BSP_FDCAN_DATA_SIZE]);
+static void HandleHandshakeFrame(
+    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE]);
+static void HandleControlFrame(
+    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE]);
 static void InvalidateControlSession(CanTransportLinkStatus status);
 static void ResetControlSession(void);
 static uint32_t TakeErrorEvents(void);
@@ -58,6 +62,7 @@ HAL_StatusTypeDef CanTransport_Init(void)
   static const uint32_t accepted_ids[] = {
       CAN_HANDSHAKE_REQUEST_ID,
       CAN_CONTROL_COMMAND_ID,
+      OTA_CAN_REQUEST_ID,
   };
 
   link_status = CAN_TRANSPORT_LINK_READY;
@@ -87,6 +92,7 @@ void CanTransport_Run(void)
 {
   static const BspFdcanFrame response = {
       .identifier = CAN_HANDSHAKE_RESPONSE_ID,
+      .length = BSP_FDCAN_CONTROL_DATA_SIZE,
       .data = {'C', 'H', 'A', 'S', 'S', 'I', 'S', 1U},
   };
 
@@ -251,10 +257,14 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
     return;
   }
 
-  if (frame.identifier == CAN_HANDSHAKE_REQUEST_ID) {
+  if (frame.identifier == CAN_HANDSHAKE_REQUEST_ID &&
+      frame.length == BSP_FDCAN_CONTROL_DATA_SIZE) {
     HandleHandshakeFrame(frame.data);
-  } else if (frame.identifier == CAN_CONTROL_COMMAND_ID) {
+  } else if (frame.identifier == CAN_CONTROL_COMMAND_ID &&
+             frame.length == BSP_FDCAN_CONTROL_DATA_SIZE) {
     HandleControlFrame(frame.data);
+  } else if (frame.identifier == OTA_CAN_REQUEST_ID) {
+    (void)OtaCanTransport_OnRxFrameFromIsr(&frame);
   }
 }
 
@@ -287,12 +297,13 @@ void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan,
   (void)__atomic_fetch_or(&error_events, events, __ATOMIC_RELAXED);
 }
 
-static void HandleHandshakeFrame(const uint8_t data[BSP_FDCAN_DATA_SIZE])
+static void HandleHandshakeFrame(
+    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE])
 {
-  static const uint8_t request[BSP_FDCAN_DATA_SIZE] = {
+  static const uint8_t request[BSP_FDCAN_CONTROL_DATA_SIZE] = {
       'P', 'I', 'N', 'G', 1U, 0U, 0U, 0U,
   };
-  static const uint8_t confirmation[BSP_FDCAN_DATA_SIZE] = {
+  static const uint8_t confirmation[BSP_FDCAN_CONTROL_DATA_SIZE] = {
       'P', 'A', 'S', 'S', 1U, 0U, 0U, 0U,
   };
 
@@ -313,7 +324,8 @@ static void HandleHandshakeFrame(const uint8_t data[BSP_FDCAN_DATA_SIZE])
   response_pending = false;
 }
 
-static void HandleControlFrame(const uint8_t data[BSP_FDCAN_DATA_SIZE])
+static void HandleControlFrame(
+    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE])
 {
   int16_t left_target;
   int16_t right_target;

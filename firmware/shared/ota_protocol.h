@@ -1,7 +1,26 @@
 #ifndef OTA_PROTOCOL_H
 #define OTA_PROTOCOL_H
 
+#include <stdint.h>
+
 #define OTA_PROTOCOL_VERSION 1U
+
+#define OTA_CAN_REQUEST_ID 0x730U
+#define OTA_CAN_RESPONSE_ID 0x731U
+#define OTA_CAN_FRAME_SIZE 64U
+#define OTA_CAN_HEADER_SIZE 8U
+#define OTA_CAN_DATA_SIZE (OTA_CAN_FRAME_SIZE - OTA_CAN_HEADER_SIZE)
+
+#define OTA_UART_MAGIC_0 0xA5U
+#define OTA_UART_MAGIC_1 0x5AU
+#define OTA_UART_HEADER_SIZE 12U
+#define OTA_UART_MAX_DATA_SIZE 240U
+#define OTA_UART_CRC_SIZE 4U
+#define OTA_UART_MAX_FRAME_SIZE \
+  (OTA_UART_HEADER_SIZE + OTA_UART_MAX_DATA_SIZE + OTA_UART_CRC_SIZE)
+
+#define OTA_MESSAGE_DATA_MAX_SIZE OTA_UART_MAX_DATA_SIZE
+#define OTA_SESSION_TIMEOUT_MS 5000U
 
 typedef enum
 {
@@ -31,5 +50,35 @@ typedef enum
   OTA_RESULT_IO_ERROR,
   OTA_RESULT_TIMEOUT
 } OtaResult;
+
+typedef enum
+{
+  OTA_TRANSFER_IDLE = 0,
+  OTA_TRANSFER_PREPARING,
+  OTA_TRANSFER_RECEIVING,
+  OTA_TRANSFER_FINALIZING,
+  OTA_TRANSFER_STAGED,
+  OTA_TRANSFER_ABORTED,
+  OTA_TRANSFER_FAILED
+} OtaTransferState;
+
+typedef struct
+{
+  OtaSource source;
+  OtaMessageType type;
+  uint32_t argument;
+  uint16_t data_length;
+  uint8_t session_id;
+  uint8_t data[OTA_MESSAGE_DATA_MAX_SIZE];
+} OtaMessage;
+
+typedef struct
+{
+  OtaSource source;
+  OtaResult result;
+  OtaTransferState state;
+  uint32_t next_offset;
+  uint8_t session_id;
+} OtaResponse;
 
 #endif

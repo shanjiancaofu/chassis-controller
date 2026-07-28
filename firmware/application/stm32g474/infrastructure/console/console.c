@@ -12,7 +12,7 @@
 #define CONSOLE_READ_CHUNK_SIZE 32U
 
 static const char help_text[] =
-    "COMMANDS: ping, status, telemetry text, telemetry vofa, telemetry off, can status, can tx confirm, pid show, pid left <kp> <ki> <kd>, pid right <kp> <ki> <kd>, pid target <left> <right>, pid stop, encoder zero, encoder result, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
+    "COMMANDS: ping, status, telemetry text, telemetry vofa, telemetry off, can status, can tx confirm, pid show, pid left <kp> <ki> <kd>, pid right <kp> <ki> <kd>, pid target <left> <right>, pid stop, encoder zero, encoder result, ota uart confirm, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
 
 static char line_buffer[CONSOLE_LINE_SIZE];
 static uint8_t line_length;
@@ -156,6 +156,8 @@ static ConsoleCommand ParseCommand(const char *line)
     command.type = CONSOLE_COMMAND_ENCODER_ZERO;
   } else if (strcmp(line, "encoder result") == 0) {
     command.type = CONSOLE_COMMAND_ENCODER_RESULT;
+  } else if (strcmp(line, "ota uart confirm") == 0) {
+    command.type = CONSOLE_COMMAND_OTA_UART;
   } else if (strcmp(line, "qspi test confirm") == 0) {
     command.type = CONSOLE_COMMAND_QSPI_TEST;
   } else if (strcmp(line, "iwdg reset confirm") == 0) {

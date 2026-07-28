@@ -134,22 +134,18 @@ chassis-controller/
 │        ├─ bootloader.ioc
 │        ├─ boot/
 │        │  ├─ boot_main.c
-│        │  ├─ boot_state_machine.c
+│        │  ├─ boot_installer.c
+│        │  ├─ boot_metadata_io.c
+│        │  ├─ ota_metadata_store.c
 │        │  ├─ image_validator.c
-│        │  ├─ bank_manager.c
 │        │  └─ app_launcher.c
 │        ├─ bsp/
 │        │  ├─ flash/
-│        │  ├─ fdcan/
-│        │  ├─ uart/
-│        │  └─ watchdog/
+│        │  └─ qspi/
 │        ├─ components/
-│        │  ├─ crc/
-│        │  ├─ sha256/
-│        │  └─ signature/
-│        └─ config/
-│           ├─ boot_config.h
-│           └─ build_info.h
+│        │  └─ crc/
+│        └─ tests/
+│           └─ unit/
 │
 ├─ protocol/
 │  ├─ canfd_protocol.md
@@ -196,12 +192,14 @@ BSP 不决定是否允许车辆运动，也不持有业务状态机。
 
 ### `components`
 
-保存可独立测试、无 HAL 依赖的算法。当前只有速度 PID。
+保存可独立测试、无 HAL 依赖的算法。当前包括速度 PID 和 Application CRC32。
 
 ### `communication`
 
-处理总线帧、字段校验、序号、握手和链路状态。线协议以
-`protocol/canfd_protocol.md` 为准。
+处理总线帧、字段校验、序号、握手和链路状态。当前 `ota_transport/` 已包含
+UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提交和 Application
+试运行确认状态机。线协议以
+`protocol/canfd_protocol.md` 和 `protocol/ota_canfd_protocol.md` 为准。
 
 ### `infrastructure`
 
@@ -229,7 +227,8 @@ BSP 不决定是否允许车辆运动，也不持有业务状态机。
 ### `firmware/bootloader`
 
 Bootloader 是独立 CubeMX/CubeIDE 工程，拥有独立入口、向量表、链接脚本和版本。
-它只负责镜像校验、安装、试运行确认、回滚和 Application 跳转，不运行底盘业务。
+它只负责镜像校验、安装、试运行计数、回滚和 Application 跳转，不运行底盘业务；
+Application 在最小健康窗口通过后提交确认元数据。
 
 ### `protocol` 与 `docs`
 
@@ -286,8 +285,10 @@ TIM6 ISR 只发送任务通知。通知积压时不补跑历史 PID；控制任�
 - `CAN_REMOTE`
 - `CONSOLE`
 - `TARGET_TEST`
+- `OTA`
 
 任一时刻只有一个控制源。切换或释放控制源时必须清零目标并停车。CAN 超时、
 error-passive、bus-off、急停、内部故障或控制节拍持续积压都会撤销当前控制并清零 PWM。
+OTA 是停车后的维护锁，不是运动控制源；持有期间普通控制和危险目标测试均不得启动。
 
 IWDG 只有在 Application task、`control_task`、FDCAN 和关键故障状态均健康时才刷新。

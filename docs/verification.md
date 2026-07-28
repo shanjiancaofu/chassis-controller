@@ -32,25 +32,86 @@
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
 | 低速 PID 闭环 | `NOT VERIFIED` | 尚无最终稳定性验收记录 |
 | FreeRTOS 阶段 4 实物回归 | `NOT VERIFIED` | 代码和构建完成，未重复执行硬件回归 |
-| Bootloader/OTA | `NOT VERIFIED` | 已建立首批纯逻辑代码，尚未 CubeIDE 构建和实物验证 |
+| Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
+| OTA 完整升级链路 | `NOT VERIFIED` | 尚未完成真实传输、安装、TRIAL 确认、回滚和断电恢复 |
 
 ## 构建基线
 
-阶段 4 曾完成 CubeIDE clean build：
+当前 Application 于 2026-07-28 使用 CubeIDE 2.2.0 GCC 构建：
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
-| Debug | 211964 | 96 | 31384 | `BUILD PASS` |
-| Release | 175436 | 96 | 31368 | `BUILD PASS` |
+| Debug | 222948 | 96 | 34072 | `BUILD PASS`，0 errors，0 warnings |
+| Release | 181452 | 96 | 34048 | `BUILD PASS`，0 errors，0 warnings |
 
-构建结果只说明当时源码可编译，不代表当前工作树或实物功能仍然通过。
+Debug/Release 的 `.isr_vector` 均位于 `0x08008000`；反汇编确认 `SystemInit()` 将
+VTOR 写入 `0x08008000`。最高 Flash load 地址未超出 `0x0807FFFF`。构建结果只说明
+当前源码可编译和链接，不代表迁移后的固件已通过实物启动。
+
+Bootloader 于 2026-07-28 使用 CubeIDE 2.2.0 GCC clean build：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 17652 | 44 | 1668 | `BUILD PASS`，0 errors，0 warnings |
+| Release | 10268 | 44 | 1668 | `BUILD PASS`，0 errors，0 warnings |
+
+Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
+链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
+
+同日从最新 Application Release ELF 重新生成 BIN 并运行
+`tools/ota/package_firmware.py`：
+
+```text
+payload=181556 bytes
+payload_crc32=0x732A8DE6
+target=0x08008000
+package=_output/chassis-controller-0.1.0-build2.ota
+```
+
+打包器已通过向量表、地址、长度、头部 CRC32 和 payload CRC32 自校验。Application
+试运行确认代码已构建，并在 `status` 中提供 `OTA_CONFIRM` 状态，但尚未在 QSPI
+`TRIAL` 元数据和真实复位链路上验证，因此仍为 `NOT VERIFIED`。
+
+同时生成：
+
+```text
+_output/chassis-controller-0.1.0-build2-factory.bin
+total=214324 bytes
+bootloader=10312 bytes at offset 0x0000
+application=181556 bytes at offset 0x8000
+```
+
+脚本已确认中间填充全为 `0xFF`，Bootloader `.isr_vector` 位于 `0x08000000`，
+Application `.isr_vector` 位于 `0x08008000`。`tools/ota/test_ota_transfer.py` 的 3 项
+Python 单元测试通过，覆盖 UART 帧 CRC、CAN 响应布局和 stop-and-wait 分块状态流程；
+尚未连接真实串口或 SocketCAN 执行升级。
+
+### Bootloader 启动对照
+
+2026-07-28 使用同一 relocated Application 进行了单变量对照：
+
+| 组合 | Bootloader 时钟 | Bootloader IWDG | 启动结果 |
+| --- | --- | --- | --- |
+| 候选 I | 16 MHz HSI | 禁用，诊断直跳 | Application LCD 和串口正常 |
+| 候选 K | 16 MHz HSI | 启动，约 32 秒 | 黑屏，串口无响应 |
+| 候选 L | 16 MHz HSI | 普通路径不启动，完整状态机 | LCD 正常，`status` 完整返回 |
+| 候选 N | 170 MHz HSE/PLL | 普通路径不启动，完整状态机 | 黑屏，串口无响应 |
+| 正式 factory | 16 MHz HSI | 安装/回滚时按需启动 | DFU 校验成功，普通复位后 LCD 正常 |
+
+因此正式 Bootloader 使用 16 MHz HSI，普通路径不启动 IWDG；安装/回滚启动 IWDG 后
+必须通过系统复位结束，不直接继承到 Application。最终正式镜像复位后 Windows 未枚举
+串口设备，因此本次正式产物没有重复保存 `status`；候选 L 已使用相同完整状态机取得
+`QSPI_ID: PASS`、`LCD: READY` 和 `CONTROL_OVERRUN: count=0 missed=0`。这只证明 factory
+启动链路，不代表 OTA 安装、确认或回滚通过。
 
 ## CubeIDE 构建与烧录
 
-1. 在 STM32CubeIDE 中导入 `firmware/application/stm32g474/`。
+1. 以仓库 `firmware/` 为工作区，分别导入 `application/stm32g474/` 和
+   `bootloader/stm32g474/`。
 2. 选择 `Debug` 或 `Release`，执行 `Project > Clean` 后再执行 `Build Project`。
 3. 确认生成的 `Debug/chassis_controller.elf` 或
-   `Release/chassis_controller.elf` 时间晚于本次源码修改。
+   `Release/chassis_controller.elf` 时间晚于本次源码修改。CubeIDE 当前不会自动更新
+   BIN，OTA 打包前必须从最新 ELF 重新运行 `arm-none-eabi-objcopy -O binary`。
 4. 日常调试使用 ST-Link；使用 USB Type-C DFU 时，通过 STM32CubeProgrammer
    选择正确的 DFU 设备和 ELF/HEX/BIN，再烧录并复位。
 5. 烧录后的串口启动信息和固件版本必须与本次产物一致。
@@ -182,9 +243,19 @@ cansend can0 720##15041535301000000
 6. 停止 CAN 控制帧，确认 200 ms 后停车且旧命令不会恢复。
 7. 检查控制 overrun、关键任务健康和 IWDG 行为。
 
-## OTA 验收
+## OTA 首次烧录与验收
 
-Bootloader 落地后至少验证：
+首次操作必须使用组合镜像，不单独烧录位于 `0x08008000` 的 Application：
+
+1. 断开电机主电源，保持急停可用，确认 CAN 不发送运动命令。
+2. 在 STM32CubeProgrammer 连接 DFU 或 ST-Link，执行 Full chip erase。
+3. 选择 `_output/chassis-controller-0.1.0-build2-factory.bin`，下载地址填写
+   `0x08000000`，启用下载后校验。
+4. 复位，确认串口出现 Application 启动信息，电机保持零输出。
+5. 执行 `status`，记录 `OTA_CONFIRM` 和 `OTA_TRANSFER`；首次无 TRIAL 元数据时不得
+   将 READY 当成 OTA 硬件通过。
+
+首次跳转验证完成后，按以下顺序验收：
 
 - UART 与 CAN FD 分别完成同一 `.ota` 包升级
 - 错误 magic、地址、长度和 CRC 被拒绝
@@ -193,6 +264,11 @@ Bootloader 落地后至少验证：
 - 无有效 Application 时停留 Bootloader
 - 更新全程保持零 PWM
 - Bootloader 和 Application 版本、复位原因可诊断
+
+每次传输都应保存发送工具输出和复位后的 `status`。只有看到完整
+`STAGED -> TRIAL -> CONFIRMED` 且新 Application 正常启动，才可记录
+`HARDWARE PASS`。当前 factory 普通启动已通过，OTA 传输、安装、确认、回滚和断电恢复
+仍为 `NOT VERIFIED`。
 
 ## Bootloader 单元测试
 
@@ -208,6 +284,6 @@ firmware/bootloader/stm32g474/tests/unit/bootloader_core_test.c
 - OTA 镜像头、payload CRC 和向量表校验
 - OTA 元数据双副本 CRC 校验和最新 sequence 选择
 
-本机 PATH 中未找到 `gcc`、`clang` 或 `cl`，也未找到 STM32CubeIDE 自带
-`arm-none-eabi-gcc`，因此本批只完成代码落地和人工检查，不能标记为
-`BUILD PASS`。后续接入 CubeIDE Bootloader 工程后必须补做 Debug/Release 构建。
+Bootloader 的 Debug 与 Release 已使用 STM32CubeIDE 自带 `arm-none-eabi-gcc`
+完成构建。PC 单元测试入口尚未使用宿主机 C 编译器执行，因此这里只确认目标工程
+`BUILD PASS`，不把单元测试标记为已运行。

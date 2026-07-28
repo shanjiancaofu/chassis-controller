@@ -5,6 +5,10 @@
 #include "bsp/lcd/bsp_lcd.h"
 #include "bsp/uart/uart_bsp.h"
 #include "communication/can_transport/can_transport.h"
+#include "communication/ota_transport/ota_can_transport.h"
+#include "communication/ota_transport/ota_confirmation.h"
+#include "communication/ota_transport/ota_session.h"
+#include "communication/ota_transport/ota_uart_transport.h"
 #include "config/storage_layout.h"
 #include "infrastructure/console/console.h"
 #include "infrastructure/telemetry/telemetry.h"
@@ -22,7 +26,7 @@ static bool qspi_report_requested;
 static bool iwdg_report_requested;
 static bool motor_report_requested;
 static char motor_report[96];
-static char report_buffer[1152];
+static char report_buffer[1280];
 
 static bool WriteSelfTestReport(void);
 static bool WriteQspiTestReport(void);
@@ -127,10 +131,12 @@ static bool WriteSelfTestReport(void)
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
   const TelemetryMode telemetry_mode = Telemetry_GetMode();
   const QspiTargetTestStatus qspi_status = QspiTargetTest_GetStatus();
+  const OtaConfirmationStatus ota_status = OtaConfirmation_GetStatus();
   const char *fdcan_text = "READY";
   const char *lcd_text = "DISABLED";
   const char *qspi_rw_text = "DISABLED";
   const char *iwdg_text = "DISABLED";
+  const char *ota_text = "WAITING";
   char rtc_text[48];
   char qspi_text[96];
   size_t help_length;
@@ -168,6 +174,15 @@ static bool WriteSelfTestReport(void)
     iwdg_text = "ARMED";
   } else if (health.iwdg_reset_test_passed) {
     iwdg_text = "PASS";
+  }
+  if (ota_status == OTA_CONFIRMATION_NOT_REQUIRED) {
+    ota_text = "NOT_REQUIRED";
+  } else if (ota_status == OTA_CONFIRMATION_RUNNING) {
+    ota_text = "RUNNING";
+  } else if (ota_status == OTA_CONFIRMATION_CONFIRMED) {
+    ota_text = "CONFIRMED";
+  } else if (ota_status == OTA_CONFIRMATION_FAILED) {
+    ota_text = "FAIL";
   }
 
   if (rtc_ok) {
@@ -213,6 +228,8 @@ static bool WriteSelfTestReport(void)
       "RTC_BACKUP: READY\r\n"
       "QSPI_ID: %s\r\n"
       "QSPI_RW_TEST: %s\r\n"
+      "OTA_CONFIRM: %s\r\n"
+      "OTA_TRANSFER: source=%u state=%u next=%lu uart_errors=%lu can_drops=%lu\r\n"
       "LCD: %s\r\n"
       "FDCAN_INTERNAL: DISABLED\r\n"
       "FDCAN_EXTERNAL: %s\r\n"
@@ -223,7 +240,12 @@ static bool WriteSelfTestReport(void)
       "IWDG_RESET_TEST: %s\r\n"
       "TELEMETRY: %s\r\n"
       "%s",
-      rtc_text, qspi_text, qspi_rw_text, lcd_text, fdcan_text,
+      rtc_text, qspi_text, qspi_rw_text, ota_text,
+      (unsigned int)OtaSession_GetSource(),
+      (unsigned int)OtaSession_GetState(),
+      (unsigned long)OtaSession_GetNextOffset(),
+      (unsigned long)OtaUartTransport_GetErrorCount(),
+      (unsigned long)OtaCanTransport_GetDroppedCount(), lcd_text, fdcan_text,
       health.button_test_passed ? "PASS" : "READY",
       (unsigned long)health.control_overrun_count,
       (unsigned long)health.control_missed_tick_count, iwdg_text,
