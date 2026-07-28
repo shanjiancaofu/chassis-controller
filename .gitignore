@@ -73,6 +73,7 @@ dkms.conf
 /firmware/application/stm32g474/.settings/language.settings.xml
 /firmware/application/stm32g474/.settings/stm32cubeide.project.prefs
 /firmware/application/stm32g474/chassis_controller.launch
+firmware/.metadata/
 /.cubeide-workspace/
 
 # Generated firmware packages
@@ -80,6 +81,3 @@ dkms.conf
 
 # Local editor settings
 /.vscode/
-
-
-.metadata/
