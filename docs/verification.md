@@ -61,37 +61,11 @@ Bootloader Release 于 2026-07-30 使用 CubeIDE 2.2.0 GCC clean build；Debug �
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
 
-同日从最新 Application Release ELF 重新生成 BIN 并运行
-`tools/ota/package_firmware.py`：
-
-```text
-payload=181556 bytes
-payload_crc32=0x732A8DE6
-target=0x08008000
-package=_output/archive/chassis-controller-0.1.0-build2-20260728-162748.ota
-```
-
-打包器已通过向量表、地址、长度、头部 CRC32 和 payload CRC32 自校验。Application
-试运行确认代码已构建，并在 `status` 中提供 `OTA_CONFIRM` 状态，但尚未在 QSPI
-`TRIAL` 元数据和真实复位链路上验证，因此仍为 `NOT VERIFIED`。
-
-同时生成：
-
-```text
-_output/archive/chassis-controller-0.1.0-build2-factory-20260728-202020.bin
-total=214324 bytes
-bootloader=10312 bytes at offset 0x0000
-application=181556 bytes at offset 0x8000
-```
-
-脚本已确认中间填充全为 `0xFF`，Bootloader `.isr_vector` 位于 `0x08000000`，
-Application `.isr_vector` 位于 `0x08008000`。`tools/ota/test_ota_transfer.py` 的 3 项
-Python 单元测试通过，覆盖 UART 帧 CRC、CAN 响应布局和 stop-and-wait 分块状态流程；
-尚未连接真实串口或 SocketCAN 执行升级。
-
 2026-07-30 使用 WSL GCC 以 `-std=c11 -Wall -Wextra -Werror` 编译并运行
 `tests/unit/test_command_manager.c`，覆盖 OTA owner 不被清运动命令或错误来源释放、OTA
 不能提交运动目标、Console 目标不使用 200 ms 超时、CAN 目标在 200 ms 超时。测试通过。
+同日运行 `tools/ota/test_ota_transfer.py` 的 3 项 Python 单元测试，覆盖 UART 帧 CRC、
+CAN 响应布局和 stop-and-wait 分块状态流程。以上是主机测试结果，不替代实物验收。
 
 ### Bootloader 启动对照
 

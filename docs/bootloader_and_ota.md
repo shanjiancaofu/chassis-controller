@@ -151,8 +151,8 @@ python tools/ota/package_firmware.py `
 ```
 
 打包器检查向量表、链接地址、长度、头部 CRC32 和 payload CRC32。仍链接到
-`0x08000000` 的旧 Application 必须被拒绝。2026-07-28 的构建打包结果记录在
-`verification.md`；正式 factory 产物已完成 DFU 烧录、校验和普通复位启动验证。
+`0x08000000` 的旧 Application 必须被拒绝。当前构建产物、打包结果和实物状态记录在
+`verification.md`；正式 factory 产物和 UART OTA 主链均已完成实物验证。
 
 ## 首次组合镜像
 

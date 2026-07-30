@@ -8,8 +8,9 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 当前处于 Bootloader 与 OTA V1 实物验证阶段。独立 Bootloader、Application 重定位、
 UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建；首次联合
-烧录及 Bootloader 到 Application 的普通启动已通过实物验证，真实升级尚未验证。进度与验证结果分别见 `docs/roadmap.md` 和
-`docs/verification.md`。
+烧录、Bootloader 到 Application 的普通启动，以及 UART OTA 的传输、安装、TRIAL 和
+CONFIRMED 主链已通过实物验证。CAN FD OTA、断电恢复和回滚故障注入仍未验证。进度与
+验证结果分别见 `docs/roadmap.md` 和 `docs/verification.md`。
 
 ## 目录
 

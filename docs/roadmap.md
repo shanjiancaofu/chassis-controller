@@ -64,6 +64,8 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - 已提供 UART 和 SocketCAN CAN FD stop-and-wait 主机发送工具
 - 已生成并校验 Bootloader + relocated Application 首次组合烧录产物
 - 已使用 DFU 烧录正式组合镜像，验证 Bootloader 普通启动可跳转到 relocated Application
+- 已使用 UART 完成 build6 镜像的真实传输、QSPI 暂存、候选安装、TRIAL 启动和
+  CONFIRMED 提交，UART OTA 主链达到 `HARDWARE PASS`
 - Bootloader 固定使用 16 MHz HSI；不主动启动或重配置 IWDG，只刷新 Application 继承的实例；
   Application 正常周期约 10 秒，OTA 复位前约 30 秒，Recovery 停止刷新
 - 运动命令与维护 owner 已拆分；`pid stop` 不能释放 OTA 锁，Console 目标持续到明确停止，
