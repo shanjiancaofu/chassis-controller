@@ -94,7 +94,7 @@ Application 在软件复位前已启动的实例。Recovery 不刷新，让继�
 
 ### UART OTA 实物闭环（2026-07-30）
 
-使用 `_output/application/chassis-controller-0.1.0-build6-20260730-201234.ota`
+使用 `_output/application/app-v0.1.0-b6.ota`
 在 COM8、115200 8N1 下完成真实传输：
 
 ```text
@@ -123,10 +123,10 @@ CONTROL_OVERRUN: count=0 missed=0
 最终产物为：
 
 ```text
-_output/bootloader/bootloader-0.1.0-build15-20260730-213118.bin 11684 bytes
-_output/application/chassis-controller-0.1.0-build6-20260730-201215.bin 182792 bytes
-_output/application/chassis-controller-0.1.0-build6-20260730-201234.ota 182856 bytes
-_output/factory/chassis-controller-app-0.1.0-build6_bootloader-0.1.0-build15-20260730-213129-factory.bin 215560 bytes
+_output/bootloader/boot-v0.1.0-b15.bin 11684 bytes
+_output/application/app-v0.1.0-b6.bin 182792 bytes
+_output/application/app-v0.1.0-b6.ota 182856 bytes
+_output/factory/factory-a6-b15.bin 215560 bytes
 ```
 
 UART OTA 主链已达到 `HARDWARE PASS`。CAN FD OTA、安装中断电、TRIAL 失败回滚和无有效
@@ -271,7 +271,7 @@ cansend can0 720##15041535301000000
 
 1. 断开电机主电源，保持急停可用，确认 CAN 不发送运动命令。
 2. 在 STM32CubeProgrammer 连接 DFU 或 ST-Link，执行 Full chip erase。
-3. 选择 `_output/factory/chassis-controller-app-0.1.0-build6_bootloader-0.1.0-build15-20260730-213129-factory.bin`，下载地址填写
+3. 选择 `_output/factory/factory-a6-b15.bin`，下载地址填写
    `0x08000000`，启用下载后校验。
 4. 复位，确认串口出现 Application 启动信息，电机保持零输出。
 5. 执行 `status`，记录 `OTA_CONFIRM` 和 `OTA_TRANSFER`；首次无 TRIAL 元数据时不得
