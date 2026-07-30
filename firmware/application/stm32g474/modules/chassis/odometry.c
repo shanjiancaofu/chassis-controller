@@ -7,7 +7,7 @@
 
 static OdometrySnapshot odometry_snapshot;
 
-static int32_t SaturatingAdd(int32_t value, int32_t increment);
+static int64_t SaturatingAdd(int64_t value, int32_t increment);
 
 void Odometry_Init(void)
 {
@@ -53,15 +53,13 @@ void Odometry_GetSnapshot(OdometrySnapshot *snapshot)
   }
 }
 
-static int32_t SaturatingAdd(int32_t value, int32_t increment)
+static int64_t SaturatingAdd(int64_t value, int32_t increment)
 {
-  const int64_t result = (int64_t)value + increment;
-
-  if (result > INT32_MAX) {
-    return INT32_MAX;
+  if (increment > 0 && value > INT64_MAX - increment) {
+    return INT64_MAX;
   }
-  if (result < INT32_MIN) {
-    return INT32_MIN;
+  if (increment < 0 && value < INT64_MIN - increment) {
+    return INT64_MIN;
   }
-  return (int32_t)result;
+  return value + increment;
 }

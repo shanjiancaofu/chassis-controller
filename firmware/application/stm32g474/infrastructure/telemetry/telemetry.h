@@ -13,11 +13,11 @@ typedef enum {
 typedef struct {
   int32_t left_target;
   int32_t left_delta;
-  int32_t left_total;
+  int64_t left_total;
   int16_t left_output;
   int32_t right_target;
   int32_t right_delta;
-  int32_t right_total;
+  int64_t right_total;
   int16_t right_output;
   int32_t supply_mv;
   uint32_t control_state;

@@ -3,17 +3,32 @@
 #include <stddef.h>
 #include <string.h>
 
+#define OTA_CAN_TX_EVENT_TIMEOUT_MS 100U
+
 static volatile bool message_pending;
 static OtaMessage pending_message;
 static volatile uint32_t dropped_count;
+static bool response_in_progress;
+static bool response_confirmation_ready;
+static bool last_response_confirmed;
+static uint8_t tx_marker;
+static uint8_t pending_tx_marker;
+static uint32_t tx_started_ms;
 
 static uint32_t ReadU32(const uint8_t *data);
 static void WriteU32(uint8_t *data, uint32_t value);
+static void PollTxEvent(void);
 
 void OtaCanTransport_Init(void)
 {
   message_pending = false;
   dropped_count = 0U;
+  response_in_progress = false;
+  response_confirmation_ready = false;
+  last_response_confirmed = false;
+  tx_marker = 0U;
+  pending_tx_marker = 0U;
+  tx_started_ms = 0U;
   pending_message = (OtaMessage){0};
 }
 
@@ -82,18 +97,42 @@ bool OtaCanTransport_SendResponse(const OtaResponse *response)
   if (response == NULL) {
     return false;
   }
+  PollTxEvent();
+  if (response_in_progress) {
+    return false;
+  }
+  if (response_confirmation_ready) {
+    return true;
+  }
   frame.data[0] = OTA_PROTOCOL_VERSION;
   frame.data[1] = OTA_MESSAGE_STATUS;
   frame.data[2] = response->session_id;
   frame.data[3] = (uint8_t)response->result;
   frame.data[4] = (uint8_t)response->state;
   WriteU32(&frame.data[8], response->next_offset);
-  return BspFdcan_SendFrame(&frame) == HAL_OK;
+  do {
+    ++tx_marker;
+  } while (tx_marker == 0U);
+  if (BspFdcan_SendFrameWithTxEvent(&frame, tx_marker) != HAL_OK) {
+    return false;
+  }
+  last_response_confirmed = false;
+  pending_tx_marker = tx_marker;
+  tx_started_ms = HAL_GetTick();
+  response_in_progress = true;
+  return false;
+}
+
+void OtaCanTransport_ResponseAccepted(void)
+{
+  response_confirmation_ready = false;
 }
 
 bool OtaCanTransport_IsTxIdle(void)
 {
-  return BspFdcan_IsTxIdle();
+  PollTxEvent();
+  return last_response_confirmed && !response_in_progress &&
+         BspFdcan_IsTxIdle();
 }
 
 void OtaCanTransport_Invalidate(void)
@@ -103,6 +142,9 @@ void OtaCanTransport_Invalidate(void)
   __disable_irq();
   message_pending = false;
   __set_PRIMASK(primask);
+  response_in_progress = false;
+  response_confirmation_ready = false;
+  last_response_confirmed = false;
 }
 
 uint32_t OtaCanTransport_GetDroppedCount(void)
@@ -122,4 +164,21 @@ static void WriteU32(uint8_t *data, uint32_t value)
   data[1] = (uint8_t)(value >> 8U);
   data[2] = (uint8_t)(value >> 16U);
   data[3] = (uint8_t)(value >> 24U);
+}
+
+static void PollTxEvent(void)
+{
+  uint8_t marker;
+
+  while (BspFdcan_TakeTxEvent(&marker)) {
+    if (response_in_progress && marker == pending_tx_marker) {
+      response_in_progress = false;
+      response_confirmation_ready = true;
+      last_response_confirmed = true;
+    }
+  }
+  if (response_in_progress && BspFdcan_IsTxIdle() &&
+      HAL_GetTick() - tx_started_ms >= OTA_CAN_TX_EVENT_TIMEOUT_MS) {
+    response_in_progress = false;
+  }
 }

@@ -60,6 +60,12 @@ def main():
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=6.0)
     parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument(
+        "--post-reset-log-seconds",
+        type=float,
+        default=0.0,
+        help="print serial output for this many seconds after STAGED",
+    )
     args = parser.parse_args()
 
     try:
@@ -97,8 +103,16 @@ def main():
             )
             print(
                 f"OTA staged over UART: session={session_id} "
-                f"next_offset={response[3]}; device reset expected"
+                f"next_offset={response[3]}; device reset expected",
+                flush=True,
             )
+            if args.post_reset_log_seconds > 0:
+                deadline = time.monotonic() + args.post_reset_log_seconds
+                while time.monotonic() < deadline:
+                    data = serial_port.read(serial_port.in_waiting or 1)
+                    if data:
+                        sys.stdout.buffer.write(data)
+                        sys.stdout.buffer.flush()
     except (OSError, OtaError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

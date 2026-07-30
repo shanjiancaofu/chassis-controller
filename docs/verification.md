@@ -33,27 +33,30 @@
 | 低速 PID 闭环 | `NOT VERIFIED` | 尚无最终稳定性验收记录 |
 | FreeRTOS 阶段 4 实物回归 | `NOT VERIFIED` | 代码和构建完成，未重复执行硬件回归 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| OTA 完整升级链路 | `NOT VERIFIED` | 尚未完成真实传输、安装、TRIAL 确认、回滚和断电恢复 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | build6 完成真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
 
-当前 Application 于 2026-07-28 使用 CubeIDE 2.2.0 GCC 构建：
+Application Release 于 2026-07-30 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
+2026-07-28 的最近结果：
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
-| Debug | 222948 | 96 | 34072 | `BUILD PASS`，0 errors，0 warnings |
-| Release | 181452 | 96 | 34048 | `BUILD PASS`，0 errors，0 warnings |
+| Debug | 222948 | 96 | 34072 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
+| Release | 182540 | 96 | 34088 | `BUILD PASS`，2026-07-30，0 errors，0 warnings |
 
 Debug/Release 的 `.isr_vector` 均位于 `0x08008000`；反汇编确认 `SystemInit()` 将
 VTOR 写入 `0x08008000`。最高 Flash load 地址未超出 `0x0807FFFF`。构建结果只说明
 当前源码可编译和链接，不代表迁移后的固件已通过实物启动。
 
-Bootloader 于 2026-07-28 使用 CubeIDE 2.2.0 GCC clean build：
+Bootloader Release 于 2026-07-30 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
+2026-07-28 的最近结果：
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
-| Debug | 17652 | 44 | 1668 | `BUILD PASS`，0 errors，0 warnings |
-| Release | 10268 | 44 | 1668 | `BUILD PASS`，0 errors，0 warnings |
+| Debug | 17652 | 44 | 1668 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
+| Release | 11636 | 48 | 1656 | `BUILD PASS`，2026-07-30，0 errors，0 warnings |
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
@@ -86,6 +89,10 @@ Application `.isr_vector` 位于 `0x08008000`。`tools/ota/test_ota_transfer.py`
 Python 单元测试通过，覆盖 UART 帧 CRC、CAN 响应布局和 stop-and-wait 分块状态流程；
 尚未连接真实串口或 SocketCAN 执行升级。
 
+2026-07-30 使用 WSL GCC 以 `-std=c11 -Wall -Wextra -Werror` 编译并运行
+`tests/unit/test_command_manager.c`，覆盖 OTA owner 不被清运动命令或错误来源释放、OTA
+不能提交运动目标、Console 目标不使用 200 ms 超时、CAN 目标在 200 ms 超时。测试通过。
+
 ### Bootloader 启动对照
 
 2026-07-28 使用同一 relocated Application 进行了单变量对照：
@@ -96,13 +103,51 @@ Python 单元测试通过，覆盖 UART 帧 CRC、CAN 响应布局和 stop-and-w
 | 候选 K | 16 MHz HSI | 启动，约 32 秒 | 黑屏，串口无响应 |
 | 候选 L | 16 MHz HSI | 普通路径不启动，完整状态机 | LCD 正常，`status` 完整返回 |
 | 候选 N | 170 MHz HSE/PLL | 普通路径不启动，完整状态机 | 黑屏，串口无响应 |
-| 正式 factory | 16 MHz HSI | 安装/回滚时按需启动 | DFU 校验成功，普通复位后 LCD 正常 |
+| 正式 factory | 16 MHz HSI | 不启动，仅刷新继承实例 | DFU 校验成功，普通复位后 LCD 正常 |
 
-因此正式 Bootloader 使用 16 MHz HSI，普通路径不启动 IWDG；安装/回滚启动 IWDG 后
-必须通过系统复位结束，不直接继承到 Application。最终正式镜像复位后 Windows 未枚举
-串口设备，因此本次正式产物没有重复保存 `status`；候选 L 已使用相同完整状态机取得
-`QSPI_ID: PASS`、`LCD: READY` 和 `CONTROL_OVERRUN: count=0 missed=0`。这只证明 factory
-启动链路，不代表 OTA 安装、确认或回滚通过。
+因此正式 Bootloader 使用 16 MHz HSI，任何路径都不主动启动或重配置 IWDG，只刷新
+Application 在软件复位前已启动的实例。Recovery 不刷新，让继承的 IWDG 触发复位；
+冷启动且 IWDG 未运行时，直接写 reload key 不会启动它。Application 启动后重新配置
+正常周期并负责持续刷新。
+
+### UART OTA 实物闭环（2026-07-30）
+
+使用 `_output/chassis-controller-0.1.0-build6.ota` 在 COM8、115200 8N1 下完成真实传输：
+
+```text
+OTA staged over UART: next_offset=182856
+BOOT: STATE=0x00000002
+BOOT: INSTALL CANDIDATE
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: STATE=0x00000004
+BOOT: TRIAL VERIFIED
+BOOT: JUMP APPLICATION
+OTA_CONFIRM: CONFIRMED
+```
+
+最终 Bootloader build15 经 DFU 烧录和校验后，普通复位得到：
+
+```text
+BOOT: STATE=0x00000005
+QSPI_ID: PASS jedec=EF4017 capacity=8MiB
+MOTOR: DISABLED
+CONTROL_OVERRUN: count=0 missed=0
+```
+
+本次同时确认 Bootloader 必须提供 `SysTick_Handler()` 并将 VTOR 显式设置为
+`0x08000000`；缺少 SysTick ISR 时首个 1 ms 中断会进入默认处理器，表现为启动日志被截断。
+最终产物为：
+
+```text
+_output/bootloader-0.1.0-build15.bin                 11684 bytes
+_output/chassis-controller-0.1.0-build6.bin        182792 bytes
+_output/chassis-controller-0.1.0-build6.ota        182856 bytes
+_output/chassis-controller-0.1.0-build6-factory-final.bin 215560 bytes
+```
+
+UART OTA 主链已达到 `HARDWARE PASS`。CAN FD OTA、安装中断电、TRIAL 失败回滚和无有效
+Application 的 Recovery 行为仍为 `NOT VERIFIED`。
 
 ## CubeIDE 构建与烧录
 
@@ -151,34 +196,28 @@ CH340 参数：
 pid:time,target,measured,error,p,i,d,output,pwm
 ```
 
-目标命令接口：
+当前实际命令接口：
 
 ```text
-pid get [left|right]
-pid set left  kp <value>
-pid set left  ki <value>
-pid set left  kd <value>
-pid set right kp <value>
-pid set right ki <value>
-pid set right kd <value>
-pid apply
-pid save
-pid reset
-tune start left <counts_per_tick>
-tune start right <counts_per_tick>
-tune stop
-telemetry on
+pid show
+pid left <kp> <ki> <kd>
+pid right <kp> <ki> <kd>
+pid target <left_counts_per_tick> <right_counts_per_tick>
+pid stop
+telemetry text
+telemetry vofa
 telemetry off
 ```
 
 规则：
 
-- `pid set` 只修改 RAM 中的 pending 参数。
-- `pid apply` 只在控制周期边界切换参数。
-- 只有人工确认稳定后，`pid save` 才允许写入持久化存储。
+- `pid left/right` 写入 RAM pending 参数，并在下一个控制周期边界自动应用。
+- 当前没有 `pid save/apply/reset` 或 `tune start/stop` 命令；参数不会持久化。
+- `pid target` 持续保持到 `pid stop`，不使用 CAN 的 200 ms heartbeat timeout。
 - 停止、急停、超时、故障和换向时重置积分。
 - 先调 `kp`，再增加少量 `ki`，最后仅在确有必要时加入 `kd`。
-- 观察目标、测量、误差、输出、饱和和控制 overrun；出现异常立即 `tune stop`。
+- `telemetry vofa` 以 10 ms 周期输出左右目标、增量、RPM x10、PWM、电压、状态和故障；
+  出现异常立即执行 `pid stop`。
 - 未完成正反向、左右轮和安全停车实物验收前，低速 PID 保持 `NOT VERIFIED`。
 
 ## CAN FD 联调
@@ -267,8 +306,8 @@ cansend can0 720##15041535301000000
 
 每次传输都应保存发送工具输出和复位后的 `status`。只有看到完整
 `STAGED -> TRIAL -> CONFIRMED` 且新 Application 正常启动，才可记录
-`HARDWARE PASS`。当前 factory 普通启动已通过，OTA 传输、安装、确认、回滚和断电恢复
-仍为 `NOT VERIFIED`。
+`HARDWARE PASS`。当前 factory 普通启动和 UART OTA 的传输、安装、TRIAL、确认已通过；
+CAN FD OTA、回滚和断电恢复仍为 `NOT VERIFIED`。
 
 ## Bootloader 单元测试
 

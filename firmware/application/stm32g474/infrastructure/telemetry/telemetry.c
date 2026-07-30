@@ -68,12 +68,12 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
   } else {
     length = snprintf(
         transmit_buffer, sizeof(transmit_buffer),
-        "vin_mv=%ld lt=%ld ld=%ld lrpm_x10=%ld lc=%ld lo=%d rt=%ld rd=%ld rrpm_x10=%ld rc=%ld ro=%d state=%lu fault=0x%08lx\r\n",
+        "vin_mv=%ld lt=%ld ld=%ld lrpm_x10=%ld lc=%lld lo=%d rt=%ld rd=%ld rrpm_x10=%ld rc=%lld ro=%d state=%lu fault=0x%08lx\r\n",
         (long)snapshot->supply_mv, (long)snapshot->left_target,
         (long)snapshot->left_delta, (long)left_rpm_x10,
-        (long)snapshot->left_total, (int)snapshot->left_output,
+        (long long)snapshot->left_total, (int)snapshot->left_output,
         (long)snapshot->right_target, (long)snapshot->right_delta,
-        (long)right_rpm_x10, (long)snapshot->right_total,
+        (long)right_rpm_x10, (long long)snapshot->right_total,
         (int)snapshot->right_output,
         (unsigned long)snapshot->control_state,
         (unsigned long)snapshot->fault_flags);

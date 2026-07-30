@@ -63,6 +63,17 @@ BootInstallStatus BootInstaller_Install(const OtaMetadata *metadata,
   return BOOT_INSTALL_OK;
 }
 
+bool BootInstaller_VerifyInstalled(OtaSlotId slot)
+{
+  const uint32_t slot_address = SlotAddress(slot);
+  OtaImageHeader header;
+
+  return slot_address != 0U &&
+         BootQspiFlash_Read(slot_address, &header, sizeof(header)) &&
+         BootImageValidator_ValidateHeader(&header) == BOOT_IMAGE_OK &&
+         VerifyInstalledPayload(&header);
+}
+
 static uint32_t SlotAddress(OtaSlotId slot)
 {
   if (slot == OTA_SLOT_A) {

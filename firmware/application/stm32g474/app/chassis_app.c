@@ -52,6 +52,7 @@ static void WriteCanDiagnostics(void);
 static void WriteConsoleHelp(void);
 static bool StartControl(void);
 static void StopControl(void);
+static void ReleaseMotionOwner(void);
 static bool StartMotorTargetTest(MotorTargetTestAction action,
                                  uint32_t now_ms);
 static bool PrepareTargetTest(void);
@@ -203,6 +204,9 @@ void ChassisApp_Run(void)
     case 5U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
         StopControl();
+        taskENTER_CRITICAL();
+        CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
+        taskEXIT_CRITICAL();
         demo_stage = 6U;
       }
       break;
@@ -219,6 +223,9 @@ void ChassisApp_Run(void)
     if (CommandManager_GetOwner() == COMMAND_SOURCE_CAN_REMOTE) {
       taskEXIT_CRITICAL();
       StopControl();
+      taskENTER_CRITICAL();
+      CommandManager_Release(COMMAND_SOURCE_CAN_REMOTE);
+      taskEXIT_CRITICAL();
     } else {
       taskEXIT_CRITICAL();
     }
@@ -235,6 +242,9 @@ void ChassisApp_Run(void)
     } else if (CommandManager_GetOwner() ==
                COMMAND_SOURCE_CAN_REMOTE) {
       StopControl();
+      taskENTER_CRITICAL();
+      CommandManager_Release(COMMAND_SOURCE_CAN_REMOTE);
+      taskEXIT_CRITICAL();
     }
   }
 
@@ -267,7 +277,9 @@ void ChassisApp_Run(void)
         OtaCanTransport_IsTxIdle()))) {
     StopControl();
     BspMotor_CoastAll();
-    NVIC_SystemReset();
+    if (AppWatchdog_PrepareForBootloader()) {
+      NVIC_SystemReset();
+    }
   }
 
   if (Telemetry_IsDue(now_ms)) {
@@ -306,6 +318,8 @@ void ChassisApp_Run(void)
     last_heartbeat_ms = now_ms;
     HAL_GPIO_TogglePin(LED_B_GPIO_Port, LED_B_Pin);
   }
+  HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_SET);
   if (can_status == CAN_TRANSPORT_LINK_PASSED) {
     HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_RESET);
   } else if (can_status == CAN_TRANSPORT_LINK_FAILED) {
@@ -387,6 +401,9 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       break;
     case CONSOLE_COMMAND_PID_STOP:
       StopControl();
+      taskENTER_CRITICAL();
+      CommandManager_Release(COMMAND_SOURCE_CONSOLE);
+      taskEXIT_CRITICAL();
       break;
     case CONSOLE_COMMAND_ENCODER_ZERO:
       (void)snprintf(response, sizeof(response), "ENCODER_CAL: %s\r\n",
@@ -453,6 +470,9 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
 
       if (action == MOTOR_TARGET_TEST_STOP) {
         StopControl();
+        taskENTER_CRITICAL();
+        CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
+        taskEXIT_CRITICAL();
         accepted = true;
       } else {
         accepted = PrepareTargetTest() &&
@@ -515,8 +535,9 @@ static void WriteEncoderResult(void)
   Odometry_GetSnapshot(&snapshot);
   taskEXIT_CRITICAL();
   length = snprintf(response, sizeof(response),
-                    "ENCODER_CAL: left=%ld right=%ld counts\r\n",
-                    (long)snapshot.left_total, (long)snapshot.right_total);
+                    "ENCODER_CAL: left=%lld right=%lld counts\r\n",
+                    (long long)snapshot.left_total,
+                    (long long)snapshot.right_total);
   if (length > 0 && (size_t)length < sizeof(response)) {
     (void)BspUart_Write(response, (size_t)length);
   }
@@ -584,11 +605,22 @@ static bool StartControl(void)
 static void StopControl(void)
 {
   taskENTER_CRITICAL();
-  CommandManager_Clear();
+  CommandManager_ClearCommand();
   MotorTargetTest_Stop();
   WheelController_Stop();
   SafetyManager_Stop();
   taskEXIT_CRITICAL();
+}
+
+static void ReleaseMotionOwner(void)
+{
+  const CommandSource owner = CommandManager_GetOwner();
+
+  if (owner == COMMAND_SOURCE_CAN_REMOTE ||
+      owner == COMMAND_SOURCE_CONSOLE ||
+      owner == COMMAND_SOURCE_TARGET_TEST) {
+    CommandManager_Release(owner);
+  }
 }
 
 void ChassisApp_RunControlTick(uint32_t notification_count)
@@ -627,7 +659,8 @@ void ChassisApp_RunControlTick(uint32_t notification_count)
   ApplyPendingParameters();
   if (SafetyManager_IsEmergencyStopLatched()) {
     taskENTER_CRITICAL();
-    CommandManager_Clear();
+    CommandManager_ClearCommand();
+    ReleaseMotionOwner();
     taskEXIT_CRITICAL();
     WheelController_EmergencyStop();
     return;
@@ -635,7 +668,8 @@ void ChassisApp_RunControlTick(uint32_t notification_count)
 
   if (FaultManager_HasCritical()) {
     taskENTER_CRITICAL();
-    CommandManager_Clear();
+    CommandManager_ClearCommand();
+    ReleaseMotionOwner();
     taskEXIT_CRITICAL();
     WheelController_EmergencyStop();
     SafetyManager_LatchInternalFault();
@@ -656,7 +690,8 @@ void ChassisApp_RunControlTick(uint32_t notification_count)
   command_available = !CommandManager_IsTimedOut(now_ms) &&
                       CommandManager_Get(&command);
   if (!command_available) {
-    CommandManager_Clear();
+    CommandManager_ClearCommand();
+    ReleaseMotionOwner();
   }
   taskEXIT_CRITICAL();
   if (!command_available) {
@@ -709,6 +744,7 @@ static bool PrepareTargetTest(void)
   }
 
   taskENTER_CRITICAL();
+  ReleaseMotionOwner();
   const bool acquired =
       CommandManager_Acquire(COMMAND_SOURCE_TARGET_TEST);
   taskEXIT_CRITICAL();
@@ -736,6 +772,7 @@ static bool PrepareOta(void)
   }
 
   taskENTER_CRITICAL();
+  ReleaseMotionOwner();
   const bool acquired = CommandManager_Acquire(COMMAND_SOURCE_OTA);
   taskEXIT_CRITICAL();
   if (acquired) {
@@ -792,6 +829,9 @@ static void RunOtaTransports(uint32_t now_ms)
     if (response_submitted) {
       ota_response_waiting = false;
       OtaSession_ResponseSubmitted();
+      if (ota_response.source == OTA_SOURCE_CAN_FD) {
+        OtaCanTransport_ResponseAccepted();
+      }
     }
   }
 
@@ -841,7 +881,8 @@ static void LatchInternalFault(uint32_t fault)
   SafetyManager_LatchInternalFault();
   primask = __get_PRIMASK();
   __disable_irq();
-  CommandManager_Clear();
+  CommandManager_ClearCommand();
+  ReleaseMotionOwner();
   WheelController_EmergencyStop();
   __set_PRIMASK(primask);
 }

@@ -55,6 +55,8 @@ void DebugMon_Handler(void);
 void QUADSPI_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
+void SysTick_Handler(void);
+
 /* USER CODE END EFP */
 
 #ifdef __cplusplus

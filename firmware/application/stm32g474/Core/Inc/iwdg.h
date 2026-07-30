@@ -30,6 +30,8 @@ extern "C" {
 
 /* USER CODE BEGIN Includes */
 
+#include <stdbool.h>
+
 /* USER CODE END Includes */
 
 extern IWDG_HandleTypeDef hiwdg;
@@ -41,6 +43,9 @@ extern IWDG_HandleTypeDef hiwdg;
 void MX_IWDG_Init(void);
 
 /* USER CODE BEGIN Prototypes */
+
+bool AppWatchdog_ConfigureNormal(void);
+bool AppWatchdog_PrepareForBootloader(void);
 
 /* USER CODE END Prototypes */
 

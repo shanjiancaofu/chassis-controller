@@ -10,6 +10,10 @@
 #define BOOT_FLASH_PAGE_SIZE 0x00000800UL
 #define BOOT_FLASH_DOUBLEWORD_SIZE 8U
 
+static uint32_t last_erase_bank;
+static uint32_t last_erase_page = 0xFFFFFFFFUL;
+static uint32_t last_flash_error;
+
 static bool ErasePages(uint32_t bank, uint32_t first_page,
                        uint32_t page_count);
 
@@ -90,6 +94,21 @@ bool BootInternalFlash_Program(uint32_t address, const void *data,
   return success;
 }
 
+uint32_t BootInternalFlash_GetLastEraseBank(void)
+{
+  return last_erase_bank;
+}
+
+uint32_t BootInternalFlash_GetLastErasePage(void)
+{
+  return last_erase_page;
+}
+
+uint32_t BootInternalFlash_GetLastError(void)
+{
+  return last_flash_error;
+}
+
 static bool ErasePages(uint32_t bank, uint32_t first_page,
                        uint32_t page_count)
 {
@@ -104,6 +123,9 @@ static bool ErasePages(uint32_t bank, uint32_t first_page,
   BootWatchdog_Refresh();
   if (HAL_FLASHEx_Erase(&erase, &page_error) != HAL_OK ||
       page_error != 0xFFFFFFFFUL) {
+    last_erase_bank = bank;
+    last_erase_page = page_error;
+    last_flash_error = HAL_FLASH_GetError();
     return false;
   }
   BootWatchdog_Refresh();

@@ -22,11 +22,6 @@
 
 /* USER CODE BEGIN 0 */
 
-#include <stdbool.h>
-
-static bool boot_watchdog_start_requested;
-static bool boot_watchdog_started;
-
 /* USER CODE END 0 */
 
 IWDG_HandleTypeDef hiwdg;
@@ -37,9 +32,9 @@ void MX_IWDG_Init(void)
 
   /* USER CODE BEGIN IWDG_Init 0 */
 
-  if (!boot_watchdog_start_requested) {
-    return;
-  }
+  /* The Application owns IWDG configuration. The Bootloader only reloads an
+     IWDG inherited across a software reset. */
+  return;
 
   /* USER CODE END IWDG_Init 0 */
 
@@ -56,28 +51,16 @@ void MX_IWDG_Init(void)
   }
   /* USER CODE BEGIN IWDG_Init 2 */
 
-  boot_watchdog_started = true;
-
   /* USER CODE END IWDG_Init 2 */
 
 }
 
 /* USER CODE BEGIN 1 */
 
-void BootWatchdog_Start(void)
-{
-  if (boot_watchdog_started) {
-    return;
-  }
-  boot_watchdog_start_requested = true;
-  MX_IWDG_Init();
-}
-
 void BootWatchdog_Refresh(void)
 {
-  if (boot_watchdog_started) {
-    (void)HAL_IWDG_Refresh(&hiwdg);
-  }
+  /* Reloading a stopped IWDG is harmless and does not start it. */
+  WRITE_REG(IWDG->KR, IWDG_KEY_RELOAD);
 }
 
 /* USER CODE END 1 */

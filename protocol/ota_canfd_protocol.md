@@ -55,6 +55,10 @@ Byte 8-11 为 `next_offset`，其余填零。
 CAN 链路 CRC 不能代替 `.ota` 的端到端 CRC32。Bus-Off、Error-Passive、FIFO lost
 或协议错误必须撤销 CAN OTA 会话。
 
+Application 的 FDCAN 自动重传保持关闭。OTA 响应单独请求 Tx Event，并在未取得匹配
+发送完成事件时由 OTA 传输层软件重试。最终 `STAGED` 响应必须确认实际发送完成后才允许
+系统复位，TX FIFO 空闲本身不构成发送成功证明。
+
 ## UART
 
 USART1 使用 `115200 8N1`、RX circular DMA + IDLE、软件环形缓冲和 TX DMA 队列。

@@ -19,6 +19,7 @@ typedef struct
 } OtaMetadataSelection;
 
 bool OtaMetadata_Validate(const OtaMetadata *metadata);
+bool OtaMetadata_IsReplaceableState(OtaState state);
 OtaMetadataSelection OtaMetadata_SelectLatest(
     const OtaMetadata *copy_a, const OtaMetadata *copy_b);
 void OtaMetadata_UpdateCrc(OtaMetadata *metadata);

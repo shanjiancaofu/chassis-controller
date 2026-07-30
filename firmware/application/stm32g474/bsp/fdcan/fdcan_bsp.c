@@ -6,6 +6,9 @@
 
 static bool LengthToDlc(uint8_t length, uint32_t *dlc);
 static uint8_t DlcToLength(uint32_t dlc);
+static HAL_StatusTypeDef SendFrame(const BspFdcanFrame *frame,
+                                   bool store_tx_event,
+                                   uint8_t message_marker);
 
 HAL_StatusTypeDef BspFdcan_Start(const uint32_t *accepted_standard_ids,
                                  size_t accepted_id_count)
@@ -89,6 +92,33 @@ HAL_StatusTypeDef BspFdcan_ReadRxFrame(BspFdcanFrame *frame)
 
 HAL_StatusTypeDef BspFdcan_SendFrame(const BspFdcanFrame *frame)
 {
+  return SendFrame(frame, false, 0U);
+}
+
+HAL_StatusTypeDef BspFdcan_SendFrameWithTxEvent(
+    const BspFdcanFrame *frame, uint8_t message_marker)
+{
+  return SendFrame(frame, true, message_marker);
+}
+
+bool BspFdcan_TakeTxEvent(uint8_t *message_marker)
+{
+  FDCAN_TxEventFifoTypeDef event = {0};
+
+  if (message_marker == NULL ||
+      (hfdcan2.Instance->TXEFS & FDCAN_TXEFS_EFFL) == 0U ||
+      HAL_FDCAN_GetTxEvent(&hfdcan2, &event) != HAL_OK ||
+      event.EventType != FDCAN_TX_EVENT) {
+    return false;
+  }
+  *message_marker = (uint8_t)event.MessageMarker;
+  return true;
+}
+
+static HAL_StatusTypeDef SendFrame(const BspFdcanFrame *frame,
+                                   bool store_tx_event,
+                                   uint8_t message_marker)
+{
   FDCAN_TxHeaderTypeDef header = {0};
   uint8_t data[BSP_FDCAN_MAX_DATA_SIZE] = {0};
   uint32_t dlc;
@@ -106,8 +136,10 @@ HAL_StatusTypeDef BspFdcan_SendFrame(const BspFdcanFrame *frame)
   header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
   header.BitRateSwitch = FDCAN_BRS_ON;
   header.FDFormat = FDCAN_FD_CAN;
-  header.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-  header.MessageMarker = 0U;
+  header.TxEventFifoControl = store_tx_event
+                                  ? FDCAN_STORE_TX_EVENTS
+                                  : FDCAN_NO_TX_EVENTS;
+  header.MessageMarker = message_marker;
   return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan2, &header, data);
 }
 

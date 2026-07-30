@@ -23,6 +23,13 @@ bool OtaMetadata_Validate(const OtaMetadata *metadata)
          metadata->record_crc32;
 }
 
+bool OtaMetadata_IsReplaceableState(OtaState state)
+{
+  return state == OTA_STATE_EMPTY || state == OTA_STATE_RECEIVING ||
+         state == OTA_STATE_STAGED || state == OTA_STATE_CONFIRMED ||
+         state == OTA_STATE_FAILED;
+}
+
 OtaMetadataSelection OtaMetadata_SelectLatest(
     const OtaMetadata *copy_a, const OtaMetadata *copy_b)
 {

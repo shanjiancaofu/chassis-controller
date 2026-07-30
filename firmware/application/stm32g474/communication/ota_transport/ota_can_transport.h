@@ -10,6 +10,7 @@ void OtaCanTransport_Init(void);
 bool OtaCanTransport_OnRxFrameFromIsr(const BspFdcanFrame *frame);
 bool OtaCanTransport_TakeMessage(OtaMessage *message);
 bool OtaCanTransport_SendResponse(const OtaResponse *response);
+void OtaCanTransport_ResponseAccepted(void);
 bool OtaCanTransport_IsTxIdle(void);
 void OtaCanTransport_Invalidate(void);
 uint32_t OtaCanTransport_GetDroppedCount(void);

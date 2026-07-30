@@ -6,20 +6,23 @@
 #include "boot/app_launcher.h"
 #include "boot/boot_installer.h"
 #include "boot/boot_metadata_io.h"
+#include "boot/boot_trace.h"
+#include "bsp/flash/boot_internal_flash.h"
 #include "bsp/qspi/boot_qspi_flash.h"
 #include "iwdg.h"
+#include "../../../shared/qspi_flash_identity.h"
 
 #define BOOT_TRIAL_LIMIT 3U
-#define W25Q64_MANUFACTURER_ID 0xEFU
-#define W25Q64_MEMORY_TYPE 0x40U
-#define W25Q64_CAPACITY_ID 0x17U
 
 static void InstallCandidate(BootMetadataSnapshot *snapshot);
 static void InstallConfirmed(BootMetadataSnapshot *snapshot);
+static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
+                                   BootInstallStatus status);
+static void HandleInvalidTrial(BootMetadataSnapshot *snapshot);
 static bool CommitAndReload(BootMetadataSnapshot *snapshot,
                             OtaMetadata *next);
 static void JumpOrWait(void) __attribute__((noreturn));
-static void WaitForRecovery(void) __attribute__((noreturn));
+static void EnterRecovery(void) __attribute__((noreturn));
 
 void BootMain_Run(void)
 {
@@ -27,17 +30,33 @@ void BootMain_Run(void)
   BootMetadataSnapshot snapshot;
   OtaMetadata next;
 
-  if (!BootQspiFlash_ReadJedecId(jedec_id) ||
-      jedec_id[0] != W25Q64_MANUFACTURER_ID ||
-      jedec_id[1] != W25Q64_MEMORY_TYPE ||
-      jedec_id[2] != W25Q64_CAPACITY_ID ||
-      !BootMetadataIo_Load(&snapshot)) {
+  BootTrace_Init();
+  BootWatchdog_Refresh();
+  BootTrace_Write("BOOT: QSPI CHECK\r\n");
+  if (!BootQspiFlash_ReadJedecId(jedec_id)) {
+    BootTrace_Write("BOOT: QSPI ID READ FAILED\r\n");
     JumpOrWait();
   }
+  BootWatchdog_Refresh();
+  BootTrace_Write("BOOT: QSPI READY\r\n");
+  if (!QspiFlashIdentity_IsSupported(jedec_id)) {
+    BootTrace_Write("BOOT: QSPI ID UNSUPPORTED\r\n");
+    JumpOrWait();
+  }
+  BootTrace_Write("BOOT: METADATA CHECK\r\n");
+  if (!BootMetadataIo_Load(&snapshot)) {
+    BootTrace_Write("BOOT: METADATA READ FAILED\r\n");
+    JumpOrWait();
+  }
+  BootWatchdog_Refresh();
+  BootTrace_Write("BOOT: METADATA READY\r\n");
 
   if (!snapshot.selection.valid) {
+    BootTrace_Write("BOOT: NO METADATA\r\n");
     JumpOrWait();
   }
+  BootTrace_WriteValue("BOOT: STATE=",
+                       snapshot.selection.metadata->state);
 
   switch ((OtaState)snapshot.selection.metadata->state) {
     case OTA_STATE_STAGED:
@@ -45,7 +64,8 @@ void BootMain_Run(void)
       next.state = OTA_STATE_INSTALLING;
       ++next.install_attempts;
       if (!CommitAndReload(&snapshot, &next)) {
-        WaitForRecovery();
+        BootTrace_Write("BOOT: INSTALLING COMMIT FAILED\r\n");
+        EnterRecovery();
       }
       InstallCandidate(&snapshot);
       break;
@@ -62,16 +82,23 @@ void BootMain_Run(void)
           next.state = OTA_STATE_FAILED;
           next.last_error = BOOT_INSTALL_ERROR_SLOT;
           (void)CommitAndReload(&snapshot, &next);
-          WaitForRecovery();
+          EnterRecovery();
         }
         next.state = OTA_STATE_ROLLBACK_PENDING;
       }
       if (!CommitAndReload(&snapshot, &next)) {
-        WaitForRecovery();
+        BootTrace_Write("BOOT: TRIAL COUNT COMMIT FAILED\r\n");
+        EnterRecovery();
       }
       if (next.state == OTA_STATE_ROLLBACK_PENDING) {
         InstallConfirmed(&snapshot);
       }
+      if (!BootInstaller_VerifyInstalled(
+              (OtaSlotId)next.candidate_slot)) {
+        BootTrace_Write("BOOT: TRIAL VERIFY FAILED\r\n");
+        HandleInvalidTrial(&snapshot);
+      }
+      BootTrace_Write("BOOT: TRIAL VERIFIED\r\n");
       JumpOrWait();
       break;
 
@@ -80,7 +107,8 @@ void BootMain_Run(void)
       break;
 
     case OTA_STATE_CONFIRMED:
-      if (!BootAppLauncher_IsApplicationValid()) {
+      if (!BootInstaller_VerifyInstalled(
+              (OtaSlotId)snapshot.selection.metadata->confirmed_slot)) {
         InstallConfirmed(&snapshot);
       }
       BootAppLauncher_Jump();
@@ -94,7 +122,7 @@ void BootMain_Run(void)
       break;
   }
 
-  WaitForRecovery();
+  EnterRecovery();
 }
 
 static void InstallCandidate(BootMetadataSnapshot *snapshot)
@@ -102,26 +130,59 @@ static void InstallCandidate(BootMetadataSnapshot *snapshot)
   OtaMetadata next = *snapshot->selection.metadata;
   BootInstallStatus status;
 
-  BootWatchdog_Start();
+  BootTrace_Write("BOOT: INSTALL CANDIDATE\r\n");
   status = BootInstaller_Install(
       snapshot->selection.metadata,
       (OtaSlotId)snapshot->selection.metadata->candidate_slot);
 
   if (status != BOOT_INSTALL_OK) {
-    next.state = OTA_STATE_FAILED;
-    next.last_error = (uint32_t)status;
-    (void)CommitAndReload(snapshot, &next);
-    WaitForRecovery();
+    BootTrace_WriteValue("BOOT: INSTALL FAILED=", status);
+    if (status == BOOT_INSTALL_ERROR_ERASE) {
+      BootTrace_WriteValue("BOOT: ERASE BANK=",
+                           BootInternalFlash_GetLastEraseBank());
+      BootTrace_WriteValue("BOOT: ERASE PAGE=",
+                           BootInternalFlash_GetLastErasePage());
+      BootTrace_WriteValue("BOOT: FLASH ERROR=",
+                           BootInternalFlash_GetLastError());
+    }
+    HandleCandidateFailure(snapshot, status);
   }
+  BootTrace_Write("BOOT: INSTALL VERIFIED\r\n");
 
   next.state = OTA_STATE_TRIAL;
   next.trial_boot_count = 0U;
   next.last_error = 0U;
   if (!CommitAndReload(snapshot, &next)) {
-    WaitForRecovery();
+    BootTrace_Write("BOOT: TRIAL COMMIT FAILED\r\n");
+    EnterRecovery();
   }
+  BootTrace_Write("BOOT: TRIAL COMMITTED\r\n");
+  BootWatchdog_Refresh();
   NVIC_SystemReset();
-  WaitForRecovery();
+  EnterRecovery();
+}
+
+static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
+                                   BootInstallStatus status)
+{
+  OtaMetadata next = *snapshot->selection.metadata;
+
+  next.last_error = (uint32_t)status;
+  if (next.confirmed_slot != OTA_SLOT_NONE) {
+    next.state = OTA_STATE_ROLLBACK_PENDING;
+    if (CommitAndReload(snapshot, &next)) {
+      InstallConfirmed(snapshot);
+    }
+  } else {
+    next.state = OTA_STATE_FAILED;
+    (void)CommitAndReload(snapshot, &next);
+  }
+  EnterRecovery();
+}
+
+static void HandleInvalidTrial(BootMetadataSnapshot *snapshot)
+{
+  HandleCandidateFailure(snapshot, BOOT_INSTALL_ERROR_VERIFY);
 }
 
 static void InstallConfirmed(BootMetadataSnapshot *snapshot)
@@ -129,16 +190,16 @@ static void InstallConfirmed(BootMetadataSnapshot *snapshot)
   OtaMetadata next = *snapshot->selection.metadata;
   BootInstallStatus status;
 
-  BootWatchdog_Start();
   status = BootInstaller_Install(
       snapshot->selection.metadata,
       (OtaSlotId)snapshot->selection.metadata->confirmed_slot);
 
   if (status != BOOT_INSTALL_OK) {
+    BootTrace_WriteValue("BOOT: ROLLBACK FAILED=", status);
     next.state = OTA_STATE_FAILED;
     next.last_error = (uint32_t)status;
     (void)CommitAndReload(snapshot, &next);
-    WaitForRecovery();
+    EnterRecovery();
   }
 
   next.state = OTA_STATE_CONFIRMED;
@@ -146,10 +207,11 @@ static void InstallConfirmed(BootMetadataSnapshot *snapshot)
   next.trial_boot_count = 0U;
   next.last_error = 0U;
   if (!CommitAndReload(snapshot, &next)) {
-    WaitForRecovery();
+    EnterRecovery();
   }
+  BootWatchdog_Refresh();
   NVIC_SystemReset();
-  WaitForRecovery();
+  EnterRecovery();
 }
 
 static bool CommitAndReload(BootMetadataSnapshot *snapshot,
@@ -162,14 +224,17 @@ static bool CommitAndReload(BootMetadataSnapshot *snapshot,
 static void JumpOrWait(void)
 {
   if (BootAppLauncher_IsApplicationValid()) {
+    BootTrace_Write("BOOT: JUMP APPLICATION\r\n");
     BootAppLauncher_Jump();
   }
-  WaitForRecovery();
+  BootTrace_Write("BOOT: APPLICATION INVALID\r\n");
+  EnterRecovery();
 }
 
-static void WaitForRecovery(void)
+static void EnterRecovery(void)
 {
+  BootTrace_Write("BOOT: RECOVERY\r\n");
   for (;;) {
-    BootWatchdog_Refresh();
+    __WFI();
   }
 }

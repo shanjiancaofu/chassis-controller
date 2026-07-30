@@ -35,6 +35,9 @@ HAL_StatusTypeDef BspFdcan_Start(const uint32_t *accepted_standard_ids,
 HAL_StatusTypeDef BspFdcan_Restart(void);
 HAL_StatusTypeDef BspFdcan_ReadRxFrame(BspFdcanFrame *frame);
 HAL_StatusTypeDef BspFdcan_SendFrame(const BspFdcanFrame *frame);
+HAL_StatusTypeDef BspFdcan_SendFrameWithTxEvent(
+    const BspFdcanFrame *frame, uint8_t message_marker);
+bool BspFdcan_TakeTxEvent(uint8_t *message_marker);
 bool BspFdcan_IsTxIdle(void);
 bool BspFdcan_GetDiagnostics(BspFdcanDiagnostics *diagnostics);
 

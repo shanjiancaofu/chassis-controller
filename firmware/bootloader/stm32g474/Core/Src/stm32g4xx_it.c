@@ -174,4 +174,9 @@ void QUADSPI_IRQHandler(void)
 
 /* USER CODE BEGIN 1 */
 
+void SysTick_Handler(void)
+{
+  HAL_IncTick();
+}
+
 /* USER CODE END 1 */

@@ -6,6 +6,7 @@
 #include "bsp/reset/bsp_reset.h"
 #include "config/storage_layout.h"
 #include "config/target_test_config.h"
+#include "../../../../shared/qspi_flash_identity.h"
 
 static BoardHealthSnapshot board_health;
 static uint32_t control_overrun_count;
@@ -37,6 +38,7 @@ void BoardHealth_Init(void)
   }
   board_health.qspi_id_valid =
       board_health.qspi_read_ok &&
+      QspiFlashIdentity_IsSupported(board_health.qspi_jedec_id) &&
       board_health.qspi_capacity_bytes == QSPI_FLASH_CAPACITY_BYTES;
 }
 

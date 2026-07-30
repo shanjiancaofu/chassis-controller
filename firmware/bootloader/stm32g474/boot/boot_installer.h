@@ -1,6 +1,7 @@
 #ifndef BOOT_INSTALLER_H
 #define BOOT_INSTALLER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "../../../shared/ota_metadata.h"
@@ -22,5 +23,6 @@ typedef enum
 
 BootInstallStatus BootInstaller_Install(const OtaMetadata *metadata,
                                         OtaSlotId slot);
+bool BootInstaller_VerifyInstalled(OtaSlotId slot);
 
 #endif

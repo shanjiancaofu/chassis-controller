@@ -40,8 +40,13 @@ QSPI、不打印日志。OTA 接收和写入不得进入 `control_task`。
 
 Application 使用 stop-and-wait 会话，DATA 必须按 `next_offset` 连续提交。UART 模式
 通过 `ota uart confirm` 显式进入，30 秒未收到 BEGIN 自动退出。UART/CAN 响应发送
-失败会重试；`STAGED` 最终响应进入发送队列并排空后才允许复位。失败或 ABORT 发生在
+失败会重试；CAN FD 响应通过 Tx Event 确认实际传输完成，`STAGED` 最终响应确认完成后
+才允许复位，不能只依据 TX FIFO 空闲。失败或 ABORT 发生在
 扇区擦除期间时，维护锁保持到 Flash 内部 busy 清除，不假装已经取消擦除。
+
+5 秒会话超时只用于 `RECEIVING` 阶段的主机通信空闲检测。`PREPARING` 使用独立的
+120 秒总时限和 6 秒内部进度时限；每完成一个扇区擦除都会刷新进度。单次 DMA、页编程
+和扇区擦除仍分别使用自己的操作 deadline。合法同会话 `STATUS` 会刷新主机活动时间。
 
 ## 内部 Flash
 
@@ -59,12 +64,12 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
   约 8 MHz。Application 跳转后自行配置 170 MHz 业务时钟。
 - 普通启动路径不启动 Bootloader IWDG，避免将不可停止的看门狗状态直接继承给
   Application。
-- 只有候选安装和 confirmed 镜像回滚路径按需启动 Bootloader IWDG，配置为最长约
-  32 秒，并在 QSPI、内部 Flash 擦写、编程和校验循环中刷新。
-- 安装或回滚完成后不直接跳转 Application，而是提交元数据后执行系统复位；下一次
-  Bootloader 启动不启用 IWDG，再进入 Application。
-- Application 保持自己的 IWDG 配置和关键任务健康喂狗策略，两个镜像不共享运行中的
-  看门狗会话。
+- Application 正常运行时配置约 10 秒 IWDG；OTA 请求复位前临时切换到约 30 秒并刷新。
+- Bootloader 不主动启动或重配置 IWDG，只在 QSPI、内部 Flash 擦写、编程和校验循环中
+  刷新从 Application 继承的实例；冷启动且 IWDG 未运行时，reload 键不会启动它。
+- 安装或回滚完成后提交元数据并执行系统复位；Application 随后重新配置正常周期并负责
+  持续刷新。Recovery 停止刷新，使继承的 IWDG 复位；无有效 Application 时停留在明确的
+  Recovery 状态。
 
 ## QSPI
 
@@ -89,6 +94,7 @@ sequence 和 CRC32 选择最新有效副本；更新时先写非当前副本，�
 - `firmware/shared/firmware_image.h`
 - `firmware/shared/ota_metadata.h`
 - `firmware/shared/ota_protocol.h`
+- `firmware/shared/qspi_flash_identity.h`
 
 镜像头和元数据记录均固定为 64 字节。元数据记录：
 
@@ -115,10 +121,17 @@ EMPTY -> RECEIVING -> STAGED -> INSTALLING -> TRIAL -> CONFIRMED
 3. 校验成功后提交 `STAGED` 元数据并安全复位。
 4. Bootloader 读取双副本元数据，再次校验候选镜像。
 5. 标记 `INSTALLING`，擦写内部 Application 并进行写后校验。
-6. 安装完成后标记 `TRIAL` 并执行系统复位；下一次启动严格检查向量表后跳转。
+6. 安装完成后标记 `TRIAL` 并执行系统复位；下一次启动按候选槽镜像头对内部
+   Application 执行完整 CRC 和向量表校验后才跳转。
 7. Application 完成最小启动自检后显式确认，候选槽才成为 confirmed 槽。
 8. 试运行未确认或连续异常复位时，从旧 confirmed 槽重新安装。
 9. 安装中断电时，根据 `INSTALLING` 状态从完整 QSPI 镜像重新开始安装。
+10. 候选安装任一步失败时，有 confirmed 槽则提交 `ROLLBACK_PENDING` 并自动重装旧版；
+    无 confirmed 槽才进入 `FAILED` 等待恢复。
+
+`CONFIRMED` 普通启动同样按 confirmed 槽镜像头校验内部 Application 的完整 CRC；校验
+失败时从 confirmed 槽重新安装。Application 与 Bootloader 均通过共享的
+`qspi_flash_identity.h` 严格接受 W25Q64 JEDEC `EF 40 17`。
 
 恢复后不得自动继续旧的运动命令或旧 OTA 会话。
 

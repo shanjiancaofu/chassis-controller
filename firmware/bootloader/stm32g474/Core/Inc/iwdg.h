@@ -42,7 +42,6 @@ void MX_IWDG_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
-void BootWatchdog_Start(void);
 void BootWatchdog_Refresh(void);
 
 /* USER CODE END Prototypes */

@@ -29,6 +29,7 @@ typedef enum
   CONFIRM_VERIFY_READ_START,
   CONFIRM_VERIFY_READ_WAIT,
   CONFIRM_VERIFY,
+  CONFIRM_TERMINAL_WAIT,
   CONFIRM_NOT_REQUIRED,
   CONFIRM_DONE,
   CONFIRM_FAILED
@@ -43,8 +44,10 @@ static uint32_t healthy_since_ms;
 static uint32_t deadline_ms;
 static uint32_t target_address;
 static bool health_window_started;
+static ConfirmationState terminal_state;
 
 static bool DeadlineReached(uint32_t now_ms);
+static void Fail(void);
 
 void OtaConfirmation_Init(void)
 {
@@ -53,6 +56,7 @@ void OtaConfirmation_Init(void)
   deadline_ms = 0U;
   target_address = 0U;
   health_window_started = false;
+  terminal_state = CONFIRM_WAIT_HEALTH;
 }
 
 void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
@@ -86,7 +90,7 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
         deadline_ms = now_ms + OTA_QSPI_DMA_TIMEOUT_MS;
         state = CONFIRM_READ_A_WAIT;
       } else {
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_READ_A_WAIT:
@@ -96,7 +100,7 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
         BspQspiFlash_Abort();
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_READ_B_START:
@@ -106,7 +110,7 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
         deadline_ms = now_ms + OTA_QSPI_DMA_TIMEOUT_MS;
         state = CONFIRM_READ_B_WAIT;
       } else {
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_READ_B_WAIT:
@@ -116,7 +120,7 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
         BspQspiFlash_Abort();
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_SELECT:
@@ -137,24 +141,27 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
       target_address = selection.copy == OTA_METADATA_COPY_A
                            ? QSPI_UPGRADE_METADATA_B_START
                            : QSPI_UPGRADE_METADATA_A_START;
-      state = OtaMetadata_Validate(&next_metadata) ? CONFIRM_ERASE_START
-                                                   : CONFIRM_FAILED;
+      if (OtaMetadata_Validate(&next_metadata)) {
+        state = CONFIRM_ERASE_START;
+      } else {
+        Fail();
+      }
       break;
     case CONFIRM_ERASE_START:
       if (BspQspiFlash_EraseSector(target_address)) {
         deadline_ms = now_ms + OTA_QSPI_ERASE_TIMEOUT_MS;
         state = CONFIRM_ERASE_WAIT;
       } else {
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_ERASE_WAIT:
       if (!BspQspiFlash_IsBusy(&flash_busy)) {
-        state = CONFIRM_FAILED;
+        Fail();
       } else if (!flash_busy) {
         state = CONFIRM_PROGRAM_START;
       } else if (DeadlineReached(now_ms)) {
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_PROGRAM_START:
@@ -164,7 +171,7 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
         deadline_ms = now_ms + OTA_QSPI_DMA_TIMEOUT_MS;
         state = CONFIRM_PROGRAM_DMA_WAIT;
       } else {
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_PROGRAM_DMA_WAIT:
@@ -175,16 +182,16 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
         BspQspiFlash_Abort();
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_PROGRAM_FLASH_WAIT:
       if (!BspQspiFlash_IsBusy(&flash_busy)) {
-        state = CONFIRM_FAILED;
+        Fail();
       } else if (!flash_busy) {
         state = CONFIRM_VERIFY_READ_START;
       } else if (DeadlineReached(now_ms)) {
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_VERIFY_READ_START:
@@ -194,7 +201,7 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
         deadline_ms = now_ms + OTA_QSPI_DMA_TIMEOUT_MS;
         state = CONFIRM_VERIFY_READ_WAIT;
       } else {
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_VERIFY_READ_WAIT:
@@ -204,15 +211,25 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
         BspQspiFlash_Abort();
-        state = CONFIRM_FAILED;
+        Fail();
       }
       break;
     case CONFIRM_VERIFY:
-      state = memcmp(&verify_metadata, &next_metadata,
-                     sizeof(next_metadata)) == 0 &&
-                      OtaMetadata_Validate(&verify_metadata)
-                  ? CONFIRM_DONE
-                  : CONFIRM_FAILED;
+      if (memcmp(&verify_metadata, &next_metadata,
+                 sizeof(next_metadata)) == 0 &&
+          OtaMetadata_Validate(&verify_metadata)) {
+        state = CONFIRM_DONE;
+      } else {
+        Fail();
+      }
+      break;
+    case CONFIRM_TERMINAL_WAIT:
+      if (BspQspiFlash_GetTransferStatus() == BSP_QSPI_TRANSFER_BUSY) {
+        BspQspiFlash_Abort();
+      }
+      if (BspQspiFlash_IsBusy(&flash_busy) && !flash_busy) {
+        state = terminal_state;
+      }
       break;
     default:
       break;
@@ -238,10 +255,26 @@ OtaConfirmationStatus OtaConfirmation_GetStatus(void)
 
 bool OtaConfirmation_IsUsingQspi(void)
 {
-  return state >= CONFIRM_READ_A_START && state <= CONFIRM_VERIFY;
+  return (state >= CONFIRM_READ_A_START && state <= CONFIRM_VERIFY) ||
+         state == CONFIRM_TERMINAL_WAIT;
 }
 
 static bool DeadlineReached(uint32_t now_ms)
 {
   return (int32_t)(now_ms - deadline_ms) >= 0;
+}
+
+static void Fail(void)
+{
+  bool flash_busy = false;
+
+  if (BspQspiFlash_GetTransferStatus() == BSP_QSPI_TRANSFER_BUSY) {
+    BspQspiFlash_Abort();
+  }
+  terminal_state = CONFIRM_FAILED;
+  if (!BspQspiFlash_IsBusy(&flash_busy) || flash_busy) {
+    state = CONFIRM_TERMINAL_WAIT;
+  } else {
+    state = CONFIRM_FAILED;
+  }
 }

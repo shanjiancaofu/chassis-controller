@@ -24,6 +24,7 @@ typedef enum {
   TEST_READ_START,
   TEST_READ_WAIT,
   TEST_VERIFY,
+  TEST_TERMINAL_WAIT,
   TEST_PASSED,
   TEST_FAILED
 } TestState;
@@ -34,9 +35,11 @@ static uint32_t test_offset;
 static uint8_t read_buffer[QSPI_TEST_DATA_SIZE];
 static uint8_t test_pattern[QSPI_TEST_DATA_SIZE];
 static bool completion_pending;
+static TestState terminal_state;
 
 static bool DeadlineReached(uint32_t now_ms);
 static void Complete(TestState final_state);
+static void Fail(void);
 
 void QspiTargetTest_Init(void)
 {
@@ -44,6 +47,7 @@ void QspiTargetTest_Init(void)
 
   test_state = TEST_IDLE;
   completion_pending = false;
+  terminal_state = TEST_IDLE;
   for (index = 0U; index < sizeof(test_pattern); ++index) {
     test_pattern[index] = (uint8_t)((index * 37U + 0x5AU) & 0xFFU);
   }
@@ -78,16 +82,16 @@ void QspiTargetTest_Run(uint32_t now_ms)
         deadline_ms = now_ms + QSPI_ERASE_TIMEOUT_MS;
         test_state = TEST_ERASE_WAIT;
       } else {
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_ERASE_WAIT:
       if (!BspQspiFlash_IsBusy(&flash_busy)) {
-        Complete(TEST_FAILED);
+        Fail();
       } else if (!flash_busy) {
         test_state = TEST_ERASE_READ_START;
       } else if (DeadlineReached(now_ms)) {
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_ERASE_READ_START:
@@ -96,7 +100,7 @@ void QspiTargetTest_Run(uint32_t now_ms)
         deadline_ms = now_ms + QSPI_DMA_TIMEOUT_MS;
         test_state = TEST_ERASE_READ_WAIT;
       } else {
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_ERASE_READ_WAIT:
@@ -106,13 +110,13 @@ void QspiTargetTest_Run(uint32_t now_ms)
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
         BspQspiFlash_Abort();
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_ERASE_VERIFY:
       for (index = 0U; index < sizeof(read_buffer); ++index) {
         if (read_buffer[index] != 0xFFU) {
-          Complete(TEST_FAILED);
+          Fail();
           return;
         }
       }
@@ -126,7 +130,7 @@ void QspiTargetTest_Run(uint32_t now_ms)
         deadline_ms = now_ms + QSPI_DMA_TIMEOUT_MS;
         test_state = TEST_PROGRAM_DMA_WAIT;
       } else {
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_PROGRAM_DMA_WAIT:
@@ -137,19 +141,19 @@ void QspiTargetTest_Run(uint32_t now_ms)
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
         BspQspiFlash_Abort();
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_PROGRAM_FLASH_WAIT:
       if (!BspQspiFlash_IsBusy(&flash_busy)) {
-        Complete(TEST_FAILED);
+        Fail();
       } else if (!flash_busy) {
         test_offset += QSPI_FLASH_PAGE_SIZE;
         test_state = test_offset < QSPI_TEST_DATA_SIZE
                          ? TEST_PROGRAM_START
                          : TEST_READ_START;
       } else if (DeadlineReached(now_ms)) {
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_READ_START:
@@ -158,7 +162,7 @@ void QspiTargetTest_Run(uint32_t now_ms)
         deadline_ms = now_ms + QSPI_DMA_TIMEOUT_MS;
         test_state = TEST_READ_WAIT;
       } else {
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_READ_WAIT:
@@ -168,13 +172,21 @@ void QspiTargetTest_Run(uint32_t now_ms)
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
         BspQspiFlash_Abort();
-        Complete(TEST_FAILED);
+        Fail();
       }
       break;
     case TEST_VERIFY:
       Complete(memcmp(read_buffer, test_pattern, sizeof(test_pattern)) == 0
                    ? TEST_PASSED
                    : TEST_FAILED);
+      break;
+    case TEST_TERMINAL_WAIT:
+      if (BspQspiFlash_GetTransferStatus() == BSP_QSPI_TRANSFER_BUSY) {
+        BspQspiFlash_Abort();
+      }
+      if (BspQspiFlash_IsBusy(&flash_busy) && !flash_busy) {
+        Complete(terminal_state);
+      }
       break;
     default:
       break;
@@ -183,7 +195,8 @@ void QspiTargetTest_Run(uint32_t now_ms)
 
 QspiTargetTestStatus QspiTargetTest_GetStatus(void)
 {
-  if (test_state >= TEST_ERASE_START && test_state <= TEST_VERIFY) {
+  if ((test_state >= TEST_ERASE_START && test_state <= TEST_VERIFY) ||
+      test_state == TEST_TERMINAL_WAIT) {
     return QSPI_TARGET_TEST_RUNNING;
   }
   if (test_state == TEST_PASSED) {
@@ -212,4 +225,19 @@ static void Complete(TestState final_state)
 {
   test_state = final_state;
   completion_pending = true;
+}
+
+static void Fail(void)
+{
+  bool flash_busy = false;
+
+  if (BspQspiFlash_GetTransferStatus() == BSP_QSPI_TRANSFER_BUSY) {
+    BspQspiFlash_Abort();
+  }
+  terminal_state = TEST_FAILED;
+  if (!BspQspiFlash_IsBusy(&flash_busy) || flash_busy) {
+    test_state = TEST_TERMINAL_WAIT;
+  } else {
+    Complete(TEST_FAILED);
+  }
 }

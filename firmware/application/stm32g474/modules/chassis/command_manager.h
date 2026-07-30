@@ -27,7 +27,7 @@ void CommandManager_Release(CommandSource source);
 CommandSource CommandManager_GetOwner(void);
 bool CommandManager_Submit(const CommandManagerCommand *command);
 bool CommandManager_Refresh(CommandSource source, uint32_t now_ms);
-void CommandManager_Clear(void);
+void CommandManager_ClearCommand(void);
 bool CommandManager_Get(CommandManagerCommand *command);
 bool CommandManager_IsTimedOut(uint32_t now_ms);
 

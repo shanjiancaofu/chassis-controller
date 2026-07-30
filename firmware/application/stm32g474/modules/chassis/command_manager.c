@@ -93,11 +93,10 @@ bool CommandManager_Refresh(CommandSource source, uint32_t now_ms)
   return true;
 }
 
-void CommandManager_Clear(void)
+void CommandManager_ClearCommand(void)
 {
   active_command = (CommandManagerCommand){0};
   command_valid = false;
-  control_owner = COMMAND_SOURCE_NONE;
 }
 
 bool CommandManager_Get(CommandManagerCommand *command)
@@ -112,6 +111,20 @@ bool CommandManager_Get(CommandManagerCommand *command)
 
 bool CommandManager_IsTimedOut(uint32_t now_ms)
 {
-  return !command_valid ||
-         now_ms - active_command.received_ms >= MOTOR_COMMAND_TIMEOUT_MS;
+  if (!command_valid) {
+    return true;
+  }
+
+  switch (active_command.source) {
+    case COMMAND_SOURCE_CAN_REMOTE:
+    case COMMAND_SOURCE_TARGET_TEST:
+      return now_ms - active_command.received_ms >=
+             MOTOR_COMMAND_TIMEOUT_MS;
+    case COMMAND_SOURCE_CONSOLE:
+      return false;
+    case COMMAND_SOURCE_NONE:
+    case COMMAND_SOURCE_OTA:
+    default:
+      return true;
+  }
 }

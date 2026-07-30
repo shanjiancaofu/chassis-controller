@@ -112,6 +112,9 @@ int main(void)
   MX_TIM6_Init();
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
+  if (!AppWatchdog_ConfigureNormal()) {
+    Error_Handler();
+  }
   ChassisApp_Init();
   /* USER CODE END 2 */
 

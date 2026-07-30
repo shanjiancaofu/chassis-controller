@@ -70,6 +70,13 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
+  SCB->VTOR = FLASH_BASE;
+  __DSB();
+  __ISB();
+
+  /* An IWDG started before a software reset remains active. */
+  BootWatchdog_Refresh();
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -94,6 +101,7 @@ int main(void)
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
 
+  BootWatchdog_Refresh();
   BootMain_Run();
 
   /* USER CODE END 2 */

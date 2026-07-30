@@ -20,13 +20,13 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 
 | 当前实际状态 | 最终位置或变化 | 时机 |
 | --- | --- | --- |
-| 四个 `firmware/shared/*.h` | Bootloader、Application 和主机工具共用固定 ABI | 已完成首版，后续兼容修改必须提升格式版本 |
+| 五个 `firmware/shared/*.h` | Bootloader、Application 和主机工具共用固定 ABI/硬件契约 | 已完成首版，后续兼容修改必须提升格式版本 |
 | Application `components/pid/`、`components/crc/` | Bootloader 保持独立 CRC 实现 | 已按独立工程边界拆分 |
 | `communication/can_transport/`、`communication/ota_transport/` | 增加 `chassis_protocol/` | 正式底盘协议编解码落地时 |
 | `infrastructure/` | 保留现有命名，后续增加参数存储 | 参数持久化实现时 |
 | `modules/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
 | `rtos/rtos_app.c/h` 两任务模型 | 仅按真实阻塞或周期需求新增任务 | OTA 接收需要独立非实时任务时 |
-| 仅有 `tests/target/` | 增加 `tests/unit/` | 首个无 HAL 组件测试落地时 |
+| `tests/target/` 和 `tests/unit/` | 按风险补目标板测试和无 HAL 主机测试 | CommandManager 首批主机测试已落地 |
 | 独立 Bootloader 工程 | 继续与 Application 保持独立 CubeMX、链接脚本和构建配置 | 已完成首版 |
 
 迁移不改变底盘行为，不批量创建空目录，不建立只转发调用的空层。
@@ -46,7 +46,7 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - UART 已具备 circular DMA、IDLE 接收、软件环形缓冲和 TX DMA 队列
 - 建立 Bootloader 纯逻辑首批代码：CRC32、镜像头/载荷校验、向量表校验、
   OTA 元数据双副本校验和 sequence 选择
-- 建立独立裸机 Bootloader CubeMX/CubeIDE 工程，只启用 QSPI、IWDG、SWD 和时钟
+- 建立独立裸机 Bootloader CubeMX/CubeIDE 工程，只启用 QSPI、SWD 和时钟；IWDG 仅刷新继承实例
 - Bootloader 链接区限制为 `0x08000000` 起始的 32 KiB
 - 接入 W25Q64 JEDEC 检查、元数据双副本读取和交替提交
 - 实现候选镜像流式 CRC 校验、内部 Flash 双 Bank 擦写、写后校验和严格跳转
@@ -64,15 +64,21 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - 已提供 UART 和 SocketCAN CAN FD stop-and-wait 主机发送工具
 - 已生成并校验 Bootloader + relocated Application 首次组合烧录产物
 - 已使用 DFU 烧录正式组合镜像，验证 Bootloader 普通启动可跳转到 relocated Application
-- Bootloader 固定使用 16 MHz HSI；普通启动不启用 Bootloader IWDG，安装和回滚时
-  按需启用，并在完成后通过系统复位进入干净的 Application 启动路径
+- Bootloader 固定使用 16 MHz HSI；不主动启动或重配置 IWDG，只刷新 Application 继承的实例；
+  Application 正常周期约 10 秒，OTA 复位前约 30 秒，Recovery 停止刷新
+- 运动命令与维护 owner 已拆分；`pid stop` 不能释放 OTA 锁，Console 目标持续到明确停止，
+  CAN 目标仍使用 200 ms heartbeat timeout
+- OTA 擦除阶段使用独立总时限和内部进度时限，人工 QSPI 测试与试运行确认失败后均等待
+  DMA 终止和 Flash WIP 清除
+- CAN OTA 响应使用 Tx Event 确认和软件重试；候选安装失败时自动回滚 confirmed 槽
+- TRIAL/CONFIRMED 启动执行完整 Application CRC 校验，Application/Bootloader 共用
+  W25Q64 JEDEC `EF 40 17` 准入契约
 
 下一批按顺序执行：
 
-1. 使用 UART 完成首个真实 `.ota` 升级并检查 `STAGED -> TRIAL -> CONFIRMED`。
-2. 使用 Jetson SocketCAN 完成同一镜像的 CAN FD 升级。
-3. 验证错误头、错误 CRC、会话超时和 CAN 错误均保持停车且不会安装。
-4. 验证 QSPI 暂存、内部安装期间断电恢复，以及未确认试运行回滚。
+1. 使用 Jetson SocketCAN 完成同一镜像的 CAN FD 升级。
+2. 验证错误头、错误 CRC、会话超时和 CAN 错误均保持停车且不会安装。
+3. 验证 QSPI 暂存、内部安装期间断电恢复，以及未确认试运行回滚。
 
 ## 后续阶段
 

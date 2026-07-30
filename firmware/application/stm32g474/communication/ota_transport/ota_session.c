@@ -12,6 +12,8 @@
 #define OTA_QSPI_DMA_TIMEOUT_MS 500U
 #define OTA_QSPI_PROGRAM_TIMEOUT_MS 500U
 #define OTA_QSPI_ERASE_TIMEOUT_MS 5000U
+#define OTA_PREPARING_TIMEOUT_MS 120000U
+#define OTA_PREPARING_PROGRESS_TIMEOUT_MS 6000U
 #define OTA_RESET_DELAY_MS 500U
 #define OTA_VECTOR_SIZE 8U
 #define OTA_SRAM_START 0x20000000UL
@@ -52,6 +54,8 @@ static uint32_t package_size;
 static uint32_t expected_package_crc;
 static uint32_t next_offset;
 static uint32_t last_activity_ms;
+static uint32_t preparing_started_ms;
+static uint32_t last_progress_ms;
 static uint32_t deadline_ms;
 static uint32_t slot_start;
 static uint32_t slot_size;
@@ -101,6 +105,8 @@ void OtaSession_Init(void)
   expected_package_crc = 0U;
   next_offset = 0U;
   last_activity_ms = 0U;
+  preparing_started_ms = 0U;
+  last_progress_ms = 0U;
   response_pending = false;
   staged_response_submitted = false;
   terminal_state = SESSION_IDLE;
@@ -119,6 +125,10 @@ bool OtaSession_Submit(const OtaMessage *message, uint32_t now_ms,
       QueueResponse(message->source, message->session_id,
                     OTA_RESULT_INVALID_HEADER);
     } else {
+      if (OtaSession_IsActive() && message->source == source &&
+          message->session_id == session_id) {
+        last_activity_ms = now_ms;
+      }
       QueueResponse(message->source, message->session_id, last_result);
     }
     return true;
@@ -144,6 +154,8 @@ bool OtaSession_Submit(const OtaMessage *message, uint32_t now_ms,
     expected_package_crc = ReadU32(message->data);
     next_offset = 0U;
     last_activity_ms = now_ms;
+    preparing_started_ms = now_ms;
+    last_progress_ms = now_ms;
     last_result = OTA_RESULT_OK;
     memset(header_bytes, 0, sizeof(header_bytes));
     memset(vector_bytes, 0, sizeof(vector_bytes));
@@ -214,9 +226,16 @@ void OtaSession_Run(uint32_t now_ms)
   uint32_t page_remaining;
   uint32_t remaining;
 
-  if (OtaSession_IsActive() && state != SESSION_TERMINAL_WAIT &&
-      state != SESSION_STAGED &&
+  if (state >= SESSION_RECEIVING &&
+      state <= SESSION_WRITE_FLASH_WAIT &&
       now_ms - last_activity_ms > OTA_SESSION_TIMEOUT_MS) {
+    Fail(OTA_RESULT_TIMEOUT);
+  }
+  if (state >= SESSION_METADATA_A_START &&
+      state <= SESSION_ERASE_WAIT &&
+      (now_ms - preparing_started_ms > OTA_PREPARING_TIMEOUT_MS ||
+       now_ms - last_progress_ms >
+           OTA_PREPARING_PROGRESS_TIMEOUT_MS)) {
     Fail(OTA_RESULT_TIMEOUT);
   }
 
@@ -234,6 +253,7 @@ void OtaSession_Run(uint32_t now_ms)
     case SESSION_METADATA_A_WAIT:
       transfer_status = BspQspiFlash_GetTransferStatus();
       if (transfer_status == BSP_QSPI_TRANSFER_COMPLETE) {
+        last_progress_ms = now_ms;
         state = SESSION_METADATA_B_START;
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
@@ -254,6 +274,7 @@ void OtaSession_Run(uint32_t now_ms)
     case SESSION_METADATA_B_WAIT:
       transfer_status = BspQspiFlash_GetTransferStatus();
       if (transfer_status == BSP_QSPI_TRANSFER_COMPLETE) {
+        last_progress_ms = now_ms;
         state = SESSION_PREPARE;
       } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
                  DeadlineReached(now_ms)) {
@@ -290,7 +311,6 @@ void OtaSession_Run(uint32_t now_ms)
     case SESSION_ERASE_START:
       if (erase_address >= erase_end) {
         state = SESSION_RECEIVING;
-        QueueResponse(source, session_id, OTA_RESULT_OK);
       } else if (BspQspiFlash_EraseSector(erase_address)) {
         deadline_ms = now_ms + OTA_QSPI_ERASE_TIMEOUT_MS;
         state = SESSION_ERASE_WAIT;
@@ -303,6 +323,7 @@ void OtaSession_Run(uint32_t now_ms)
         Fail(OTA_RESULT_IO_ERROR);
       } else if (!flash_busy) {
         erase_address += QSPI_FLASH_SECTOR_SIZE;
+        last_progress_ms = now_ms;
         state = SESSION_ERASE_START;
       } else if (DeadlineReached(now_ms)) {
         Fail(OTA_RESULT_TIMEOUT);
@@ -592,7 +613,7 @@ static void EnterTerminalState(SessionState requested_state, OtaResult result,
   }
   terminal_state = requested_state;
   last_result = result;
-  if (BspQspiFlash_IsBusy(&flash_busy) && flash_busy) {
+  if (!BspQspiFlash_IsBusy(&flash_busy) || flash_busy) {
     state = SESSION_TERMINAL_WAIT;
   } else {
     state = requested_state;
@@ -684,8 +705,6 @@ static bool IsMetadataStateReplaceable(const OtaMetadataSelection *selection)
   if (selection == NULL || !selection->valid) {
     return true;
   }
-  return selection->metadata->state == OTA_STATE_EMPTY ||
-         selection->metadata->state == OTA_STATE_CONFIRMED ||
-         selection->metadata->state == OTA_STATE_RECEIVING ||
-         selection->metadata->state == OTA_STATE_FAILED;
+  return OtaMetadata_IsReplaceableState(
+      (OtaState)selection->metadata->state);
 }

@@ -2,8 +2,8 @@
 #define STORAGE_LAYOUT_H
 
 #include "../../../shared/flash_layout.h"
+#include "../../../shared/qspi_flash_identity.h"
 
-#define QSPI_FLASH_CAPACITY_BYTES 0x00800000UL
 #define QSPI_FLASH_SECTOR_SIZE 0x00001000UL
 #define QSPI_FLASH_PAGE_SIZE 0x00000100UL
 
