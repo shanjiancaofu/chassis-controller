@@ -102,11 +102,58 @@ static void TestMetadataSelection(void)
   Expect(selected.metadata == &older, "metadata_fallback_to_valid_copy");
 }
 
+static void TestInterruptedInstallLimit(void)
+{
+  OtaMetadata metadata = MakeMetadata(20U, OTA_STATE_STAGED);
+
+  metadata.confirmed_slot = OTA_SLOT_NONE;
+  metadata.install_attempts = 0U;
+  Expect(BootMetadataStore_BeginInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPT_READY &&
+             metadata.install_attempts == 1U,
+         "install_attempt_one");
+  Expect(BootMetadataStore_BeginInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPT_READY &&
+             metadata.install_attempts == 2U,
+         "install_resume_attempt_two");
+  Expect(BootMetadataStore_BeginInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPT_READY &&
+             metadata.install_attempts == 3U,
+         "install_resume_attempt_three");
+  Expect(BootMetadataStore_BeginInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPTS_EXHAUSTED &&
+             metadata.state == OTA_STATE_FAILED,
+         "install_limit_without_confirmed_fails");
+
+  metadata.confirmed_slot = OTA_SLOT_A;
+  metadata.candidate_slot = OTA_SLOT_B;
+  metadata.state = OTA_STATE_INSTALLING;
+  metadata.install_attempts = 3U;
+  Expect(BootMetadataStore_BeginInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ROLLBACK_REQUIRED &&
+             metadata.state == OTA_STATE_ROLLBACK_PENDING,
+         "install_limit_with_confirmed_rolls_back");
+}
+
+static void TestFactoryMetadataDetection(void)
+{
+  OtaMetadata metadata;
+
+  memset(&metadata, 0xFF, sizeof(metadata));
+  Expect(BootMetadataStore_IsErased(&metadata),
+         "blank_metadata_is_factory");
+  metadata.magic = OTA_METADATA_MAGIC;
+  Expect(!BootMetadataStore_IsErased(&metadata),
+         "corrupt_metadata_is_not_factory");
+}
+
 int main(void)
 {
   TestCrc32();
   TestImageValidation();
   TestMetadataSelection();
+  TestInterruptedInstallLimit();
+  TestFactoryMetadataDetection();
 
   if (failures != 0) {
     printf("bootloader_core_test failed: %d\n", failures);

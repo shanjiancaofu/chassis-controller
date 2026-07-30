@@ -15,6 +15,7 @@
 #define OTA_PREPARING_TIMEOUT_MS 120000U
 #define OTA_PREPARING_PROGRESS_TIMEOUT_MS 6000U
 #define OTA_RESET_DELAY_MS 500U
+#define OTA_TERMINAL_CLEANUP_TIMEOUT_MS 10000U
 #define OTA_VECTOR_SIZE 8U
 #define OTA_SRAM_START 0x20000000UL
 #define OTA_SRAM_END 0x20020000UL
@@ -82,6 +83,9 @@ static OtaResponse pending_response;
 static bool response_pending;
 static bool staged_response_submitted;
 static SessionState terminal_state;
+static uint32_t terminal_deadline_ms;
+static uint32_t current_run_ms;
+static bool critical_fault;
 
 static void QueueResponse(OtaSource destination, uint8_t response_session_id,
                           OtaResult result);
@@ -110,12 +114,16 @@ void OtaSession_Init(void)
   response_pending = false;
   staged_response_submitted = false;
   terminal_state = SESSION_IDLE;
+  terminal_deadline_ms = 0U;
+  current_run_ms = 0U;
+  critical_fault = false;
   last_result = OTA_RESULT_OK;
 }
 
 bool OtaSession_Submit(const OtaMessage *message, uint32_t now_ms,
                        bool begin_allowed)
 {
+  current_run_ms = now_ms;
   if (message == NULL || response_pending) {
     return false;
   }
@@ -225,6 +233,8 @@ void OtaSession_Run(uint32_t now_ms)
   bool flash_busy;
   uint32_t page_remaining;
   uint32_t remaining;
+
+  current_run_ms = now_ms;
 
   if (state >= SESSION_RECEIVING &&
       state <= SESSION_WRITE_FLASH_WAIT &&
@@ -494,6 +504,8 @@ void OtaSession_Run(uint32_t now_ms)
       }
       if (BspQspiFlash_IsBusy(&flash_busy) && !flash_busy) {
         state = terminal_state;
+      } else if (DeadlineReached(now_ms)) {
+        critical_fault = true;
       }
       break;
     default:
@@ -572,6 +584,11 @@ bool OtaSession_IsUsingQspi(void)
          state <= SESSION_TERMINAL_WAIT;
 }
 
+bool OtaSession_HasCriticalFault(void)
+{
+  return critical_fault;
+}
+
 bool OtaSession_IsResetRequested(uint32_t now_ms)
 {
   return state == SESSION_STAGED &&
@@ -593,7 +610,7 @@ static void QueueResponse(OtaSource destination, uint8_t response_session_id,
 
 static void Fail(OtaResult result)
 {
-  EnterTerminalState(SESSION_FAILED, result, last_activity_ms);
+  EnterTerminalState(SESSION_FAILED, result, current_run_ms);
   QueueResponse(source, session_id, result);
 }
 
@@ -612,6 +629,7 @@ static void EnterTerminalState(SessionState requested_state, OtaResult result,
     BspQspiFlash_Abort();
   }
   terminal_state = requested_state;
+  terminal_deadline_ms = now_ms + OTA_TERMINAL_CLEANUP_TIMEOUT_MS;
   last_result = result;
   if (!BspQspiFlash_IsBusy(&flash_busy) || flash_busy) {
     state = SESSION_TERMINAL_WAIT;
@@ -622,7 +640,11 @@ static void EnterTerminalState(SessionState requested_state, OtaResult result,
 
 static bool DeadlineReached(uint32_t now_ms)
 {
-  return (int32_t)(now_ms - deadline_ms) >= 0;
+  const uint32_t target = state == SESSION_TERMINAL_WAIT
+                              ? terminal_deadline_ms
+                              : deadline_ms;
+
+  return (int32_t)(now_ms - target) >= 0;
 }
 
 static uint32_t ReadU32(const uint8_t *data)

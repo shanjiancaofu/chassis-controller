@@ -15,6 +15,7 @@
 
 #define BOOT_TRIAL_LIMIT 3U
 
+static void BeginCandidateInstall(BootMetadataSnapshot *snapshot);
 static void InstallCandidate(BootMetadataSnapshot *snapshot);
 static void InstallConfirmed(BootMetadataSnapshot *snapshot);
 static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
@@ -22,7 +23,10 @@ static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
 static void HandleInvalidTrial(BootMetadataSnapshot *snapshot);
 static bool CommitAndReload(BootMetadataSnapshot *snapshot,
                             OtaMetadata *next);
-static void JumpOrWait(void) __attribute__((noreturn));
+static void JumpFactoryApplicationIfVectorValid(void)
+    __attribute__((noreturn));
+static void JumpVerifiedOrFactory(const OtaMetadata *metadata)
+    __attribute__((noreturn));
 static void EnterRecovery(void) __attribute__((noreturn));
 
 void BootMain_Run(void)
@@ -38,43 +42,41 @@ void BootMain_Run(void)
   BootTrace_Write("BOOT: QSPI CHECK\r\n");
   if (!BootQspiFlash_ReadJedecId(jedec_id)) {
     BootTrace_Write("BOOT: QSPI ID READ FAILED\r\n");
-    JumpOrWait();
+    EnterRecovery();
   }
   BootWatchdog_Refresh();
   BootTrace_Write("BOOT: QSPI READY\r\n");
   if (!QspiFlashIdentity_IsSupported(jedec_id)) {
     BootTrace_Write("BOOT: QSPI ID UNSUPPORTED\r\n");
-    JumpOrWait();
+    EnterRecovery();
   }
   BootTrace_Write("BOOT: METADATA CHECK\r\n");
   if (!BootMetadataIo_Load(&snapshot)) {
     BootTrace_Write("BOOT: METADATA READ FAILED\r\n");
-    JumpOrWait();
+    EnterRecovery();
   }
   BootWatchdog_Refresh();
   BootTrace_Write("BOOT: METADATA READY\r\n");
 
   if (!snapshot.selection.valid) {
     BootTrace_Write("BOOT: NO METADATA\r\n");
-    JumpOrWait();
+    if (BootMetadataStore_IsErased(&snapshot.copy_a) &&
+        BootMetadataStore_IsErased(&snapshot.copy_b)) {
+      JumpFactoryApplicationIfVectorValid();
+    }
+    BootTrace_Write("BOOT: METADATA CORRUPT\r\n");
+    EnterRecovery();
   }
   BootTrace_WriteValue("BOOT: STATE=",
                        snapshot.selection.metadata->state);
 
   switch ((OtaState)snapshot.selection.metadata->state) {
     case OTA_STATE_STAGED:
-      next = *snapshot.selection.metadata;
-      next.state = OTA_STATE_INSTALLING;
-      ++next.install_attempts;
-      if (!CommitAndReload(&snapshot, &next)) {
-        BootTrace_Write("BOOT: INSTALLING COMMIT FAILED\r\n");
-        EnterRecovery();
-      }
-      InstallCandidate(&snapshot);
+      BeginCandidateInstall(&snapshot);
       break;
 
     case OTA_STATE_INSTALLING:
-      InstallCandidate(&snapshot);
+      BeginCandidateInstall(&snapshot);
       break;
 
     case OTA_STATE_TRIAL:
@@ -102,7 +104,7 @@ void BootMain_Run(void)
         HandleInvalidTrial(&snapshot);
       }
       BootTrace_Write("BOOT: TRIAL VERIFIED\r\n");
-      JumpOrWait();
+      BootAppLauncher_Jump();
       break;
 
     case OTA_STATE_ROLLBACK_PENDING:
@@ -119,13 +121,42 @@ void BootMain_Run(void)
 
     case OTA_STATE_EMPTY:
     case OTA_STATE_RECEIVING:
+      JumpVerifiedOrFactory(snapshot.selection.metadata);
+      break;
+
     case OTA_STATE_FAILED:
     default:
-      JumpOrWait();
+      EnterRecovery();
       break;
   }
 
   EnterRecovery();
+}
+
+static void BeginCandidateInstall(BootMetadataSnapshot *snapshot)
+{
+  OtaMetadata next = *snapshot->selection.metadata;
+  const BootInstallAttemptDecision decision =
+      BootMetadataStore_BeginInstallAttempt(&next);
+
+  if (decision != BOOT_INSTALL_ATTEMPT_READY) {
+    BootTrace_Write("BOOT: INSTALL LIMIT REACHED\r\n");
+    next.last_error = BOOT_INSTALL_ERROR_VERIFY;
+    if (decision == BOOT_INSTALL_ROLLBACK_REQUIRED) {
+      if (CommitAndReload(snapshot, &next)) {
+        InstallConfirmed(snapshot);
+      }
+    } else {
+      (void)CommitAndReload(snapshot, &next);
+    }
+    EnterRecovery();
+  }
+
+  if (!CommitAndReload(snapshot, &next)) {
+    BootTrace_Write("BOOT: INSTALLING COMMIT FAILED\r\n");
+    EnterRecovery();
+  }
+  InstallCandidate(snapshot);
 }
 
 static void InstallCandidate(BootMetadataSnapshot *snapshot)
@@ -224,13 +255,26 @@ static bool CommitAndReload(BootMetadataSnapshot *snapshot,
          BootMetadataIo_Load(snapshot) && snapshot->selection.valid;
 }
 
-static void JumpOrWait(void)
+static void JumpFactoryApplicationIfVectorValid(void)
 {
   if (BootAppLauncher_IsApplicationValid()) {
     BootTrace_Write("BOOT: JUMP APPLICATION\r\n");
     BootAppLauncher_Jump();
   }
   BootTrace_Write("BOOT: APPLICATION INVALID\r\n");
+  EnterRecovery();
+}
+
+static void JumpVerifiedOrFactory(const OtaMetadata *metadata)
+{
+  if (metadata->confirmed_slot == OTA_SLOT_NONE) {
+    JumpFactoryApplicationIfVectorValid();
+  }
+  if (BootInstaller_VerifyInstalled(
+          (OtaSlotId)metadata->confirmed_slot)) {
+    BootAppLauncher_Jump();
+  }
+  BootTrace_Write("BOOT: CONFIRMED IMAGE INVALID\r\n");
   EnterRecovery();
 }
 

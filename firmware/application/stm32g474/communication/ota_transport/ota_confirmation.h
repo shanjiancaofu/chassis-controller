@@ -18,5 +18,6 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
                          bool qspi_available);
 OtaConfirmationStatus OtaConfirmation_GetStatus(void);
 bool OtaConfirmation_IsUsingQspi(void);
+bool OtaConfirmation_HasCriticalFault(void);
 
 #endif

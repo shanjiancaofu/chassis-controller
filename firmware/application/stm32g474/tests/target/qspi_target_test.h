@@ -16,5 +16,6 @@ bool QspiTargetTest_Start(void);
 void QspiTargetTest_Run(uint32_t now_ms);
 QspiTargetTestStatus QspiTargetTest_GetStatus(void);
 bool QspiTargetTest_TakeCompletion(void);
+bool QspiTargetTest_HasCriticalFault(void);
 
 #endif

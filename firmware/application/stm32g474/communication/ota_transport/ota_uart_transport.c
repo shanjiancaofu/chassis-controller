@@ -15,6 +15,7 @@ static uint8_t frame_buffer[OTA_UART_MAX_FRAME_SIZE];
 static uint16_t frame_length;
 static uint16_t expected_length;
 static uint32_t error_count;
+static uint32_t response_tx_token;
 
 static void ConsumeByte(uint8_t value);
 static void ResetParser(void);
@@ -26,6 +27,7 @@ void OtaUartTransport_Init(void)
   enabled = false;
   message_pending = false;
   error_count = 0U;
+  response_tx_token = 0U;
   ResetParser();
 }
 
@@ -41,6 +43,7 @@ void OtaUartTransport_Disable(void)
   enabled = false;
   message_pending = false;
   ResetParser();
+  response_tx_token = 0U;
 }
 
 void OtaUartTransport_Run(void)
@@ -80,8 +83,22 @@ bool OtaUartTransport_SendResponse(const OtaResponse *response)
   uint8_t frame[OTA_UART_HEADER_SIZE + 2U + OTA_UART_CRC_SIZE] = {0};
   uint32_t crc;
 
+  bool completed;
+  bool success;
+
   if (response == NULL || !enabled) {
     return false;
+  }
+  if (response_tx_token != 0U) {
+    if (!BspUart_GetTrackedCompletion(response_tx_token, &completed,
+                                      &success) || !completed) {
+      return false;
+    }
+    response_tx_token = 0U;
+    if (success) {
+      return true;
+    }
+    ++error_count;
   }
   frame[0] = OTA_UART_MAGIC_0;
   frame[1] = OTA_UART_MAGIC_1;
@@ -94,7 +111,8 @@ bool OtaUartTransport_SendResponse(const OtaResponse *response)
   frame[13] = (uint8_t)response->state;
   crc = Crc32_Calculate(frame, sizeof(frame) - OTA_UART_CRC_SIZE);
   WriteU32(&frame[sizeof(frame) - OTA_UART_CRC_SIZE], crc);
-  return BspUart_Write(frame, sizeof(frame));
+  (void)BspUart_WriteTracked(frame, sizeof(frame), &response_tx_token);
+  return false;
 }
 
 bool OtaUartTransport_IsTxIdle(void)

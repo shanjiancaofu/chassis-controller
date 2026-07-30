@@ -113,20 +113,24 @@ static bool ErasePages(uint32_t bank, uint32_t first_page,
                        uint32_t page_count)
 {
   FLASH_EraseInitTypeDef erase = {0};
-  uint32_t page_error = 0U;
+  uint32_t page;
 
   erase.TypeErase = FLASH_TYPEERASE_PAGES;
   erase.Banks = bank;
-  erase.Page = first_page;
-  erase.NbPages = page_count;
+  erase.NbPages = 1U;
 
-  BootWatchdog_Refresh();
-  if (HAL_FLASHEx_Erase(&erase, &page_error) != HAL_OK ||
-      page_error != 0xFFFFFFFFUL) {
-    last_erase_bank = bank;
-    last_erase_page = page_error;
-    last_flash_error = HAL_FLASH_GetError();
-    return false;
+  for (page = first_page; page < first_page + page_count; ++page) {
+    uint32_t page_error = 0U;
+
+    erase.Page = page;
+    BootWatchdog_Refresh();
+    if (HAL_FLASHEx_Erase(&erase, &page_error) != HAL_OK ||
+        page_error != 0xFFFFFFFFUL) {
+      last_erase_bank = bank;
+      last_erase_page = page_error == 0xFFFFFFFFUL ? page : page_error;
+      last_flash_error = HAL_FLASH_GetError();
+      return false;
+    }
   }
   BootWatchdog_Refresh();
   return true;

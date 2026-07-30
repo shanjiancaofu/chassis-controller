@@ -18,6 +18,7 @@ OtaSource OtaSession_GetSource(void);
 uint32_t OtaSession_GetNextOffset(void);
 bool OtaSession_IsActive(void);
 bool OtaSession_IsUsingQspi(void);
+bool OtaSession_HasCriticalFault(void);
 bool OtaSession_IsResetRequested(uint32_t now_ms);
 
 #endif

@@ -261,6 +261,11 @@ void ChassisApp_Run(void)
         QspiTargetTest_GetStatus() != QSPI_TARGET_TEST_RUNNING &&
             !OtaSession_IsUsingQspi());
   }
+  if (OtaSession_HasCriticalFault() ||
+      OtaConfirmation_HasCriticalFault() ||
+      QspiTargetTest_HasCriticalFault()) {
+    LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+  }
   MotorTargetTest_Run(now_ms);
   ReleaseCompletedTargetTest();
   DiagnosticReport_Run(now_ms);

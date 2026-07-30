@@ -12,6 +12,9 @@
 #define OTA_QSPI_DMA_TIMEOUT_MS 500U
 #define OTA_QSPI_PROGRAM_TIMEOUT_MS 500U
 #define OTA_QSPI_ERASE_TIMEOUT_MS 5000U
+#define OTA_TERMINAL_CLEANUP_TIMEOUT_MS 10000U
+#define OTA_CONFIRM_RETRY_DELAY_MS 1000U
+#define OTA_CONFIRM_RETRY_LIMIT 3U
 
 typedef enum
 {
@@ -30,6 +33,7 @@ typedef enum
   CONFIRM_VERIFY_READ_WAIT,
   CONFIRM_VERIFY,
   CONFIRM_TERMINAL_WAIT,
+  CONFIRM_RETRY_WAIT,
   CONFIRM_NOT_REQUIRED,
   CONFIRM_DONE,
   CONFIRM_FAILED
@@ -45,9 +49,15 @@ static uint32_t deadline_ms;
 static uint32_t target_address;
 static bool health_window_started;
 static ConfirmationState terminal_state;
+static uint32_t terminal_deadline_ms;
+static uint32_t retry_deadline_ms;
+static uint32_t current_run_ms;
+static uint8_t failure_count;
+static bool critical_fault;
 
 static bool DeadlineReached(uint32_t now_ms);
 static void Fail(void);
+static void FinishFailure(uint32_t now_ms);
 
 void OtaConfirmation_Init(void)
 {
@@ -57,6 +67,11 @@ void OtaConfirmation_Init(void)
   target_address = 0U;
   health_window_started = false;
   terminal_state = CONFIRM_WAIT_HEALTH;
+  terminal_deadline_ms = 0U;
+  retry_deadline_ms = 0U;
+  current_run_ms = 0U;
+  failure_count = 0U;
+  critical_fault = false;
 }
 
 void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
@@ -66,6 +81,8 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
   const OtaMetadata *current;
   OtaMetadataSelection selection;
   bool flash_busy;
+
+  current_run_ms = now_ms;
 
   switch (state) {
     case CONFIRM_WAIT_HEALTH:
@@ -228,7 +245,14 @@ void OtaConfirmation_Run(uint32_t now_ms, bool startup_healthy,
         BspQspiFlash_Abort();
       }
       if (BspQspiFlash_IsBusy(&flash_busy) && !flash_busy) {
-        state = terminal_state;
+        FinishFailure(now_ms);
+      } else if ((int32_t)(now_ms - terminal_deadline_ms) >= 0) {
+        critical_fault = true;
+      }
+      break;
+    case CONFIRM_RETRY_WAIT:
+      if ((int32_t)(now_ms - retry_deadline_ms) >= 0) {
+        state = CONFIRM_READ_A_START;
       }
       break;
     default:
@@ -259,6 +283,11 @@ bool OtaConfirmation_IsUsingQspi(void)
          state == CONFIRM_TERMINAL_WAIT;
 }
 
+bool OtaConfirmation_HasCriticalFault(void)
+{
+  return critical_fault;
+}
+
 static bool DeadlineReached(uint32_t now_ms)
 {
   return (int32_t)(now_ms - deadline_ms) >= 0;
@@ -271,10 +300,25 @@ static void Fail(void)
   if (BspQspiFlash_GetTransferStatus() == BSP_QSPI_TRANSFER_BUSY) {
     BspQspiFlash_Abort();
   }
-  terminal_state = CONFIRM_FAILED;
+  ++failure_count;
+  terminal_state = failure_count < OTA_CONFIRM_RETRY_LIMIT
+                       ? CONFIRM_RETRY_WAIT
+                       : CONFIRM_FAILED;
+  terminal_deadline_ms = current_run_ms +
+                         OTA_TERMINAL_CLEANUP_TIMEOUT_MS;
   if (!BspQspiFlash_IsBusy(&flash_busy) || flash_busy) {
     state = CONFIRM_TERMINAL_WAIT;
   } else {
-    state = CONFIRM_FAILED;
+    FinishFailure(current_run_ms);
+  }
+}
+
+static void FinishFailure(uint32_t now_ms)
+{
+  state = terminal_state;
+  if (state == CONFIRM_RETRY_WAIT) {
+    retry_deadline_ms = now_ms + OTA_CONFIRM_RETRY_DELAY_MS;
+  } else {
+    critical_fault = true;
   }
 }

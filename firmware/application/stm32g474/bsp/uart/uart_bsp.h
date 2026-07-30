@@ -20,6 +20,10 @@ bool BspUart_Start(void);
 void BspUart_Run(void);
 size_t BspUart_Read(uint8_t *data, size_t capacity);
 bool BspUart_Write(const void *data, size_t length);
+bool BspUart_WriteTracked(const void *data, size_t length,
+                          uint32_t *token);
+bool BspUart_GetTrackedCompletion(uint32_t token, bool *completed,
+                                  bool *success);
 bool BspUart_WriteString(const char *text);
 bool BspUart_IsTxIdle(void);
 void BspUart_GetDiagnostics(BspUartDiagnostics *diagnostics);

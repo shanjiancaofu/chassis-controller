@@ -35,8 +35,9 @@ USART1 RX
 ```
 
 现有 UART BSP 已具备 circular DMA、IDLE 接收、RX 环形缓冲、TX DMA 队列和
-错误恢复，不再复制一套 UART 驱动。ISR 不解析 OTA 帧、不计算整包 CRC、不写
-QSPI、不打印日志。OTA 接收和写入不得进入 `control_task`。
+错误恢复。OTA 响应使用发送 token 跟踪 DMA 完成结果，异步失败时重试同一响应；只有
+完成回调确认成功后，最终 `STAGED` 响应才允许触发复位。ISR 不解析 OTA 帧、不计算整包
+CRC、不写 QSPI、不打印日志。OTA 接收和写入不得进入 `control_task`。
 
 Application 使用 stop-and-wait 会话，DATA 必须按 `next_offset` 连续提交。UART 模式
 通过 `ota uart confirm` 显式进入，30 秒未收到 BEGIN 自动退出。UART/CAN 响应发送
@@ -66,7 +67,8 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
   Application。
 - Application 正常运行时配置约 10 秒 IWDG；OTA 请求复位前临时切换到约 30 秒并刷新。
 - Bootloader 不主动启动或重配置 IWDG，只在 QSPI、内部 Flash 擦写、编程和校验循环中
-  刷新从 Application 继承的实例；冷启动且 IWDG 未运行时，reload 键不会启动它。
+  刷新从 Application 继承的实例；内部 Application 按页擦除并在页间刷新。冷启动且
+  IWDG 未运行时，reload 键不会启动它。
 - `bootloader.ioc` 当前仍保留 IWDG 为启用状态，但生成的 `MX_IWDG_Init()` 在 USER CODE
   区域立即返回。实际运行行为以上一条为准；CubeMX 重新生成后必须检查该保护仍然存在。
 - 安装或回滚完成后提交元数据并执行系统复位；Application 随后重新配置正常周期并负责
@@ -74,7 +76,7 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
   Recovery 状态。
 
 Bootloader 的功能版本和构建号定义在 `config/build_info.h`。启动串口输出格式为
-`BOOT: VERSION=0.1.0 BUILD=16`：功能或兼容行为变化时更新语义版本，同一版本下的不同
+`BOOT: VERSION=0.1.0 BUILD=17`：功能或兼容行为变化时更新语义版本，同一版本下的不同
 构建递增 build 号。
 
 ## QSPI
@@ -131,13 +133,22 @@ EMPTY -> RECEIVING -> STAGED -> INSTALLING -> TRIAL -> CONFIRMED
    Application 执行完整 CRC 和向量表校验后才跳转。
 7. Application 完成最小启动自检后显式确认，候选槽才成为 confirmed 槽。
 8. 试运行未确认或连续异常复位时，从旧 confirmed 槽重新安装。
-9. 安装中断电时，根据 `INSTALLING` 状态从完整 QSPI 镜像重新开始安装。
+9. 安装中断电时，根据 `INSTALLING` 状态从完整 QSPI 镜像重新开始安装；每次实际安装前
+   先持久化增加 `install_attempts`，最多尝试 3 次，超限后有 confirmed 槽则回滚，否则进入 Recovery。
 10. 候选安装任一步失败时，有 confirmed 槽则提交 `ROLLBACK_PENDING` 并自动重装旧版；
     无 confirmed 槽才进入 `FAILED` 等待恢复。
 
 `CONFIRMED` 普通启动同样按 confirmed 槽镜像头校验内部 Application 的完整 CRC；校验
 失败时从 confirmed 槽重新安装。Application 与 Bootloader 均通过共享的
 `qspi_flash_identity.h` 严格接受 W25Q64 JEDEC `EF 40 17`。
+
+`FAILED`、QSPI 识别失败、metadata 读取失败和非空损坏 metadata 一律进入 Recovery，
+不能使用前 8 字节向量表跳转。只有两份 metadata 都为擦除态的 factory 设备可使用向量表
+fallback；`EMPTY/RECEIVING` 若记录了 confirmed 槽，也必须通过完整安装镜像校验。
+
+OTA、试运行确认和人工 QSPI 测试的终止清理最多等待 WIP 10 秒。持续无法读取状态时保留
+维护锁并锁存 critical fault，停车且停止刷新 IWDG。试运行确认失败会间隔 1 秒重试，最多
+3 次；持续失败后同样触发看门狗复位，让 Bootloader 按 TRIAL 次数执行回滚策略。
 
 恢复后不得自动继续旧的运动命令或旧 OTA 会话。
 
@@ -146,6 +157,7 @@ Application task、`control_task` 和关键故障状态连续健康 5 秒；随�
 Metadata A/B，只接受最新合法 `TRIAL`，擦除并写入非当前副本，再回读校验。确认记录将
 `confirmed_slot` 设为原 `candidate_slot`，清空 candidate、trial count 和 last error。
 该流程与人工 QSPI 擦写测试互斥，不依赖 CAN 外部节点在线，也不进入 `control_task`。
+因此当前自动确认只能覆盖启动和关键任务健康类故障；Jetson 显式验收授权仍属于后续发布策略。
 
 ## 打包
 

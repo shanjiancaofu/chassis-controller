@@ -8,6 +8,7 @@
 
 #define QSPI_ERASE_TIMEOUT_MS 5000U
 #define QSPI_PROGRAM_TIMEOUT_MS 500U
+#define QSPI_TERMINAL_CLEANUP_TIMEOUT_MS 10000U
 #define QSPI_DMA_TIMEOUT_MS 500U
 #define QSPI_TEST_DATA_SIZE 1024U
 
@@ -36,6 +37,9 @@ static uint8_t read_buffer[QSPI_TEST_DATA_SIZE];
 static uint8_t test_pattern[QSPI_TEST_DATA_SIZE];
 static bool completion_pending;
 static TestState terminal_state;
+static uint32_t terminal_deadline_ms;
+static uint32_t current_run_ms;
+static bool critical_fault;
 
 static bool DeadlineReached(uint32_t now_ms);
 static void Complete(TestState final_state);
@@ -48,6 +52,9 @@ void QspiTargetTest_Init(void)
   test_state = TEST_IDLE;
   completion_pending = false;
   terminal_state = TEST_IDLE;
+  terminal_deadline_ms = 0U;
+  current_run_ms = 0U;
+  critical_fault = false;
   for (index = 0U; index < sizeof(test_pattern); ++index) {
     test_pattern[index] = (uint8_t)((index * 37U + 0x5AU) & 0xFFU);
   }
@@ -75,6 +82,8 @@ void QspiTargetTest_Run(uint32_t now_ms)
   BspQspiTransferStatus transfer_status;
   bool flash_busy;
   size_t index;
+
+  current_run_ms = now_ms;
 
   switch (test_state) {
     case TEST_ERASE_START:
@@ -186,6 +195,8 @@ void QspiTargetTest_Run(uint32_t now_ms)
       }
       if (BspQspiFlash_IsBusy(&flash_busy) && !flash_busy) {
         Complete(terminal_state);
+      } else if (DeadlineReached(now_ms)) {
+        critical_fault = true;
       }
       break;
     default:
@@ -216,9 +227,18 @@ bool QspiTargetTest_TakeCompletion(void)
   return completed;
 }
 
+bool QspiTargetTest_HasCriticalFault(void)
+{
+  return critical_fault;
+}
+
 static bool DeadlineReached(uint32_t now_ms)
 {
-  return (int32_t)(now_ms - deadline_ms) >= 0;
+  const uint32_t target = test_state == TEST_TERMINAL_WAIT
+                              ? terminal_deadline_ms
+                              : deadline_ms;
+
+  return (int32_t)(now_ms - target) >= 0;
 }
 
 static void Complete(TestState final_state)
@@ -235,6 +255,8 @@ static void Fail(void)
     BspQspiFlash_Abort();
   }
   terminal_state = TEST_FAILED;
+  terminal_deadline_ms = current_run_ms +
+                         QSPI_TERMINAL_CLEANUP_TIMEOUT_MS;
   if (!BspQspiFlash_IsBusy(&flash_busy) || flash_busy) {
     test_state = TEST_TERMINAL_WAIT;
   } else {

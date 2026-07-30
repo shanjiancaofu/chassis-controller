@@ -38,40 +38,44 @@
 
 ## 构建基线
 
-Application Release 于 2026-07-30 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
+Application Release 于 2026-07-31 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
 2026-07-28 的最近结果：
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 222948 | 96 | 34072 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 182540 | 96 | 34088 | `BUILD PASS`，2026-07-30，0 errors，0 warnings |
+| Release | 183424 | 96 | 34224 | `BUILD PASS`，2026-07-31，0 errors，0 warnings |
 
 Debug/Release 的 `.isr_vector` 均位于 `0x08008000`；反汇编确认 `SystemInit()` 将
 VTOR 写入 `0x08008000`。最高 Flash load 地址未超出 `0x0807FFFF`。构建结果只说明
-当前源码可编译和链接，不代表迁移后的固件已通过实物启动。
+当前 Application b7 源码可编译和链接，不代表本轮固件已通过实物启动；b6 仍是最近一次
+完成 UART OTA 实物闭环的 Application。
 
-Bootloader Release 于 2026-07-30 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
+Bootloader Release 于 2026-07-31 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
 2026-07-28 的最近结果：
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 17652 | 44 | 1668 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 11676 | 48 | 1656 | `BUILD PASS`，2026-07-30，0 errors，0 warnings |
+| Release | 11956 | 48 | 1656 | `BUILD PASS`，2026-07-31，0 errors，0 warnings |
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
-本次 build16 已确认 ELF 包含 `BOOT: VERSION=0.1.0 BUILD=16`，但尚未生成正式发布产物、
+本次 build17 已确认 ELF 包含 `BOOT: VERSION=0.1.0 BUILD=17`，但尚未生成正式发布产物、
 烧录或执行目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
 
-2026-07-30 在提交 `4d4ffe0` 上完成宿主机回归：
+2026-07-31 在当前工作树完成宿主机回归：
 
 - `tools/ota/test_ota_transfer.py`：3 项 Python 测试通过，覆盖 UART 帧 CRC、CAN 响应
   布局和 stop-and-wait 分块状态流程。
 - `test_command_manager.c`：WSL GCC 使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过，
   覆盖 OTA owner、运动命令清除、非法 source、Console 持续目标和 CAN 200 ms 超时。
 - `test_ota_metadata.c`：同参数编译运行通过，覆盖允许替换和禁止替换的 metadata 状态。
-- `bootloader_core_test.c`：同参数编译运行通过，覆盖 CRC32 标准向量、镜像校验和 metadata
-  双副本选择。
+- `bootloader_core_test.c`：同参数编译运行通过，覆盖 CRC32 标准向量、镜像校验、metadata
+  双副本选择、factory 擦除态识别，以及安装中断三次后的回滚/FAILED 决策。
+
+本轮新增的 FAILED 隔离、安装重试上限、UART DMA 完成确认、QSPI 清理截止、确认重试和
+逐页擦除均只完成代码审查、主机测试或目标构建，尚未完成目标板故障注入回归。
 
 以上均为主机测试结果，不替代 CubeIDE 目标构建或 STM32 实物验收。
 

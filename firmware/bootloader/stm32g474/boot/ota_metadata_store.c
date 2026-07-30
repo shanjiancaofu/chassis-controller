@@ -1,7 +1,11 @@
 #include "boot/ota_metadata_store.h"
 
+#include <stddef.h>
+
 #include "components/crc/crc32.h"
 #include "../../../shared/flash_layout.h"
+
+#define BOOT_INSTALL_ATTEMPT_LIMIT 3U
 
 static bool IsKnownState(uint32_t state);
 static bool IsKnownSlot(uint32_t slot, bool allow_none);
@@ -70,6 +74,42 @@ BootMetadataSelection BootMetadataStore_SelectLatest(
   }
 
   return selection;
+}
+
+bool BootMetadataStore_IsErased(const OtaMetadata *metadata)
+{
+  const uint8_t *bytes = (const uint8_t *)metadata;
+  size_t index;
+
+  if (metadata == 0) {
+    return false;
+  }
+  for (index = 0U; index < sizeof(*metadata); ++index) {
+    if (bytes[index] != 0xFFU) {
+      return false;
+    }
+  }
+  return true;
+}
+
+BootInstallAttemptDecision BootMetadataStore_BeginInstallAttempt(
+    OtaMetadata *metadata)
+{
+  if (metadata == 0 ||
+      metadata->install_attempts >= BOOT_INSTALL_ATTEMPT_LIMIT) {
+    if (metadata != 0 && metadata->confirmed_slot != OTA_SLOT_NONE) {
+      metadata->state = OTA_STATE_ROLLBACK_PENDING;
+      return BOOT_INSTALL_ROLLBACK_REQUIRED;
+    }
+    if (metadata != 0) {
+      metadata->state = OTA_STATE_FAILED;
+    }
+    return BOOT_INSTALL_ATTEMPTS_EXHAUSTED;
+  }
+
+  metadata->state = OTA_STATE_INSTALLING;
+  ++metadata->install_attempts;
+  return BOOT_INSTALL_ATTEMPT_READY;
 }
 
 static bool IsKnownState(uint32_t state)

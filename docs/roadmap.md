@@ -62,7 +62,9 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - Application 已实现统一 OTA 会话、停车维护锁、UART 二进制帧解析、CAN FD 64 字节
   分块传输、QSPI DMA 写入、整包/镜像校验和 `STAGED` 元数据提交
 - UART 进入二进制模式后 30 秒内未收到 BEGIN 会自动退出并释放维护锁
-- 失败或中止时等待 QSPI 内部擦写结束后才释放维护锁；最终响应提交并排空后才复位
+- 失败或中止时等待 QSPI 内部擦写结束后才释放维护锁；清理超过 10 秒则锁存 critical fault、
+  保持停车并由 IWDG 复位，不会无限等待或假定 Flash 空闲
+- UART OTA 响应使用 token 等待对应 DMA 完成，失败时重试同一帧；最终响应确认成功后才复位
 - 已提供 UART 和 SocketCAN CAN FD stop-and-wait 主机发送工具
 - 已生成并校验 Bootloader + relocated Application 首次组合烧录产物
 - 已使用 DFU 烧录正式组合镜像，验证 Bootloader 普通启动可跳转到 relocated Application
@@ -75,11 +77,15 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - OTA 擦除阶段使用独立总时限和内部进度时限，人工 QSPI 测试与试运行确认失败后均等待
   DMA 终止和 Flash WIP 清除
 - CAN OTA 响应使用 Tx Event 确认和软件重试；候选安装失败时自动回滚 confirmed 槽
+- `FAILED` 禁止向量表 fallback；仅双 metadata 擦除态允许 factory fallback，QSPI/metadata
+  故障进入 Recovery；安装中断最多重试 3 次，超限后回滚或 FAILED
+- 试运行确认最多重试 3 次，持续失败时锁存 critical fault 并由 IWDG 复位；内部 Flash
+  改为逐页擦除并在页间刷新继承的 IWDG
 - TRIAL/CONFIRMED 启动执行完整 Application CRC 校验，Application/Bootloader 共用
   W25Q64 JEDEC `EF 40 17` 准入契约
 - `test_ota_transfer.py`、CommandManager、Application OTA metadata 和 Bootloader core
-  宿主机测试已于 2026-07-30 在当前 `main` 通过
-- Bootloader 已嵌入 `0.1.0` 功能版本和 build16 构建号，启动串口输出两者；build16
+  宿主机测试已于 2026-07-31 通过，Bootloader core 覆盖安装中断三次后的回滚/FAILED 策略
+- Bootloader 已嵌入 `0.1.0` 功能版本和 build17 构建号，启动串口输出两者；build17
   Release 已 clean build，尚未烧板回归
 - 已清除 Git 跟踪的 `tools/ota/__pycache__/*.pyc`，并增加通用 Python 缓存忽略规则
 - Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，

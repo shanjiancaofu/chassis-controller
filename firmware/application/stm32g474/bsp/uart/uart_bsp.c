@@ -11,6 +11,8 @@
 
 typedef struct {
   uint16_t length;
+  uint32_t token;
+  bool tracked;
   uint8_t data[UART_TX_MESSAGE_SIZE];
 } UartTxMessage;
 
@@ -31,12 +33,17 @@ static volatile uint8_t tx_count;
 static volatile bool tx_active;
 static volatile uint32_t tx_queue_full_count;
 static volatile uint32_t tx_error_count;
+static uint32_t next_tx_token;
+static volatile uint32_t completed_tx_token;
+static volatile bool completed_tx_success;
 
 static void StoreReceivedBytes(uint16_t position);
 static void StoreReceivedByte(uint8_t value);
 static void RestartReceiveIfNeeded(void);
 static void StartNextTransmit(void);
 static void CompleteActiveTransmit(bool success);
+static bool QueueTransmit(const void *data, size_t length, bool tracked,
+                          uint32_t *token);
 
 bool BspUart_Start(void)
 {
@@ -53,6 +60,9 @@ bool BspUart_Start(void)
   tx_active = false;
   tx_queue_full_count = 0U;
   tx_error_count = 0U;
+  next_tx_token = 0U;
+  completed_tx_token = 0U;
+  completed_tx_success = false;
 
   if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, dma_rx_buffer,
                                    sizeof(dma_rx_buffer)) != HAL_OK) {
@@ -91,6 +101,34 @@ size_t BspUart_Read(uint8_t *data, size_t capacity)
 
 bool BspUart_Write(const void *data, size_t length)
 {
+  return QueueTransmit(data, length, false, NULL);
+}
+
+bool BspUart_WriteTracked(const void *data, size_t length,
+                          uint32_t *token)
+{
+  return token != NULL && QueueTransmit(data, length, true, token);
+}
+
+bool BspUart_GetTrackedCompletion(uint32_t token, bool *completed,
+                                  bool *success)
+{
+  uint32_t primask;
+
+  if (token == 0U || completed == NULL || success == NULL) {
+    return false;
+  }
+  primask = __get_PRIMASK();
+  __disable_irq();
+  *completed = completed_tx_token == token;
+  *success = *completed && completed_tx_success;
+  __set_PRIMASK(primask);
+  return true;
+}
+
+static bool QueueTransmit(const void *data, size_t length, bool tracked,
+                          uint32_t *token)
+{
   uint8_t slot;
   uint32_t primask;
 
@@ -108,6 +146,17 @@ bool BspUart_Write(const void *data, size_t length)
   slot = tx_tail;
   memcpy(tx_queue[slot].data, data, length);
   tx_queue[slot].length = (uint16_t)length;
+  tx_queue[slot].tracked = tracked;
+  if (tracked) {
+    ++next_tx_token;
+    if (next_tx_token == 0U) {
+      ++next_tx_token;
+    }
+    tx_queue[slot].token = next_tx_token;
+    *token = next_tx_token;
+  } else {
+    tx_queue[slot].token = 0U;
+  }
   tx_tail = (uint8_t)((tx_tail + 1U) % UART_TX_QUEUE_DEPTH);
   ++tx_count;
   StartNextTransmit();
@@ -258,6 +307,10 @@ static void CompleteActiveTransmit(bool success)
 
   if (!success) {
     ++tx_error_count;
+  }
+  if (tx_queue[tx_head].tracked) {
+    completed_tx_success = success;
+    completed_tx_token = tx_queue[tx_head].token;
   }
   tx_head = (uint8_t)((tx_head + 1U) % UART_TX_QUEUE_DEPTH);
   --tx_count;
