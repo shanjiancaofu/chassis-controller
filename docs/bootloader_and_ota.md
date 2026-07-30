@@ -146,7 +146,7 @@ Metadata A/B，只接受最新合法 `TRIAL`，擦除并写入非当前副本，
 ```powershell
 python tools/ota/package_firmware.py `
   firmware/application/stm32g474/Release/chassis_controller.bin `
-  _output/chassis-controller-0.2.0.ota `
+  _output/application/chassis-controller-0.2.0-build1-20260730-120000.ota `
   --version 0.2.0 --build 1
 ```
 
@@ -171,7 +171,7 @@ arm-none-eabi-objcopy -O binary `
 python tools/ota/create_factory_image.py `
   firmware/bootloader/stm32g474/Release/bootloader.bin `
   firmware/application/stm32g474/Release/chassis_controller.bin `
-  _output/chassis-controller-factory.bin
+  _output/factory/chassis-controller-app-0.2.0-build1_bootloader-0.1.0-build15-20260730-120000-factory.bin
 ```
 
 生成器校验两个向量表、区域上限和 Reset Handler 地址，并将 Application 固定放到
@@ -185,7 +185,7 @@ UART 需要 Python 3 和 `pyserial`：
 ```powershell
 python -m pip install pyserial
 python tools/ota/send_uart.py COM7 `
-  _output/chassis-controller-0.1.0-build2.ota
+  _output/application/chassis-controller-0.1.0-build6-20260730-201234.ota
 ```
 
 工具先发送 `telemetry off` 和 `ota uart confirm`，收到 READY 后切换为二进制协议。
@@ -195,7 +195,7 @@ Jetson 先按 `verification.md` 配置 `can0`，再发送：
 
 ```bash
 python3 tools/ota/send_canfd.py can0 \
-  _output/chassis-controller-0.1.0-build2.ota
+  _output/application/chassis-controller-0.1.0-build6-20260730-201234.ota
 ```
 
 两个工具都等待 `PREPARING -> RECEIVING`，逐块等待 ACK，并只在最终收到 `STAGED`

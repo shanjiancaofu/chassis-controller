@@ -82,7 +82,8 @@ firmware/.metadata/
 /.cubeide-workspace/
 
 # Generated firmware packages
-/_output/
+/_output/*
+!/_output/README.md
 
 # Local editor settings
 /.vscode/

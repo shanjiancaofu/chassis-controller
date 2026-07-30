@@ -68,7 +68,7 @@ Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果
 payload=181556 bytes
 payload_crc32=0x732A8DE6
 target=0x08008000
-package=_output/chassis-controller-0.1.0-build2.ota
+package=_output/archive/chassis-controller-0.1.0-build2-20260728-162748.ota
 ```
 
 打包器已通过向量表、地址、长度、头部 CRC32 和 payload CRC32 自校验。Application
@@ -78,7 +78,7 @@ package=_output/chassis-controller-0.1.0-build2.ota
 同时生成：
 
 ```text
-_output/chassis-controller-0.1.0-build2-factory.bin
+_output/archive/chassis-controller-0.1.0-build2-factory-20260728-202020.bin
 total=214324 bytes
 bootloader=10312 bytes at offset 0x0000
 application=181556 bytes at offset 0x8000
@@ -112,7 +112,8 @@ Application 在软件复位前已启动的实例。Recovery 不刷新，让继�
 
 ### UART OTA 实物闭环（2026-07-30）
 
-使用 `_output/chassis-controller-0.1.0-build6.ota` 在 COM8、115200 8N1 下完成真实传输：
+使用 `_output/application/chassis-controller-0.1.0-build6-20260730-201234.ota`
+在 COM8、115200 8N1 下完成真实传输：
 
 ```text
 OTA staged over UART: next_offset=182856
@@ -140,10 +141,10 @@ CONTROL_OVERRUN: count=0 missed=0
 最终产物为：
 
 ```text
-_output/bootloader-0.1.0-build15.bin                 11684 bytes
-_output/chassis-controller-0.1.0-build6.bin        182792 bytes
-_output/chassis-controller-0.1.0-build6.ota        182856 bytes
-_output/chassis-controller-0.1.0-build6-factory-final.bin 215560 bytes
+_output/bootloader/bootloader-0.1.0-build15-20260730-213118.bin 11684 bytes
+_output/application/chassis-controller-0.1.0-build6-20260730-201215.bin 182792 bytes
+_output/application/chassis-controller-0.1.0-build6-20260730-201234.ota 182856 bytes
+_output/factory/chassis-controller-app-0.1.0-build6_bootloader-0.1.0-build15-20260730-213129-factory.bin 215560 bytes
 ```
 
 UART OTA 主链已达到 `HARDWARE PASS`。CAN FD OTA、安装中断电、TRIAL 失败回滚和无有效
@@ -288,7 +289,7 @@ cansend can0 720##15041535301000000
 
 1. 断开电机主电源，保持急停可用，确认 CAN 不发送运动命令。
 2. 在 STM32CubeProgrammer 连接 DFU 或 ST-Link，执行 Full chip erase。
-3. 选择 `_output/chassis-controller-0.1.0-build2-factory.bin`，下载地址填写
+3. 选择 `_output/factory/chassis-controller-app-0.1.0-build6_bootloader-0.1.0-build15-20260730-213129-factory.bin`，下载地址填写
    `0x08000000`，启用下载后校验。
 4. 复位，确认串口出现 Application 启动信息，电机保持零输出。
 5. 执行 `status`，记录 `OTA_CONFIRM` 和 `OTA_TRANSFER`；首次无 TRIAL 元数据时不得
