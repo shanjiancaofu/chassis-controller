@@ -146,6 +146,8 @@ chassis-controller/
 │        │  └─ qspi/
 │        ├─ components/
 │        │  └─ crc/
+│        ├─ config/
+│        │  └─ build_info.h
 │        └─ tests/
 │           └─ unit/
 │

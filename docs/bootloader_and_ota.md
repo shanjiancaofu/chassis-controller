@@ -73,6 +73,10 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
   持续刷新。Recovery 停止刷新，使继承的 IWDG 复位；无有效 Application 时停留在明确的
   Recovery 状态。
 
+Bootloader 的功能版本和构建号定义在 `config/build_info.h`。启动串口输出格式为
+`BOOT: VERSION=0.1.0 BUILD=16`：功能或兼容行为变化时更新语义版本，同一版本下的不同
+构建递增 build 号。
+
 ## QSPI
 
 | 区域 | 起始地址 | 大小 | 说明 |

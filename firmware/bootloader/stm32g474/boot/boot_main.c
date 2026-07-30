@@ -9,6 +9,7 @@
 #include "boot/boot_trace.h"
 #include "bsp/flash/boot_internal_flash.h"
 #include "bsp/qspi/boot_qspi_flash.h"
+#include "config/build_info.h"
 #include "iwdg.h"
 #include "../../../shared/qspi_flash_identity.h"
 
@@ -32,6 +33,8 @@ void BootMain_Run(void)
 
   BootTrace_Init();
   BootWatchdog_Refresh();
+  BootTrace_Write("BOOT: VERSION=" BOOTLOADER_VERSION_STRING
+                  " BUILD=" BOOTLOADER_BUILD_STRING "\r\n");
   BootTrace_Write("BOOT: QSPI CHECK\r\n");
   if (!BootQspiFlash_ReadJedecId(jedec_id)) {
     BootTrace_Write("BOOT: QSPI ID READ FAILED\r\n");

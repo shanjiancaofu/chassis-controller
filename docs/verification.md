@@ -56,10 +56,12 @@ Bootloader Release 于 2026-07-30 使用 CubeIDE 2.2.0 GCC clean build；Debug �
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 17652 | 44 | 1668 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 11636 | 48 | 1656 | `BUILD PASS`，2026-07-30，0 errors，0 warnings |
+| Release | 11676 | 48 | 1656 | `BUILD PASS`，2026-07-30，0 errors，0 warnings |
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
+本次 build16 已确认 ELF 包含 `BOOT: VERSION=0.1.0 BUILD=16`，但尚未生成正式发布产物、
+烧录或执行目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
 
 2026-07-30 在提交 `4d4ffe0` 上完成宿主机回归：
 

@@ -87,3 +87,7 @@ firmware/.metadata/
 
 # Local editor settings
 /.vscode/
+
+# Python cache
+__pycache__/
+*.py[cod]

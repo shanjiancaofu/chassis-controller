@@ -79,14 +79,17 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
   W25Q64 JEDEC `EF 40 17` 准入契约
 - `test_ota_transfer.py`、CommandManager、Application OTA metadata 和 Bootloader core
   宿主机测试已于 2026-07-30 在当前 `main` 通过
+- Bootloader 已嵌入 `0.1.0` 功能版本和 build16 构建号，启动串口输出两者；build16
+  Release 已 clean build，尚未烧板回归
+- 已清除 Git 跟踪的 `tools/ota/__pycache__/*.pyc`，并增加通用 Python 缓存忽略规则
+- Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，
+  从而保留 CubeMX 工程结构但不在 Bootloader 主动启动或重配置 IWDG
 
 下一批按顺序执行：
 
 1. 使用 Jetson SocketCAN 完成同一镜像的 CAN FD 升级。
 2. 验证错误头、错误 CRC、会话超时和 CAN 错误均保持停车且不会安装。
 3. 验证 QSPI 暂存、内部安装期间断电恢复，以及未确认试运行回滚。
-4. 清除已跟踪的 `tools/ota/__pycache__/*.pyc`，改为通用忽略规则；为 Bootloader
-   增加可在运行时读取的版本/构建信息，并让 `.ioc` 与 IWDG 实际所有权保持一致。
 
 ## 后续阶段
 
