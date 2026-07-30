@@ -67,6 +67,8 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
 - Application 正常运行时配置约 10 秒 IWDG；OTA 请求复位前临时切换到约 30 秒并刷新。
 - Bootloader 不主动启动或重配置 IWDG，只在 QSPI、内部 Flash 擦写、编程和校验循环中
   刷新从 Application 继承的实例；冷启动且 IWDG 未运行时，reload 键不会启动它。
+- `bootloader.ioc` 当前仍保留 IWDG 为启用状态，但生成的 `MX_IWDG_Init()` 在 USER CODE
+  区域立即返回。实际运行行为以上一条为准；CubeMX 重新生成后必须检查该保护仍然存在。
 - 安装或回滚完成后提交元数据并执行系统复位；Application 随后重新配置正常周期并负责
   持续刷新。Recovery 停止刷新，使继承的 IWDG 复位；无有效 Application 时停留在明确的
   Recovery 状态。
@@ -146,8 +148,8 @@ Metadata A/B，只接受最新合法 `TRIAL`，擦除并写入非当前副本，
 ```powershell
 python tools/ota/package_firmware.py `
   firmware/application/stm32g474/Release/chassis_controller.bin `
-  _output/application/chassis-controller-0.2.0-build1-20260730-120000.ota `
-  --version 0.2.0 --build 1
+  _output/application/chassis-controller-0.1.0-build6-20260730-201234.ota `
+  --version 0.1.0 --build 6
 ```
 
 打包器检查向量表、链接地址、长度、头部 CRC32 和 payload CRC32。仍链接到
@@ -171,7 +173,7 @@ arm-none-eabi-objcopy -O binary `
 python tools/ota/create_factory_image.py `
   firmware/bootloader/stm32g474/Release/bootloader.bin `
   firmware/application/stm32g474/Release/chassis_controller.bin `
-  _output/factory/chassis-controller-app-0.2.0-build1_bootloader-0.1.0-build15-20260730-120000-factory.bin
+  _output/factory/chassis-controller-app-0.1.0-build6_bootloader-0.1.0-build15-20260730-213129-factory.bin
 ```
 
 生成器校验两个向量表、区域上限和 Reset Handler 地址，并将 Application 固定放到
@@ -184,7 +186,7 @@ UART 需要 Python 3 和 `pyserial`：
 
 ```powershell
 python -m pip install pyserial
-python tools/ota/send_uart.py COM7 `
+python tools/ota/send_uart.py COM8 `
   _output/application/chassis-controller-0.1.0-build6-20260730-201234.ota
 ```
 

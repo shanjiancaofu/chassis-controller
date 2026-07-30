@@ -63,6 +63,10 @@ RXD -> PA9  / USART1_TX
 GND -> GND
 ```
 
+Application 使用 USART1 DMA 收发；Bootloader 使用同一 `PA9/PA10`，由
+`boot_trace.c` 直接配置为 115200 8N1 并轮询输出启动诊断。Bootloader 当前不接收串口
+命令，UART OTA 数据仍由 Application 接收。
+
 ## 电机驱动
 
 ```text
@@ -83,6 +87,17 @@ AT8236 当前使用快速衰减控制：
 
 PWM 为 20 kHz，TIM8 ARR 为 8499。换向前至少保持一个 10 ms 零输出周期；
 同一电机两个输入不得同时输出有效 PWM。
+
+整车逻辑方向还包含左右电机镜像安装的补偿，当前软件映射为：
+
+| 逻辑命令 | TIM8 通道 | 驱动输入 |
+| --- | --- | --- |
+| 左轮正向 | CH1 / PC6 | AIN1 |
+| 左轮反向 | CH2 / PC7 | AIN2 |
+| 右轮正向 | CH4 / PC9 | BIN2 |
+| 右轮反向 | CH3 / PC8 | BIN1 |
+
+因此上面的 IN1/IN2 表描述 H 桥输入状态，不直接定义左右车轮的整车前进方向。
 
 编码器：
 

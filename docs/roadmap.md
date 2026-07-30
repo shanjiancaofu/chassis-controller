@@ -46,7 +46,9 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - UART 已具备 circular DMA、IDLE 接收、软件环形缓冲和 TX DMA 队列
 - 建立 Bootloader 纯逻辑首批代码：CRC32、镜像头/载荷校验、向量表校验、
   OTA 元数据双副本校验和 sequence 选择
-- 建立独立裸机 Bootloader CubeMX/CubeIDE 工程，只启用 QSPI、SWD 和时钟；IWDG 仅刷新继承实例
+- 建立独立裸机 Bootloader CubeMX/CubeIDE 工程，运行时使用 QSPI、SWD、直接寄存器
+  USART1 trace 和时钟；`.ioc` 仍保留 IWDG 外设，但 `MX_IWDG_Init()` 在 USER CODE 中
+  直接返回，Bootloader 只刷新继承实例
 - Bootloader 链接区限制为 `0x08000000` 起始的 32 KiB
 - 接入 W25Q64 JEDEC 检查、元数据双副本读取和交替提交
 - 实现候选镜像流式 CRC 校验、内部 Flash 双 Bank 擦写、写后校验和严格跳转
@@ -75,12 +77,16 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - CAN OTA 响应使用 Tx Event 确认和软件重试；候选安装失败时自动回滚 confirmed 槽
 - TRIAL/CONFIRMED 启动执行完整 Application CRC 校验，Application/Bootloader 共用
   W25Q64 JEDEC `EF 40 17` 准入契约
+- `test_ota_transfer.py`、CommandManager、Application OTA metadata 和 Bootloader core
+  宿主机测试已于 2026-07-30 在当前 `main` 通过
 
 下一批按顺序执行：
 
 1. 使用 Jetson SocketCAN 完成同一镜像的 CAN FD 升级。
 2. 验证错误头、错误 CRC、会话超时和 CAN 错误均保持停车且不会安装。
 3. 验证 QSPI 暂存、内部安装期间断电恢复，以及未确认试运行回滚。
+4. 清除已跟踪的 `tools/ota/__pycache__/*.pyc`，改为通用忽略规则；为 Bootloader
+   增加可在运行时读取的版本/构建信息，并让 `.ioc` 与 IWDG 实际所有权保持一致。
 
 ## 后续阶段
 

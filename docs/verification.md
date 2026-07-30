@@ -61,11 +61,17 @@ Bootloader Release 于 2026-07-30 使用 CubeIDE 2.2.0 GCC clean build；Debug �
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
 
-2026-07-30 使用 WSL GCC 以 `-std=c11 -Wall -Wextra -Werror` 编译并运行
-`tests/unit/test_command_manager.c`，覆盖 OTA owner 不被清运动命令或错误来源释放、OTA
-不能提交运动目标、Console 目标不使用 200 ms 超时、CAN 目标在 200 ms 超时。测试通过。
-同日运行 `tools/ota/test_ota_transfer.py` 的 3 项 Python 单元测试，覆盖 UART 帧 CRC、
-CAN 响应布局和 stop-and-wait 分块状态流程。以上是主机测试结果，不替代实物验收。
+2026-07-30 在提交 `4d4ffe0` 上完成宿主机回归：
+
+- `tools/ota/test_ota_transfer.py`：3 项 Python 测试通过，覆盖 UART 帧 CRC、CAN 响应
+  布局和 stop-and-wait 分块状态流程。
+- `test_command_manager.c`：WSL GCC 使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过，
+  覆盖 OTA owner、运动命令清除、非法 source、Console 持续目标和 CAN 200 ms 超时。
+- `test_ota_metadata.c`：同参数编译运行通过，覆盖允许替换和禁止替换的 metadata 状态。
+- `bootloader_core_test.c`：同参数编译运行通过，覆盖 CRC32 标准向量、镜像校验和 metadata
+  双副本选择。
+
+以上均为主机测试结果，不替代 CubeIDE 目标构建或 STM32 实物验收。
 
 ### Bootloader 启动对照
 
@@ -299,5 +305,6 @@ firmware/bootloader/stm32g474/tests/unit/bootloader_core_test.c
 - OTA 元数据双副本 CRC 校验和最新 sequence 选择
 
 Bootloader 的 Debug 与 Release 已使用 STM32CubeIDE 自带 `arm-none-eabi-gcc`
-完成构建。PC 单元测试入口尚未使用宿主机 C 编译器执行，因此这里只确认目标工程
-`BUILD PASS`，不把单元测试标记为已运行。
+完成构建。该 PC 测试已于 2026-07-30 使用 WSL GCC 和
+`-std=c11 -Wall -Wextra -Werror` 编译运行通过；结果仅覆盖纯逻辑，不覆盖 QSPI、内部
+Flash、IWDG、复位和跳转的目标板行为。

@@ -31,7 +31,8 @@ chassis-controller/
 │  │  ├─ flash_layout.h
 │  │  ├─ firmware_image.h
 │  │  ├─ ota_metadata.h
-│  │  └─ ota_protocol.h
+│  │  ├─ ota_protocol.h
+│  │  └─ qspi_flash_identity.h
 │  │
 │  ├─ application/
 │  │  └─ stm32g474/                  # 正式底盘 Application，独立 CubeMX 工程
@@ -136,6 +137,7 @@ chassis-controller/
 │        │  ├─ boot_main.c
 │        │  ├─ boot_installer.c
 │        │  ├─ boot_metadata_io.c
+│        │  ├─ boot_trace.c
 │        │  ├─ ota_metadata_store.c
 │        │  ├─ image_validator.c
 │        │  └─ app_launcher.c
@@ -174,8 +176,9 @@ chassis-controller/
 
 ### `firmware/shared`
 
-只保存 Bootloader、Application 和打包工具必须一致的固定 ABI，包括 Flash 布局、
-镜像头、OTA 元数据和 OTA 帧格式。不得放驱动、状态机或可变版本值。
+只保存 Bootloader、Application 和打包工具必须一致的固定 ABI/硬件契约，包括 Flash
+布局、镜像头、OTA 元数据、OTA 帧格式和 W25Q64 JEDEC 身份。不得放驱动、状态机或
+可变版本值。
 
 ### `app`
 
@@ -187,7 +190,7 @@ chassis-controller/
 
 ### `bsp`
 
-封装一种硬件如何操作，包括电机、编码器、FDCAN、UART、LCD、QSPI、ADC 和复位原因。
+封装一种硬件如何操作，包括电机、编码器、FDCAN、UART、LCD、QSPI、ADC 和复位辅助。
 BSP 不决定是否允许车辆运动，也不持有业务状态机。
 
 ### `components`
@@ -228,7 +231,8 @@ UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提�
 
 Bootloader 是独立 CubeMX/CubeIDE 工程，拥有独立入口、向量表、链接脚本和版本。
 它只负责镜像校验、安装、试运行计数、回滚和 Application 跳转，不运行底盘业务；
-Application 在最小健康窗口通过后提交确认元数据。
+Application 在最小健康窗口通过后提交确认元数据。当前 `boot_trace.c` 直接配置
+USART1 轮询输出启动诊断，不依赖 CubeMX UART 初始化。
 
 ### `protocol` 与 `docs`
 

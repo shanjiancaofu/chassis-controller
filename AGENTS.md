@@ -17,6 +17,10 @@
 - Do not extract one-use helpers when a few clear lines in the caller are easier to read.
 - Defend user input, external protocols, persistent data, and hardware/resource boundaries.
   Do not add redundant checks for hardcoded constants or values already guaranteed locally.
+- Do not commit generated host artifacts such as `__pycache__/`, `*.pyc`, test executables,
+  IDE workspaces, or build output. `_output/README.md` is the only tracked file under `_output/`.
+- Treat `Drivers/` and `Middlewares/` as vendored code. Change them only for an explicit,
+  reviewed vendor patch; normal application work belongs in the hand-written directories.
 
 ## Firmware Safety
 
@@ -32,3 +36,5 @@
 - Record hardware results only after an actual board test.
 - Use `PASS` only with evidence; otherwise use `READY`, `IMPLEMENTED`, or `NOT VERIFIED`.
 - Update only the authoritative document for the changed information.
+- Keep build/test evidence in `docs/verification.md`; do not duplicate hardware status in
+  protocol documents or infer a hardware pass from source review.
