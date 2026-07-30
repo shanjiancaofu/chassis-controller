@@ -70,3 +70,19 @@ firmware/bootloader/stm32g474
 
 CubeMX 生成代码时使用 `STM32CubeIDE` 并勾选 `Generate Under Root`。
 生成文件只在 `USER CODE BEGIN/END` 区域内手工修改。
+
+## 提交规范
+
+提交信息使用 `[type]: description` 格式：
+
+```text
+[feature]: add ...
+[fix]: handle ...
+[refactor]: organize ...
+[docs]: update ...
+```
+
+- `[feature]`：新增功能。
+- `[fix]`：修复缺陷。
+- `[refactor]`：调整代码或目录结构，不改变外部行为。
+- `[docs]`：只修改文档。
