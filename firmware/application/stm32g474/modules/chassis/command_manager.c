@@ -9,6 +9,27 @@ static CommandManagerCommand active_command;
 static bool command_valid;
 static CommandSource control_owner;
 
+static bool IsOwnerSource(CommandSource source)
+{
+  switch (source) {
+    case COMMAND_SOURCE_CAN_REMOTE:
+    case COMMAND_SOURCE_CONSOLE:
+    case COMMAND_SOURCE_TARGET_TEST:
+    case COMMAND_SOURCE_OTA:
+      return true;
+    case COMMAND_SOURCE_NONE:
+    default:
+      return false;
+  }
+}
+
+static bool IsMotionSource(CommandSource source)
+{
+  return source == COMMAND_SOURCE_CAN_REMOTE ||
+         source == COMMAND_SOURCE_CONSOLE ||
+         source == COMMAND_SOURCE_TARGET_TEST;
+}
+
 void CommandManager_Init(void)
 {
   active_command = (CommandManagerCommand){0};
@@ -18,8 +39,7 @@ void CommandManager_Init(void)
 
 bool CommandManager_Acquire(CommandSource source)
 {
-  if (source == COMMAND_SOURCE_NONE ||
-      source > COMMAND_SOURCE_TARGET_TEST ||
+  if (!IsOwnerSource(source) ||
       (control_owner != COMMAND_SOURCE_NONE && control_owner != source)) {
     return false;
   }
@@ -46,8 +66,7 @@ CommandSource CommandManager_GetOwner(void)
 
 bool CommandManager_Submit(const CommandManagerCommand *command)
 {
-  if (command == NULL || command->source == COMMAND_SOURCE_NONE ||
-      command->source > COMMAND_SOURCE_TARGET_TEST ||
+  if (command == NULL || !IsMotionSource(command->source) ||
       (command->source == COMMAND_SOURCE_CAN_REMOTE) !=
           command->has_sequence ||
       command->left_target < -MOTOR_CONTROL_TARGET_LIMIT ||
