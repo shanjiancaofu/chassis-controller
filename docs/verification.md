@@ -295,15 +295,20 @@ cansend can0 720##15041535301000000
 6. 执行 `status`，记录 `OTA_CONFIRM` 和 `OTA_TRANSFER`；首次无 TRIAL 元数据时不得
    将 READY 当成 OTA 硬件通过。
 
-首次跳转验证完成后，按以下顺序验收：
+本轮 b12/build22 只按以下冻结清单验收：
 
-- UART 与 CAN FD 分别完成同一 `.ota` 包升级
-- 错误 magic、地址、长度和 CRC 被拒绝
-- QSPI 写入、内部擦除和内部写入阶段断电后可恢复
-- 候选版本未确认时恢复已确认镜像
-- 无有效 Application 时停留 Bootloader
-- 更新全程保持零 PWM
-- Bootloader 和 Application 版本、复位原因可诊断
+| 顺序 | 项目 | 当前状态 | 通过条件 |
+| ---: | --- | --- | --- |
+| 1 | 普通启动 | `NOT VERIFIED` | 版本输出正确，Application 正常运行 |
+| 2 | 上电零 PWM | `NOT VERIFIED` | 四路 PWM 在进入控制前保持为零 |
+| 3 | UART OTA | `NOT VERIFIED` | 完整 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` |
+| 4 | CAN FD OTA | `NOT VERIFIED` | Jetson SocketCAN 完成同一闭环 |
+| 5 | Application 安装中断电 | `NOT VERIFIED` | 重启后继续或安全恢复，不跳入半写镜像 |
+| 6 | TRIAL 不确认 | `NOT VERIFIED` | 超过试运行限制后自动恢复 confirmed |
+| 7 | rollback 安装中断电 | `NOT VERIFIED` | 重启后继续恢复 confirmed，不无限破坏性重装 |
+
+这七项全部通过后，将 OTA V1 标记为冻结。冻结后除实测发现的 P0/P1 外不再增加 recovery
+细节；固件签名、防回滚和 Bootloader CAN Recovery 作为 OTA V2 工作，不阻塞底盘功能。
 
 每次传输都应保存发送工具输出和复位后的 `status`。只有看到完整
 `STAGED -> TRIAL -> CONFIRMED` 且新 Application 正常启动，才可记录

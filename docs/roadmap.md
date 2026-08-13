@@ -105,15 +105,37 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，
   从而保留 CubeMX 工程结构但不在 Bootloader 主动启动或重配置 IWDG
 
-下一批按顺序执行：
+OTA V1 最终验收按以下顺序执行，不再继续扩展 recovery 边角：
 
-1. 使用 Jetson SocketCAN 完成同一镜像的 CAN FD 升级。
-2. 验证错误头、错误 CRC、会话超时和 CAN 错误均保持停车且不会安装。
-3. 验证 QSPI 暂存、内部安装期间断电恢复，以及未确认试运行回滚。
+1. 使用 b12/build22 验证普通启动和上电 PWM 为零。
+2. 完成 UART OTA 和 Jetson SocketCAN CAN FD OTA 闭环。
+3. 只做三个关键故障测试：Application 安装过程中断电、TRIAL 不确认自动回滚、rollback
+   安装过程中断电。
+4. 全部通过后冻结 OTA V1。之后只修实测发现的 P0/P1，不主动增加 OTA 功能。
+
+OTA V1 冻结门槛：
+
+```text
+普通启动 + 零 PWM + UART OTA + CAN FD OTA
++ 安装断电恢复 + TRIAL 未确认回滚 + rollback 断电恢复
+```
 
 ## 后续阶段
 
+### 底盘功能
+
+OTA V1 冻结后立即进入底盘功能，顺序如下：
+
+1. PID 实物闭环调通；先固定速度单位、正负方向、心跳超时和停车语义。
+2. 左右轮标定和加减速限制。
+3. 里程计累计、速度和转角验证。
+4. 堵转、编码器异常和电压保护。
+5. Fault、Health 和 Reset 诊断闭环。
+6. 在已验证行为基础上完善并冻结正式 CAN FD 底盘协议。
+
 ### 发布安全
+
+以下内容属于 OTA V2，不进入 OTA V1 冻结范围：
 
 - 固件数字签名
 - 防回滚计数
@@ -121,16 +143,10 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - 签名验收后再决定是否需要镜像加密
 - Bootloader CAN FD Recovery
 
-### 正式底盘协议
-
-- 冻结物理速度单位、反馈帧、故障帧和心跳
-- 参数持久化和正式遥测
-- Jetson 与 STM32 版本兼容规则
-
 ### IMU 与里程计
 
-IMU 暂缓。后续只在硬件确认后实现原始数据、时间戳和掉线检测；
-融合和 ROS 2 里程计放在 Jetson。
+IMU 暂缓。STM32 轮式里程计属于当前底盘阶段；IMU 后续只在硬件确认后实现原始数据、
+时间戳和掉线检测，融合和 ROS 2 里程计放在 Jetson。
 
 ## 暂不实施
 

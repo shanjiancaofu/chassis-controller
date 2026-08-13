@@ -5,12 +5,10 @@
 
 ## 代码基线
 
-- 当前已提交固件实现基线：`b86b96e [fix]: avoid destructive rollback for healthy firmware`。
-- 当前工作树包含可诊断 confirmed 恢复校验、非破坏性 QSPI I/O 重试、confirmed fatal 处理和
-  ARM GCC `offsetof` ABI 静态断言。
+- 当前已提交固件实现基线：`f496cd5 [fix]: verify recovery source before reinstall`。
 - Application：`0.1.0-b12`。
 - Bootloader：`0.1.0 build22`。
-- 当前阶段：Bootloader 与 OTA V1 实物验证。
+- 当前阶段：OTA V1 最终实物验证；除实测发现的 P0/P1 外，不再增加 recovery 细节。
 
 ## 当前实现
 
@@ -47,20 +45,30 @@
 
 ## 尚未验证
 
-- Application b12 + Bootloader build22 目标板回归。
-- QSPI External Loader 写入 factory confirmed 基线。
-- CAN FD OTA 完整升级。
-- QSPI 暂存和内部安装期间断电恢复。
-- TRIAL 失败回滚、rollback 安装中断和 Recovery 故障注入。
-- confirmation 持续失败和 QSPI terminal cleanup 超时的板上行为。
+- b12/build22 普通启动和上电零 PWM。
+- b12/build22 UART OTA 与 CAN FD OTA。
+- QSPI External Loader 写入匹配的 factory confirmed 基线。
+- Application 安装过程中断电恢复。
+- TRIAL 不确认后的自动回滚。
+- rollback 安装过程中断电恢复。
+
+confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不属于当前冻结门槛；仅在
+上述实测暴露 P0/P1 时处理。
 
 ## 下一步
 
 1. 生成并烧录匹配的 b12/build22 内部 factory BIN 与 QSPI confirmed raw 镜像。
-2. 验证普通启动、版本输出和零 PWM。
-3. 完成 UART 回归，再完成 CAN FD OTA。
-4. 按 `verification.md` 执行安装断电、rollback、确认失败和 Recovery 故障注入。
-5. 实物结果确认后再更新 `HARDWARE PASS` 和正式产物清单。
+2. 完成普通启动、上电 PWM 为零、UART OTA 和 CAN FD OTA 实物验收。
+3. 只执行三个故障测试：Application 安装中断电、TRIAL 不确认自动回滚、rollback 安装中断电。
+4. 上述项目通过后冻结 OTA V1；签名、防回滚和 Bootloader CAN Recovery 延后到 OTA V2。
+5. 进入底盘功能：PID 实物闭环、左右轮标定与加减速、里程计、安全保护、诊断、正式 CAN FD 协议。
+
+当前路线：
+
+```text
+OTA 实物验证 -> OTA V1 冻结 -> PID -> 左右轮标定/加减速 -> 里程计
+-> 安全保护 -> Fault/Health/Reset 诊断 -> 正式 CAN FD 协议
+```
 
 ## 对话交接要求
 

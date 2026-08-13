@@ -11,6 +11,8 @@ UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完
 factory 普通启动和 UART OTA 主链已通过实物验证，但对应的是 b6/build15 基线。当前
 b12/build22 尚待目标板回归；CAN FD OTA、断电恢复和回滚故障注入仍未验证。最新摘要见
 [`docs/current_status.md`](docs/current_status.md)，完整证据见 `docs/verification.md`。
+当前不再扩展 OTA recovery；完成 b12/build22 主链和三个关键故障测试后冻结 OTA V1，随后
+进入 PID、轮组标定与加减速、里程计、安全保护、诊断和正式 CAN FD 底盘协议。
 
 ## 目录
 
