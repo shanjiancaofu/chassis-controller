@@ -44,5 +44,7 @@ BootMetadataSelection BootMetadataStore_SelectLatest(
 bool BootMetadataStore_IsErased(const OtaMetadata *metadata);
 BootInstallAttemptDecision BootMetadataStore_BeginInstallAttempt(
     OtaMetadata *metadata);
+BootInstallAttemptDecision BootMetadataStore_BeginConfirmedInstallAttempt(
+    OtaMetadata *metadata);
 
 #endif

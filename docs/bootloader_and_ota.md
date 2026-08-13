@@ -133,8 +133,8 @@ EMPTY -> RECEIVING -> STAGED -> INSTALLING -> TRIAL -> CONFIRMED
    Application 执行完整 CRC 和向量表校验后才跳转。
 7. Application 完成最小启动自检后显式确认，候选槽才成为 confirmed 槽。
 8. 试运行未确认或连续异常复位时，从旧 confirmed 槽重新安装。
-9. 安装中断电时，根据 `INSTALLING` 状态从完整 QSPI 镜像重新开始安装；每次实际安装前
-   先持久化增加 `install_attempts`，最多尝试 3 次，超限后有 confirmed 槽则回滚，否则进入 Recovery。
+9. candidate、rollback 和 confirmed repair 每次擦除内部 Flash 前都先持久化增加
+   `install_attempts`，最多尝试 3 次；成功进入 `TRIAL/CONFIRMED` 后清零。超限时进入 Recovery。
 10. 候选安装任一步失败时，有 confirmed 槽则提交 `ROLLBACK_PENDING` 并自动重装旧版；
     无 confirmed 槽才进入 `FAILED` 等待恢复。
 
@@ -144,7 +144,8 @@ EMPTY -> RECEIVING -> STAGED -> INSTALLING -> TRIAL -> CONFIRMED
 
 `FAILED`、QSPI 识别失败、metadata 读取失败和非空损坏 metadata 一律进入 Recovery，
 不能使用前 8 字节向量表跳转。只有两份 metadata 都为擦除态的 factory 设备可使用向量表
-fallback；`EMPTY/RECEIVING` 若记录了 confirmed 槽，也必须通过完整安装镜像校验。
+fallback。`EMPTY/RECEIVING` 没有 confirmed 槽时进入 Recovery；存在 confirmed 槽时必须
+通过完整安装镜像校验。`EMPTY` 只允许两个槽都为 `NONE`；`RECEIVING` 必须有 candidate。
 
 OTA、试运行确认和人工 QSPI 测试的终止清理最多等待 WIP 10 秒。持续无法读取状态时保留
 维护锁并锁存 critical fault，停车且停止刷新 IWDG。试运行确认失败会间隔 1 秒重试，最多
@@ -187,14 +188,19 @@ arm-none-eabi-objcopy -O binary `
   firmware/application/stm32g474/Release/chassis_controller.bin
 
 python tools/ota/create_factory_image.py `
-  _output/bootloader/boot-v0.1.0-b15.bin `
-  _output/application/app-v0.1.0-b6.bin `
-  _output/factory/factory-a6-b15.bin
+  _output/bootloader/boot-v0.1.0-b18.bin `
+  _output/application/app-v0.1.0-b8.bin `
+  _output/factory/factory-a8-b18.bin `
+  --ota _output/application/app-v0.1.0-b8.ota `
+  --qspi-output _output/factory/qspi-a8-confirmed.bin
 ```
 
 生成器校验两个向量表、区域上限和 Reset Handler 地址，并将 Application 固定放到
 组合 BIN 的 `0x8000` 偏移。该 BIN 在 STM32CubeProgrammer 中以
-`0x08000000` 为下载地址，只用于首次安装或完整恢复。
+`0x08000000` 为下载地址。QSPI raw 镜像使用同一次构建生成的 `.ota`，将完整 package
+写入 Slot A，并生成 `CONFIRMED/SLOT_A` Metadata A；Metadata B 保持擦除态。生产初始化
+必须使用 External Loader 或等价工具同时写入内部 factory BIN 和 QSPI raw 镜像，才能建立
+首次 OTA 可回滚基线。该 provisioning 流程尚未完成目标板验收。
 
 ## 主机发送
 

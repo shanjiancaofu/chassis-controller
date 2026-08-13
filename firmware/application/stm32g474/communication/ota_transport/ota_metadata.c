@@ -82,7 +82,11 @@ static bool SlotsAreValid(const OtaMetadata *metadata)
 
   switch ((OtaState)metadata->state) {
     case OTA_STATE_EMPTY:
+      return metadata->confirmed_slot == OTA_SLOT_NONE &&
+             metadata->candidate_slot == OTA_SLOT_NONE;
     case OTA_STATE_RECEIVING:
+      return confirmed_optional && candidate_valid &&
+             metadata->confirmed_slot != metadata->candidate_slot;
     case OTA_STATE_FAILED:
       return confirmed_optional && candidate_optional;
     case OTA_STATE_CONFIRMED:
@@ -93,8 +97,10 @@ static bool SlotsAreValid(const OtaMetadata *metadata)
       return confirmed_optional && candidate_valid &&
              metadata->confirmed_slot != metadata->candidate_slot;
     case OTA_STATE_ROLLBACK_PENDING:
-      return confirmed_valid && candidate_valid &&
-             metadata->confirmed_slot != metadata->candidate_slot;
+      return confirmed_valid &&
+             (metadata->candidate_slot == OTA_SLOT_NONE ||
+              (candidate_valid &&
+               metadata->confirmed_slot != metadata->candidate_slot));
     default:
       return false;
   }

@@ -38,44 +38,48 @@
 
 ## 构建基线
 
-Application Release 于 2026-07-31 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
+Application Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
 2026-07-28 的最近结果：
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 222948 | 96 | 34072 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 183424 | 96 | 34224 | `BUILD PASS`，2026-07-31，0 errors，0 warnings |
+| Release | 183492 | 96 | 34224 | `BUILD PASS`，2026-08-13，0 errors，0 warnings |
 
 Debug/Release 的 `.isr_vector` 均位于 `0x08008000`；反汇编确认 `SystemInit()` 将
 VTOR 写入 `0x08008000`。最高 Flash load 地址未超出 `0x0807FFFF`。构建结果只说明
-当前 Application b7 源码可编译和链接，不代表本轮固件已通过实物启动；b6 仍是最近一次
+当前 Application b8 源码可编译和链接，不代表本轮固件已通过实物启动；b6 仍是最近一次
 完成 UART OTA 实物闭环的 Application。
 
-Bootloader Release 于 2026-07-31 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
+Bootloader Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
 2026-07-28 的最近结果：
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 17652 | 44 | 1668 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 11956 | 48 | 1656 | `BUILD PASS`，2026-07-31，0 errors，0 warnings |
+| Release | 12172 | 48 | 1656 | `BUILD PASS`，2026-08-13，0 errors，0 warnings |
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
-本次 build17 已确认 ELF 包含 `BOOT: VERSION=0.1.0 BUILD=17`，但尚未生成正式发布产物、
+本次 build18 尚未生成正式发布产物、
 烧录或执行目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
 
-2026-07-31 在当前工作树完成宿主机回归：
+2026-08-13 在当前工作树完成宿主机回归：
 
 - `tools/ota/test_ota_transfer.py`：3 项 Python 测试通过，覆盖 UART 帧 CRC、CAN 响应
   布局和 stop-and-wait 分块状态流程。
+- `tools/ota/test_factory_image.py`：生成并解析 8 MiB QSPI raw 镜像，确认 Slot A package、
+  `CONFIRMED` Metadata A、CRC 和擦除态 Metadata B。
 - `test_command_manager.c`：WSL GCC 使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过，
   覆盖 OTA owner、运动命令清除、非法 source、Console 持续目标和 CAN 200 ms 超时。
-- `test_ota_metadata.c`：同参数编译运行通过，覆盖允许替换和禁止替换的 metadata 状态。
+- `test_ota_metadata.c`：同参数编译运行通过，覆盖 metadata 状态和严格槽约束。
+- `test_ota_uart_arm_guard.c`：同参数编译运行通过，覆盖等待 BEGIN 的 30 秒超时、
+  active session 和 tracked response 未完成时禁止禁用 UART transport。
 - `bootloader_core_test.c`：同参数编译运行通过，覆盖 CRC32 标准向量、镜像校验、metadata
-  双副本选择、factory 擦除态识别，以及安装中断三次后的回滚/FAILED 决策。
+  双副本选择、factory 擦除态识别，以及 candidate/confirmed 安装三次上限。
 
-本轮新增的 FAILED 隔离、安装重试上限、UART DMA 完成确认、QSPI 清理截止、确认重试和
-逐页擦除均只完成代码审查、主机测试或目标构建，尚未完成目标板故障注入回归。
+本轮新增的严格 fallback、confirmed 安装上限、UART arm timeout 隔离和 QSPI factory
+provisioning 均只完成代码审查、主机测试或目标构建，尚未完成目标板故障注入/烧录回归。
 
 以上均为主机测试结果，不替代 CubeIDE 目标构建或 STM32 实物验收。
 
@@ -271,14 +275,15 @@ cansend can0 720##15041535301000000
 
 ## OTA 首次烧录与验收
 
-首次操作必须使用组合镜像，不单独烧录位于 `0x08008000` 的 Application：
+首次操作必须同时写内部组合镜像和 QSPI confirmed 基线：
 
 1. 断开电机主电源，保持急停可用，确认 CAN 不发送运动命令。
 2. 在 STM32CubeProgrammer 连接 DFU 或 ST-Link，执行 Full chip erase。
-3. 选择 `_output/factory/factory-a6-b15.bin`，下载地址填写
-   `0x08000000`，启用下载后校验。
-4. 复位，确认串口出现 Application 启动信息，电机保持零输出。
-5. 执行 `status`，记录 `OTA_CONFIRM` 和 `OTA_TRANSFER`；首次无 TRIAL 元数据时不得
+3. 选择匹配版本的 `factory-a*-b*.bin`，下载地址填写 `0x08000000`，启用下载后校验。
+4. 使用 W25Q64 External Loader 或等价工装，将匹配的 `qspi-a*-confirmed.bin` 从 QSPI
+   地址 `0x000000` 写入并校验。
+5. 复位，确认串口出现 Application 启动信息，电机保持零输出。
+6. 执行 `status`，记录 `OTA_CONFIRM` 和 `OTA_TRANSFER`；首次无 TRIAL 元数据时不得
    将 READY 当成 OTA 硬件通过。
 
 首次跳转验证完成后，按以下顺序验收：

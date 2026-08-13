@@ -135,6 +135,61 @@ static void TestInterruptedInstallLimit(void)
          "install_limit_with_confirmed_rolls_back");
 }
 
+static void TestConfirmedInstallLimit(void)
+{
+  OtaMetadata metadata = MakeMetadata(30U, OTA_STATE_ROLLBACK_PENDING);
+
+  metadata.install_attempts = 0U;
+  Expect(BootMetadataStore_BeginConfirmedInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPT_READY &&
+             metadata.install_attempts == 1U,
+         "confirmed_install_attempt_one");
+  Expect(BootMetadataStore_BeginConfirmedInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPT_READY &&
+             metadata.install_attempts == 2U,
+         "confirmed_install_attempt_two");
+  Expect(BootMetadataStore_BeginConfirmedInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPT_READY &&
+             metadata.install_attempts == 3U,
+         "confirmed_install_attempt_three");
+  Expect(BootMetadataStore_BeginConfirmedInstallAttempt(&metadata) ==
+             BOOT_INSTALL_ATTEMPTS_EXHAUSTED &&
+             metadata.state == OTA_STATE_FAILED,
+         "confirmed_install_limit_fails");
+}
+
+static void TestMetadataStateSlots(void)
+{
+  OtaMetadata metadata = MakeMetadata(40U, OTA_STATE_EMPTY);
+
+  metadata.confirmed_slot = OTA_SLOT_NONE;
+  metadata.candidate_slot = OTA_SLOT_NONE;
+  metadata.record_crc32 = BootCrc32_Calculate(
+      &metadata, sizeof(metadata) - sizeof(metadata.record_crc32));
+  Expect(BootMetadataStore_Validate(&metadata) == BOOT_METADATA_OK,
+         "empty_requires_no_slots_valid");
+  metadata.candidate_slot = OTA_SLOT_A;
+  metadata.record_crc32 = BootCrc32_Calculate(
+      &metadata, sizeof(metadata) - sizeof(metadata.record_crc32));
+  Expect(BootMetadataStore_Validate(&metadata) ==
+             BOOT_METADATA_ERROR_SLOT,
+         "empty_rejects_candidate");
+
+  metadata.state = OTA_STATE_RECEIVING;
+  metadata.confirmed_slot = OTA_SLOT_NONE;
+  metadata.candidate_slot = OTA_SLOT_A;
+  metadata.record_crc32 = BootCrc32_Calculate(
+      &metadata, sizeof(metadata) - sizeof(metadata.record_crc32));
+  Expect(BootMetadataStore_Validate(&metadata) == BOOT_METADATA_OK,
+         "receiving_requires_candidate_valid");
+  metadata.candidate_slot = OTA_SLOT_NONE;
+  metadata.record_crc32 = BootCrc32_Calculate(
+      &metadata, sizeof(metadata) - sizeof(metadata.record_crc32));
+  Expect(BootMetadataStore_Validate(&metadata) ==
+             BOOT_METADATA_ERROR_SLOT,
+         "receiving_rejects_no_candidate");
+}
+
 static void TestFactoryMetadataDetection(void)
 {
   OtaMetadata metadata;
@@ -153,6 +208,8 @@ int main(void)
   TestImageValidation();
   TestMetadataSelection();
   TestInterruptedInstallLimit();
+  TestConfirmedInstallLimit();
+  TestMetadataStateSlots();
   TestFactoryMetadataDetection();
 
   if (failures != 0) {

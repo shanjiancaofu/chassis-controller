@@ -112,6 +112,22 @@ BootInstallAttemptDecision BootMetadataStore_BeginInstallAttempt(
   return BOOT_INSTALL_ATTEMPT_READY;
 }
 
+BootInstallAttemptDecision BootMetadataStore_BeginConfirmedInstallAttempt(
+    OtaMetadata *metadata)
+{
+  if (metadata == 0 || metadata->confirmed_slot == OTA_SLOT_NONE ||
+      metadata->install_attempts >= BOOT_INSTALL_ATTEMPT_LIMIT) {
+    if (metadata != 0) {
+      metadata->state = OTA_STATE_FAILED;
+    }
+    return BOOT_INSTALL_ATTEMPTS_EXHAUSTED;
+  }
+
+  metadata->state = OTA_STATE_ROLLBACK_PENDING;
+  ++metadata->install_attempts;
+  return BOOT_INSTALL_ATTEMPT_READY;
+}
+
 static bool IsKnownState(uint32_t state)
 {
   return state <= OTA_STATE_FAILED;
@@ -133,7 +149,11 @@ static bool HasValidSlotsForState(const OtaMetadata *metadata)
 
   switch (metadata->state) {
     case OTA_STATE_EMPTY:
+      return metadata->confirmed_slot == OTA_SLOT_NONE &&
+             metadata->candidate_slot == OTA_SLOT_NONE;
     case OTA_STATE_RECEIVING:
+      return (has_confirmed || confirmed_is_empty) && has_candidate &&
+             metadata->confirmed_slot != metadata->candidate_slot;
     case OTA_STATE_FAILED:
       return IsKnownSlot(metadata->confirmed_slot, true) &&
              IsKnownSlot(metadata->candidate_slot, true);
@@ -146,8 +166,10 @@ static bool HasValidSlotsForState(const OtaMetadata *metadata)
       return (has_confirmed || confirmed_is_empty) && has_candidate &&
              metadata->confirmed_slot != metadata->candidate_slot;
     case OTA_STATE_ROLLBACK_PENDING:
-      return has_confirmed && has_candidate &&
-             metadata->confirmed_slot != metadata->candidate_slot;
+      return has_confirmed &&
+             (metadata->candidate_slot == OTA_SLOT_NONE ||
+              (has_candidate &&
+               metadata->confirmed_slot != metadata->candidate_slot));
     default:
       return false;
   }

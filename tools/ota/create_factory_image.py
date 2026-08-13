@@ -4,6 +4,9 @@ import argparse
 import pathlib
 import struct
 import sys
+import zlib
+
+from package_firmware import verify_package
 
 
 FLASH_BASE = 0x08000000
@@ -11,6 +14,15 @@ BOOTLOADER_START = 0x08000000
 BOOTLOADER_SIZE = 0x00008000
 APPLICATION_START = 0x08008000
 APPLICATION_SIZE = 0x00078000
+QSPI_CAPACITY = 0x00800000
+QSPI_METADATA_A = 0x00400000
+QSPI_SLOT_A = 0x00402000
+OTA_METADATA_MAGIC = 0x314D544F
+OTA_METADATA_FORMAT_VERSION = 1
+OTA_STATE_CONFIRMED = 5
+OTA_SLOT_NONE = 0
+OTA_SLOT_A = 1
+OTA_METADATA_FORMAT = "<IHH9I16sI"
 SRAM_START = 0x20000000
 SRAM_END = 0x20020000
 
@@ -39,6 +51,16 @@ def main():
     parser.add_argument("bootloader", type=pathlib.Path)
     parser.add_argument("application", type=pathlib.Path)
     parser.add_argument("output", type=pathlib.Path)
+    parser.add_argument(
+        "--ota",
+        type=pathlib.Path,
+        help="matching .ota package used to provision QSPI Slot A",
+    )
+    parser.add_argument(
+        "--qspi-output",
+        type=pathlib.Path,
+        help="8 MiB raw QSPI image containing factory package and metadata",
+    )
     args = parser.parse_args()
 
     try:
@@ -50,12 +72,50 @@ def main():
         validate_image(
             "application", application, APPLICATION_START, APPLICATION_SIZE
         )
+        if bool(args.ota) != bool(args.qspi_output):
+            raise ValueError("--ota and --qspi-output must be specified together")
+        qspi_image = None
+        if args.ota:
+            package = args.ota.read_bytes()
+            payload_size, payload_crc = verify_package(package)
+            if package[64:] != application:
+                raise ValueError("OTA package payload does not match application BIN")
+            if payload_size != len(application) or (
+                zlib.crc32(application) & 0xFFFFFFFF
+            ) != payload_crc:
+                raise ValueError("OTA package header does not match application BIN")
+            metadata = struct.pack(
+                OTA_METADATA_FORMAT,
+                OTA_METADATA_MAGIC,
+                OTA_METADATA_FORMAT_VERSION,
+                64,
+                1,
+                OTA_STATE_CONFIRMED,
+                OTA_SLOT_A,
+                OTA_SLOT_NONE,
+                payload_size,
+                payload_crc,
+                0,
+                0,
+                0,
+                bytes(16),
+                0,
+            )
+            metadata = metadata[:-4] + struct.pack(
+                "<I", zlib.crc32(metadata[:-4]) & 0xFFFFFFFF
+            )
+            qspi_image = bytearray(b"\xFF" * QSPI_CAPACITY)
+            qspi_image[QSPI_METADATA_A : QSPI_METADATA_A + len(metadata)] = metadata
+            qspi_image[QSPI_SLOT_A : QSPI_SLOT_A + len(package)] = package
         application_offset = APPLICATION_START - FLASH_BASE
         combined = bytearray(b"\xFF" * (application_offset + len(application)))
         combined[: len(bootloader)] = bootloader
         combined[application_offset:] = application
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_bytes(combined)
+        if qspi_image is not None:
+            args.qspi_output.parent.mkdir(parents=True, exist_ok=True)
+            args.qspi_output.write_bytes(qspi_image)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
@@ -63,6 +123,11 @@ def main():
         f"factory image={args.output} bytes={len(combined)} "
         f"bootloader={len(bootloader)} application={len(application)}"
     )
+    if args.qspi_output:
+        print(
+            f"qspi image={args.qspi_output} bytes={QSPI_CAPACITY} "
+            "metadata=CONFIRMED slot=A"
+        )
     return 0
 
 

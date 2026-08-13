@@ -15,6 +15,7 @@ Naming rules:
 application: app-v<version>-b<N>.<bin|ota>
 bootloader:  boot-v<version>-b<N>.bin
 factory:     factory-a<app-build>-b<boot-build>.bin
+qspi:        factory/qspi-a<app-build>-confirmed.bin
 ```
 
 Current artifact names omit timestamps. The version/build pair identifies release inputs;
@@ -39,7 +40,12 @@ Programming addresses:
 Application BIN: 0x08008000
 Bootloader BIN:  0x08000000
 Factory BIN:     0x08000000
+QSPI raw image:  external loader / QSPI base `0x000000`
 ```
+
+The factory QSPI image is generated from the same `.ota` package as the Application BIN. It
+contains Slot A and `CONFIRMED` Metadata A, while Metadata B remains erased. Program it with an
+External Loader or equivalent factory provisioning step before claiming first-install rollback.
 
 CubeIDE currently updates ELF but does not reliably regenerate BIN. Recreate each BIN from the
 matching final ELF with `arm-none-eabi-objcopy -O binary` before packaging or combining images.

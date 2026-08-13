@@ -16,6 +16,7 @@
 #define BOOT_TRIAL_LIMIT 3U
 
 static void BeginCandidateInstall(BootMetadataSnapshot *snapshot);
+static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot);
 static void InstallCandidate(BootMetadataSnapshot *snapshot);
 static void InstallConfirmed(BootMetadataSnapshot *snapshot);
 static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
@@ -25,7 +26,7 @@ static bool CommitAndReload(BootMetadataSnapshot *snapshot,
                             OtaMetadata *next);
 static void JumpFactoryApplicationIfVectorValid(void)
     __attribute__((noreturn));
-static void JumpVerifiedOrFactory(const OtaMetadata *metadata)
+static void JumpVerifiedConfirmed(const OtaMetadata *metadata)
     __attribute__((noreturn));
 static void EnterRecovery(void) __attribute__((noreturn));
 
@@ -90,13 +91,14 @@ void BootMain_Run(void)
           EnterRecovery();
         }
         next.state = OTA_STATE_ROLLBACK_PENDING;
+        next.install_attempts = 0U;
       }
       if (!CommitAndReload(&snapshot, &next)) {
         BootTrace_Write("BOOT: TRIAL COUNT COMMIT FAILED\r\n");
         EnterRecovery();
       }
       if (next.state == OTA_STATE_ROLLBACK_PENDING) {
-        InstallConfirmed(&snapshot);
+        BeginConfirmedInstall(&snapshot);
       }
       if (!BootInstaller_VerifyInstalled(
               (OtaSlotId)next.candidate_slot)) {
@@ -108,20 +110,20 @@ void BootMain_Run(void)
       break;
 
     case OTA_STATE_ROLLBACK_PENDING:
-      InstallConfirmed(&snapshot);
+      BeginConfirmedInstall(&snapshot);
       break;
 
     case OTA_STATE_CONFIRMED:
       if (!BootInstaller_VerifyInstalled(
               (OtaSlotId)snapshot.selection.metadata->confirmed_slot)) {
-        InstallConfirmed(&snapshot);
+        BeginConfirmedInstall(&snapshot);
       }
       BootAppLauncher_Jump();
       break;
 
     case OTA_STATE_EMPTY:
     case OTA_STATE_RECEIVING:
-      JumpVerifiedOrFactory(snapshot.selection.metadata);
+      JumpVerifiedConfirmed(snapshot.selection.metadata);
       break;
 
     case OTA_STATE_FAILED:
@@ -143,8 +145,9 @@ static void BeginCandidateInstall(BootMetadataSnapshot *snapshot)
     BootTrace_Write("BOOT: INSTALL LIMIT REACHED\r\n");
     next.last_error = BOOT_INSTALL_ERROR_VERIFY;
     if (decision == BOOT_INSTALL_ROLLBACK_REQUIRED) {
+      next.install_attempts = 0U;
       if (CommitAndReload(snapshot, &next)) {
-        InstallConfirmed(snapshot);
+        BeginConfirmedInstall(snapshot);
       }
     } else {
       (void)CommitAndReload(snapshot, &next);
@@ -157,6 +160,24 @@ static void BeginCandidateInstall(BootMetadataSnapshot *snapshot)
     EnterRecovery();
   }
   InstallCandidate(snapshot);
+}
+
+static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot)
+{
+  OtaMetadata next = *snapshot->selection.metadata;
+
+  if (BootMetadataStore_BeginConfirmedInstallAttempt(&next) !=
+      BOOT_INSTALL_ATTEMPT_READY) {
+    BootTrace_Write("BOOT: CONFIRMED INSTALL LIMIT REACHED\r\n");
+    next.last_error = BOOT_INSTALL_ERROR_VERIFY;
+    (void)CommitAndReload(snapshot, &next);
+    EnterRecovery();
+  }
+  if (!CommitAndReload(snapshot, &next)) {
+    BootTrace_Write("BOOT: ROLLBACK ATTEMPT COMMIT FAILED\r\n");
+    EnterRecovery();
+  }
+  InstallConfirmed(snapshot);
 }
 
 static void InstallCandidate(BootMetadataSnapshot *snapshot)
@@ -184,6 +205,7 @@ static void InstallCandidate(BootMetadataSnapshot *snapshot)
   BootTrace_Write("BOOT: INSTALL VERIFIED\r\n");
 
   next.state = OTA_STATE_TRIAL;
+  next.install_attempts = 0U;
   next.trial_boot_count = 0U;
   next.last_error = 0U;
   if (!CommitAndReload(snapshot, &next)) {
@@ -204,8 +226,9 @@ static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
   next.last_error = (uint32_t)status;
   if (next.confirmed_slot != OTA_SLOT_NONE) {
     next.state = OTA_STATE_ROLLBACK_PENDING;
+    next.install_attempts = 0U;
     if (CommitAndReload(snapshot, &next)) {
-      InstallConfirmed(snapshot);
+      BeginConfirmedInstall(snapshot);
     }
   } else {
     next.state = OTA_STATE_FAILED;
@@ -230,14 +253,19 @@ static void InstallConfirmed(BootMetadataSnapshot *snapshot)
 
   if (status != BOOT_INSTALL_OK) {
     BootTrace_WriteValue("BOOT: ROLLBACK FAILED=", status);
-    next.state = OTA_STATE_FAILED;
+    next.state = OTA_STATE_ROLLBACK_PENDING;
     next.last_error = (uint32_t)status;
-    (void)CommitAndReload(snapshot, &next);
+    if (!CommitAndReload(snapshot, &next)) {
+      EnterRecovery();
+    }
+    BootWatchdog_Refresh();
+    NVIC_SystemReset();
     EnterRecovery();
   }
 
   next.state = OTA_STATE_CONFIRMED;
   next.candidate_slot = OTA_SLOT_NONE;
+  next.install_attempts = 0U;
   next.trial_boot_count = 0U;
   next.last_error = 0U;
   if (!CommitAndReload(snapshot, &next)) {
@@ -265,10 +293,11 @@ static void JumpFactoryApplicationIfVectorValid(void)
   EnterRecovery();
 }
 
-static void JumpVerifiedOrFactory(const OtaMetadata *metadata)
+static void JumpVerifiedConfirmed(const OtaMetadata *metadata)
 {
   if (metadata->confirmed_slot == OTA_SLOT_NONE) {
-    JumpFactoryApplicationIfVectorValid();
+    BootTrace_Write("BOOT: NO CONFIRMED IMAGE\r\n");
+    EnterRecovery();
   }
   if (BootInstaller_VerifyInstalled(
           (OtaSlotId)metadata->confirmed_slot)) {

@@ -13,6 +13,7 @@
 #include "communication/ota_transport/ota_can_transport.h"
 #include "communication/ota_transport/ota_confirmation.h"
 #include "communication/ota_transport/ota_session.h"
+#include "communication/ota_transport/ota_uart_arm_guard.h"
 #include "communication/ota_transport/ota_uart_transport.h"
 #include "config/app_config.h"
 #include "config/control_config.h"
@@ -39,7 +40,7 @@
 #define OTA_UART_ARM_TIMEOUT_MS 30000U
 
 static uint32_t consecutive_control_overruns;
-static uint32_t ota_uart_armed_ms;
+static OtaUartArmGuard ota_uart_arm_guard;
 static bool ota_terminal_cleaned;
 static bool ota_response_waiting;
 static OtaResponse ota_response;
@@ -90,7 +91,7 @@ void ChassisApp_Init(void)
   OtaCanTransport_Init();
   OtaUartTransport_Init();
   OtaSession_Init();
-  ota_uart_armed_ms = 0U;
+  OtaUartArmGuard_Init(&ota_uart_arm_guard);
   ota_terminal_cleaned = true;
   ota_response_waiting = false;
 
@@ -428,7 +429,7 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
         Telemetry_SetMode(TELEMETRY_MODE_OFF);
         (void)BspUart_WriteString(ready);
         OtaUartTransport_Enable();
-        ota_uart_armed_ms = now_ms;
+        OtaUartArmGuard_Arm(&ota_uart_arm_guard, now_ms);
         ota_terminal_cleaned = false;
       } else {
         (void)BspUart_WriteString("OTA_UART: REJECTED\r\n");
@@ -815,6 +816,11 @@ static void RunOtaTransports(uint32_t now_ms)
       begin_allowed = false;
     }
     (void)OtaSession_Submit(&message, now_ms, begin_allowed);
+    if (message.type == OTA_MESSAGE_BEGIN &&
+        message.source == OTA_SOURCE_UART && OtaSession_IsActive() &&
+        OtaSession_GetSource() == OTA_SOURCE_UART) {
+      OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
+    }
     if (prepared_here && !OtaSession_IsActive()) {
       ReleaseOta();
     }
@@ -846,14 +852,18 @@ static void RunOtaTransports(uint32_t now_ms)
       !OtaSession_IsActive()) {
     if (OtaSession_GetSource() == OTA_SOURCE_UART) {
       OtaUartTransport_Disable();
+      OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
     }
     ReleaseOta();
     ota_terminal_cleaned = true;
   }
 
-  if (OtaUartTransport_IsEnabled() && !OtaSession_IsActive() &&
-      now_ms - ota_uart_armed_ms >= OTA_UART_ARM_TIMEOUT_MS) {
+  if (OtaUartTransport_IsEnabled() &&
+      OtaUartArmGuard_ShouldTimeout(
+          &ota_uart_arm_guard, now_ms, OTA_UART_ARM_TIMEOUT_MS,
+          OtaSession_IsActive(), ota_response_waiting)) {
     OtaUartTransport_Disable();
+    OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
     ReleaseOta();
     ota_terminal_cleaned = true;
     (void)BspUart_WriteString("OTA_UART: TIMEOUT, text mode\r\n");
