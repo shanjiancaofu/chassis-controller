@@ -74,12 +74,29 @@ bool BootInstaller_VerifyInstalled(OtaSlotId slot)
 bool BootInstaller_VerifyInstalledCandidate(const OtaMetadata *metadata)
 {
   OtaImageHeader header;
+  uint32_t slot_address;
 
-  return metadata != NULL && metadata->candidate_slot != OTA_SLOT_NONE &&
+  if (metadata == NULL || metadata->candidate_slot == OTA_SLOT_NONE) {
+    return false;
+  }
+  slot_address = SlotAddress((OtaSlotId)metadata->candidate_slot);
+  return slot_address != 0U &&
          BootInstaller_ReadImageHeader(
              (OtaSlotId)metadata->candidate_slot, &header) &&
          metadata->image_size == header.payload_size &&
          metadata->image_crc32 == header.payload_crc32 &&
+         ValidatePayload(slot_address + sizeof(header), &header) &&
+         VerifyInstalledPayload(&header);
+}
+
+bool BootInstaller_VerifyInstalledRecovery(OtaSlotId slot)
+{
+  const uint32_t slot_address = SlotAddress(slot);
+  OtaImageHeader header;
+
+  return slot_address != 0U &&
+         BootInstaller_ReadImageHeader(slot, &header) &&
+         ValidatePayload(slot_address + sizeof(header), &header) &&
          VerifyInstalledPayload(&header);
 }
 

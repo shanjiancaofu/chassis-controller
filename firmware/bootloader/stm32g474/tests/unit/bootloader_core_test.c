@@ -163,11 +163,16 @@ static void TestConfirmedInstallLimit(void)
 static void TestInstallPowerCutRecovery(void)
 {
   OtaMetadata metadata = MakeMetadata(35U, OTA_STATE_INSTALLING);
+  uint32_t attempt;
 
+  for (attempt = 1U; attempt <= BOOT_INSTALL_ATTEMPT_LIMIT;
+       ++attempt) {
+    metadata.install_attempts = attempt;
+    Expect(BootInstallRecovery_DecideCandidate(&metadata, true) ==
+               BOOT_INSTALL_RECOVERY_SALVAGE,
+           "candidate_success_before_commit_is_salvaged");
+  }
   metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;
-  Expect(BootInstallRecovery_DecideCandidate(&metadata, true) ==
-             BOOT_INSTALL_RECOVERY_SALVAGE,
-         "candidate_success_before_commit_is_salvaged");
   Expect(BootInstallRecovery_DecideCandidate(&metadata, false) ==
              BOOT_INSTALL_RECOVERY_ROLLBACK,
          "candidate_invalid_after_limit_rolls_back");
@@ -177,10 +182,14 @@ static void TestInstallPowerCutRecovery(void)
          "candidate_invalid_without_confirmed_fails");
 
   metadata = MakeMetadata(36U, OTA_STATE_ROLLBACK_PENDING);
+  for (attempt = 1U; attempt <= BOOT_INSTALL_ATTEMPT_LIMIT;
+       ++attempt) {
+    metadata.install_attempts = attempt;
+    Expect(BootInstallRecovery_DecideConfirmed(&metadata, true) ==
+               BOOT_INSTALL_RECOVERY_SALVAGE,
+           "confirmed_success_before_commit_is_salvaged");
+  }
   metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;
-  Expect(BootInstallRecovery_DecideConfirmed(&metadata, true) ==
-             BOOT_INSTALL_RECOVERY_SALVAGE,
-         "confirmed_success_before_commit_is_salvaged");
   Expect(BootInstallRecovery_DecideConfirmed(&metadata, false) ==
              BOOT_INSTALL_RECOVERY_FAILED,
          "confirmed_invalid_after_limit_fails");
@@ -192,6 +201,17 @@ static void TestInstallPowerCutRecovery(void)
   Expect(BootInstallRecovery_DecideConfirmed(&metadata, false) ==
              BOOT_INSTALL_RECOVERY_BEGIN,
          "confirmed_below_limit_reinstalls");
+
+  metadata.state = OTA_STATE_STAGED;
+  metadata.install_attempts = 0U;
+  Expect(BootInstallRecovery_DecideCandidate(&metadata, true) ==
+             BOOT_INSTALL_RECOVERY_BEGIN,
+         "staged_candidate_does_not_salvage");
+  metadata.state = OTA_STATE_CONFIRMED;
+  metadata.install_attempts = 1U;
+  Expect(BootInstallRecovery_DecideConfirmed(&metadata, true) ==
+             BOOT_INSTALL_RECOVERY_BEGIN,
+         "confirmed_state_does_not_salvage");
 
   metadata.state = OTA_STATE_INSTALLING;
   metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;

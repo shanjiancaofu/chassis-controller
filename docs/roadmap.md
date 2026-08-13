@@ -92,10 +92,10 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
   改为逐页擦除并在页间刷新继承的 IWDG
 - TRIAL/CONFIRMED 启动执行完整 Application CRC 校验，Application/Bootloader 共用
   W25Q64 JEDEC `EF 40 17` 准入契约
-- `test_ota_transfer.py`、`test_factory_image.py`、Application OTA metadata 和 Bootloader core
-  宿主机测试已于 2026-08-13 通过，覆盖安装上限、成功后掉电 salvage、状态槽约束、
-  factory fail-closed 和 QSPI 布局
-- Bootloader 已嵌入 `0.1.0` 功能版本和 build19 构建号，启动串口输出两者；build19
+- `test_ota_transfer.py`、`test_factory_image.py`、`test_shared_abi.py`、Application OTA metadata
+  和 Bootloader core 宿主机测试已于 2026-08-13 通过，覆盖安装上限、每次中断后的完整
+  QSPI/internal salvage、状态槽约束、factory fail-closed、QSPI 布局和共享 C/Python ABI
+- Bootloader 已嵌入 `0.1.0` 功能版本和 build20 构建号，启动串口输出两者；build20
   Release 已 clean build，尚未烧板回归
 - 已清除 Git 跟踪的 `tools/ota/__pycache__/*.pyc`，并增加通用 Python 缓存忽略规则
 - Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，

@@ -23,11 +23,12 @@ BootInstallRecovery_DecideCandidate(const OtaMetadata *metadata,
   if (metadata == 0) {
     return BOOT_INSTALL_RECOVERY_FAILED;
   }
+  if (metadata->state == OTA_STATE_INSTALLING &&
+      metadata->install_attempts > 0U && installed_candidate_valid) {
+    return BOOT_INSTALL_RECOVERY_SALVAGE;
+  }
   if (metadata->install_attempts < BOOT_INSTALL_ATTEMPT_LIMIT) {
     return BOOT_INSTALL_RECOVERY_BEGIN;
-  }
-  if (installed_candidate_valid) {
-    return BOOT_INSTALL_RECOVERY_SALVAGE;
   }
   return metadata->confirmed_slot != OTA_SLOT_NONE
              ? BOOT_INSTALL_RECOVERY_ROLLBACK
@@ -41,11 +42,13 @@ BootInstallRecovery_DecideConfirmed(const OtaMetadata *metadata,
   if (metadata == 0) {
     return BOOT_INSTALL_RECOVERY_FAILED;
   }
-  if (metadata->install_attempts < BOOT_INSTALL_ATTEMPT_LIMIT) {
-    return BOOT_INSTALL_RECOVERY_BEGIN;
+  if (metadata->state == OTA_STATE_ROLLBACK_PENDING &&
+      metadata->install_attempts > 0U && installed_confirmed_valid) {
+    return BOOT_INSTALL_RECOVERY_SALVAGE;
   }
-  return installed_confirmed_valid ? BOOT_INSTALL_RECOVERY_SALVAGE
-                                   : BOOT_INSTALL_RECOVERY_FAILED;
+  return metadata->install_attempts < BOOT_INSTALL_ATTEMPT_LIMIT
+             ? BOOT_INSTALL_RECOVERY_BEGIN
+             : BOOT_INSTALL_RECOVERY_FAILED;
 }
 
 static inline void BootInstallRecovery_MarkTrial(OtaMetadata *metadata)

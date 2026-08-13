@@ -144,9 +144,12 @@ static void BeginCandidateInstall(BootMetadataSnapshot *snapshot)
   BootInstallRecoveryAction recovery = BOOT_INSTALL_RECOVERY_BEGIN;
   BootInstallAttemptDecision decision;
 
-  if (next.install_attempts >= BOOT_INSTALL_ATTEMPT_LIMIT) {
+  if (next.state == OTA_STATE_INSTALLING &&
+      next.install_attempts > 0U) {
     recovery = BootInstallRecovery_DecideCandidate(
         &next, BootInstaller_VerifyInstalledCandidate(&next));
+  } else {
+    recovery = BootInstallRecovery_DecideCandidate(&next, false);
   }
   if (recovery == BOOT_INSTALL_RECOVERY_SALVAGE) {
     BootTrace_Write("BOOT: SALVAGE INSTALLED CANDIDATE\r\n");
@@ -198,10 +201,13 @@ static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot)
   OtaMetadata next = *snapshot->selection.metadata;
   BootInstallRecoveryAction recovery = BOOT_INSTALL_RECOVERY_BEGIN;
 
-  if (next.install_attempts >= BOOT_INSTALL_ATTEMPT_LIMIT) {
+  if (next.state == OTA_STATE_ROLLBACK_PENDING &&
+      next.install_attempts > 0U) {
     recovery = BootInstallRecovery_DecideConfirmed(
-        &next, BootInstaller_VerifyInstalled(
+        &next, BootInstaller_VerifyInstalledRecovery(
                    (OtaSlotId)next.confirmed_slot));
+  } else {
+    recovery = BootInstallRecovery_DecideConfirmed(&next, false);
   }
   if (recovery == BOOT_INSTALL_RECOVERY_SALVAGE) {
     BootTrace_Write("BOOT: SALVAGE INSTALLED CONFIRMED\r\n");
