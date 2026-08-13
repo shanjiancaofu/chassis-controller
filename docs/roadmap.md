@@ -84,15 +84,18 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - `FAILED` 禁止向量表 fallback；仅双 metadata 擦除态允许 factory fallback，QSPI/metadata
   故障进入 Recovery；`EMPTY/RECEIVING` 无 confirmed 时也进入 Recovery
 - candidate、rollback 和 confirmed repair 的内部安装均使用持久化三次上限
+- 三次上限耗尽时先验证内部镜像；若最后一次安装已成功但 metadata 提交前掉电，则补交
+  `TRIAL/CONFIRMED`，避免把完整镜像误判为 FAILED；confirmed 成功后同步回填 image size/CRC
 - factory 工具可从同一 `.ota` 生成 Slot A + `CONFIRMED` Metadata A 的 8 MiB QSPI raw
-  provisioning 镜像，实际 External Loader 烧录仍待验收
+  provisioning 镜像；默认缺少 QSPI 参数会失败，仅诊断可显式 `--internal-only`
 - 试运行确认最多重试 3 次，持续失败时锁存 critical fault 并由 IWDG 复位；内部 Flash
   改为逐页擦除并在页间刷新继承的 IWDG
 - TRIAL/CONFIRMED 启动执行完整 Application CRC 校验，Application/Bootloader 共用
   W25Q64 JEDEC `EF 40 17` 准入契约
 - `test_ota_transfer.py`、`test_factory_image.py`、Application OTA metadata 和 Bootloader core
-  宿主机测试已于 2026-08-13 通过，覆盖两类安装上限、状态槽约束和 QSPI factory 布局
-- Bootloader 已嵌入 `0.1.0` 功能版本和 build18 构建号，启动串口输出两者；build18
+  宿主机测试已于 2026-08-13 通过，覆盖安装上限、成功后掉电 salvage、状态槽约束、
+  factory fail-closed 和 QSPI 布局
+- Bootloader 已嵌入 `0.1.0` 功能版本和 build19 构建号，启动串口输出两者；build19
   Release 已 clean build，尚未烧板回归
 - 已清除 Git 跟踪的 `tools/ota/__pycache__/*.pyc`，并增加通用 Python 缓存忽略规则
 - Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，

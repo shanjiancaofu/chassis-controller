@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "boot/app_launcher.h"
+#include "boot/boot_install_recovery.h"
 #include "boot/boot_installer.h"
 #include "boot/boot_metadata_io.h"
 #include "boot/boot_trace.h"
@@ -19,6 +20,8 @@ static void BeginCandidateInstall(BootMetadataSnapshot *snapshot);
 static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot);
 static void InstallCandidate(BootMetadataSnapshot *snapshot);
 static void InstallConfirmed(BootMetadataSnapshot *snapshot);
+static void CommitTrialAndReset(BootMetadataSnapshot *snapshot);
+static void CommitConfirmedAndReset(BootMetadataSnapshot *snapshot);
 static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
                                    BootInstallStatus status);
 static void HandleInvalidTrial(BootMetadataSnapshot *snapshot);
@@ -138,8 +141,36 @@ void BootMain_Run(void)
 static void BeginCandidateInstall(BootMetadataSnapshot *snapshot)
 {
   OtaMetadata next = *snapshot->selection.metadata;
-  const BootInstallAttemptDecision decision =
-      BootMetadataStore_BeginInstallAttempt(&next);
+  BootInstallRecoveryAction recovery = BOOT_INSTALL_RECOVERY_BEGIN;
+  BootInstallAttemptDecision decision;
+
+  if (next.install_attempts >= BOOT_INSTALL_ATTEMPT_LIMIT) {
+    recovery = BootInstallRecovery_DecideCandidate(
+        &next, BootInstaller_VerifyInstalledCandidate(&next));
+  }
+  if (recovery == BOOT_INSTALL_RECOVERY_SALVAGE) {
+    BootTrace_Write("BOOT: SALVAGE INSTALLED CANDIDATE\r\n");
+    CommitTrialAndReset(snapshot);
+  }
+  if (recovery == BOOT_INSTALL_RECOVERY_ROLLBACK) {
+    BootTrace_Write("BOOT: CANDIDATE LIMIT, ROLLBACK\r\n");
+    next.state = OTA_STATE_ROLLBACK_PENDING;
+    next.install_attempts = 0U;
+    next.last_error = BOOT_INSTALL_ERROR_VERIFY;
+    if (CommitAndReload(snapshot, &next)) {
+      BeginConfirmedInstall(snapshot);
+    }
+    EnterRecovery();
+  }
+  if (recovery == BOOT_INSTALL_RECOVERY_FAILED) {
+    BootTrace_Write("BOOT: CANDIDATE LIMIT, RECOVERY\r\n");
+    next.state = OTA_STATE_FAILED;
+    next.last_error = BOOT_INSTALL_ERROR_VERIFY;
+    (void)CommitAndReload(snapshot, &next);
+    EnterRecovery();
+  }
+
+  decision = BootMetadataStore_BeginInstallAttempt(&next);
 
   if (decision != BOOT_INSTALL_ATTEMPT_READY) {
     BootTrace_Write("BOOT: INSTALL LIMIT REACHED\r\n");
@@ -165,6 +196,24 @@ static void BeginCandidateInstall(BootMetadataSnapshot *snapshot)
 static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot)
 {
   OtaMetadata next = *snapshot->selection.metadata;
+  BootInstallRecoveryAction recovery = BOOT_INSTALL_RECOVERY_BEGIN;
+
+  if (next.install_attempts >= BOOT_INSTALL_ATTEMPT_LIMIT) {
+    recovery = BootInstallRecovery_DecideConfirmed(
+        &next, BootInstaller_VerifyInstalled(
+                   (OtaSlotId)next.confirmed_slot));
+  }
+  if (recovery == BOOT_INSTALL_RECOVERY_SALVAGE) {
+    BootTrace_Write("BOOT: SALVAGE INSTALLED CONFIRMED\r\n");
+    CommitConfirmedAndReset(snapshot);
+  }
+  if (recovery == BOOT_INSTALL_RECOVERY_FAILED) {
+    BootTrace_Write("BOOT: CONFIRMED LIMIT, RECOVERY\r\n");
+    next.state = OTA_STATE_FAILED;
+    next.last_error = BOOT_INSTALL_ERROR_VERIFY;
+    (void)CommitAndReload(snapshot, &next);
+    EnterRecovery();
+  }
 
   if (BootMetadataStore_BeginConfirmedInstallAttempt(&next) !=
       BOOT_INSTALL_ATTEMPT_READY) {
@@ -182,7 +231,6 @@ static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot)
 
 static void InstallCandidate(BootMetadataSnapshot *snapshot)
 {
-  OtaMetadata next = *snapshot->selection.metadata;
   BootInstallStatus status;
 
   BootTrace_Write("BOOT: INSTALL CANDIDATE\r\n");
@@ -203,19 +251,7 @@ static void InstallCandidate(BootMetadataSnapshot *snapshot)
     HandleCandidateFailure(snapshot, status);
   }
   BootTrace_Write("BOOT: INSTALL VERIFIED\r\n");
-
-  next.state = OTA_STATE_TRIAL;
-  next.install_attempts = 0U;
-  next.trial_boot_count = 0U;
-  next.last_error = 0U;
-  if (!CommitAndReload(snapshot, &next)) {
-    BootTrace_Write("BOOT: TRIAL COMMIT FAILED\r\n");
-    EnterRecovery();
-  }
-  BootTrace_Write("BOOT: TRIAL COMMITTED\r\n");
-  BootWatchdog_Refresh();
-  NVIC_SystemReset();
-  EnterRecovery();
+  CommitTrialAndReset(snapshot);
 }
 
 static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
@@ -263,12 +299,38 @@ static void InstallConfirmed(BootMetadataSnapshot *snapshot)
     EnterRecovery();
   }
 
-  next.state = OTA_STATE_CONFIRMED;
-  next.candidate_slot = OTA_SLOT_NONE;
-  next.install_attempts = 0U;
-  next.trial_boot_count = 0U;
-  next.last_error = 0U;
+  CommitConfirmedAndReset(snapshot);
+}
+
+static void CommitTrialAndReset(BootMetadataSnapshot *snapshot)
+{
+  OtaMetadata next = *snapshot->selection.metadata;
+
+  BootInstallRecovery_MarkTrial(&next);
   if (!CommitAndReload(snapshot, &next)) {
+    BootTrace_Write("BOOT: TRIAL COMMIT FAILED\r\n");
+    EnterRecovery();
+  }
+  BootTrace_Write("BOOT: TRIAL COMMITTED\r\n");
+  BootWatchdog_Refresh();
+  NVIC_SystemReset();
+  EnterRecovery();
+}
+
+static void CommitConfirmedAndReset(BootMetadataSnapshot *snapshot)
+{
+  OtaMetadata next = *snapshot->selection.metadata;
+  OtaImageHeader header;
+
+  if (!BootInstaller_ReadImageHeader(
+          (OtaSlotId)next.confirmed_slot, &header)) {
+    BootTrace_Write("BOOT: CONFIRMED HEADER READ FAILED\r\n");
+    EnterRecovery();
+  }
+  BootInstallRecovery_MarkConfirmed(
+      &next, header.payload_size, header.payload_crc32);
+  if (!CommitAndReload(snapshot, &next)) {
+    BootTrace_Write("BOOT: CONFIRMED COMMIT FAILED\r\n");
     EnterRecovery();
   }
   BootWatchdog_Refresh();

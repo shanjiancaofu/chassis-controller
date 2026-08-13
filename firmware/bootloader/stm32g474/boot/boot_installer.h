@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "../../../shared/firmware_image.h"
 #include "../../../shared/ota_metadata.h"
 
 typedef enum
@@ -23,6 +24,8 @@ typedef enum
 
 BootInstallStatus BootInstaller_Install(const OtaMetadata *metadata,
                                         OtaSlotId slot);
+bool BootInstaller_ReadImageHeader(OtaSlotId slot, OtaImageHeader *header);
+bool BootInstaller_VerifyInstalledCandidate(const OtaMetadata *metadata);
 bool BootInstaller_VerifyInstalled(OtaSlotId slot);
 
 #endif

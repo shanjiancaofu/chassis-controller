@@ -61,6 +61,11 @@ def main():
         type=pathlib.Path,
         help="8 MiB raw QSPI image containing factory package and metadata",
     )
+    parser.add_argument(
+        "--internal-only",
+        action="store_true",
+        help="explicitly create only the internal Flash image for diagnostics",
+    )
     args = parser.parse_args()
 
     try:
@@ -72,6 +77,13 @@ def main():
         validate_image(
             "application", application, APPLICATION_START, APPLICATION_SIZE
         )
+        if args.internal_only and (args.ota or args.qspi_output):
+            raise ValueError("--internal-only cannot be combined with QSPI options")
+        if not args.internal_only and not (args.ota and args.qspi_output):
+            raise ValueError(
+                "factory provisioning requires --ota and --qspi-output; "
+                "use --internal-only only for diagnostics"
+            )
         if bool(args.ota) != bool(args.qspi_output):
             raise ValueError("--ota and --qspi-output must be specified together")
         qspi_image = None

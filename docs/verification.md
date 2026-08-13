@@ -46,11 +46,11 @@ Application Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 222948 | 96 | 34072 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 183492 | 96 | 34224 | `BUILD PASS`，2026-08-13，0 errors，0 warnings |
+| Release | 183492 | 96 | 34224 | `BUILD PASS`，2026-08-13，b9，0 errors，0 warnings |
 
 Debug/Release 的 `.isr_vector` 均位于 `0x08008000`；反汇编确认 `SystemInit()` 将
 VTOR 写入 `0x08008000`。最高 Flash load 地址未超出 `0x0807FFFF`。构建结果只说明
-当前 Application b8 源码可编译和链接，不代表本轮固件已通过实物启动；b6 仍是最近一次
+当前 Application b9 源码可编译和链接，不代表本轮固件已通过实物启动；b6 仍是最近一次
 完成 UART OTA 实物闭环的 Application。
 
 Bootloader Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
@@ -59,29 +59,30 @@ Bootloader Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug �
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 17652 | 44 | 1668 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 12172 | 48 | 1656 | `BUILD PASS`，2026-08-13，0 errors，0 warnings |
+| Release | 12744 | 48 | 1656 | `BUILD PASS`，2026-08-13，build19，0 errors，0 warnings |
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
-本次 build18 尚未生成正式发布产物、
+本次 build19 尚未生成正式发布产物、
 烧录或执行目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
 
 2026-08-13 在当前工作树完成宿主机回归：
 
 - `tools/ota/test_ota_transfer.py`：3 项 Python 测试通过，覆盖 UART 帧 CRC、CAN 响应
   布局和 stop-and-wait 分块状态流程。
-- `tools/ota/test_factory_image.py`：生成并解析 8 MiB QSPI raw 镜像，确认 Slot A package、
-  `CONFIRMED` Metadata A、CRC 和擦除态 Metadata B。
+- `tools/ota/test_factory_image.py`：3 项测试通过，确认 Slot A package、`CONFIRMED` Metadata A、
+  CRC、擦除态 Metadata B、默认缺少 QSPI 参数时失败，以及显式 `--internal-only` 调试路径。
 - `test_command_manager.c`：WSL GCC 使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过，
   覆盖 OTA owner、运动命令清除、非法 source、Console 持续目标和 CAN 200 ms 超时。
 - `test_ota_metadata.c`：同参数编译运行通过，覆盖 metadata 状态和严格槽约束。
 - `test_ota_uart_arm_guard.c`：同参数编译运行通过，覆盖等待 BEGIN 的 30 秒超时、
   active session 和 tracked response 未完成时禁止禁用 UART transport。
 - `bootloader_core_test.c`：同参数编译运行通过，覆盖 CRC32 标准向量、镜像校验、metadata
-  双副本选择、factory 擦除态识别，以及 candidate/confirmed 安装三次上限。
+  双副本选择、factory 擦除态识别、candidate/confirmed 安装三次上限，以及最后一次安装
+  成功但状态提交前掉电时的 `TRIAL/CONFIRMED` salvage 和 confirmed size/CRC 回填。
 
-本轮新增的严格 fallback、confirmed 安装上限、UART arm timeout 隔离和 QSPI factory
-provisioning 均只完成代码审查、主机测试或目标构建，尚未完成目标板故障注入/烧录回归。
+本轮新增的安装成功掉电 salvage、confirmed metadata 回填和 factory fail-closed 均只完成
+代码审查、主机测试或目标构建，尚未完成目标板故障注入/烧录回归。
 
 以上均为主机测试结果，不替代 CubeIDE 目标构建或 STM32 实物验收。
 

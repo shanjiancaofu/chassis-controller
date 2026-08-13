@@ -81,7 +81,7 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
   Recovery 状态。
 
 Bootloader 的功能版本和构建号定义在 `config/build_info.h`。启动串口输出格式为
-`BOOT: VERSION=0.1.0 BUILD=18`：功能或兼容行为变化时更新语义版本，同一版本下的不同
+`BOOT: VERSION=0.1.0 BUILD=19`：功能或兼容行为变化时更新语义版本，同一版本下的不同
 构建递增 build 号。
 
 ## QSPI
@@ -139,9 +139,16 @@ EMPTY -> RECEIVING -> STAGED -> INSTALLING -> TRIAL -> CONFIRMED
 7. Application 完成最小启动自检后显式确认，候选槽才成为 confirmed 槽。
 8. 试运行未确认或连续异常复位时，从旧 confirmed 槽重新安装。
 9. candidate、rollback 和 confirmed repair 每次擦除内部 Flash 前都先持久化增加
-   `install_attempts`，最多尝试 3 次；成功进入 `TRIAL/CONFIRMED` 后清零。超限时进入 Recovery。
+   `install_attempts`，最多执行 3 次破坏性安装。次数耗尽时先按目标 slot header 对内部
+   Application 执行完整验证：若上一次安装已完成但最终 metadata 未提交，则直接补交
+   `TRIAL/CONFIRMED`；candidate salvage 还要求 slot header 的 size/CRC 与 metadata 一致。
+   否则 candidate 转 rollback/FAILED，confirmed 转 FAILED/Recovery。
 10. 候选安装任一步失败时，有 confirmed 槽则提交 `ROLLBACK_PENDING` 并自动重装旧版；
     无 confirmed 槽才进入 `FAILED` 等待恢复。
+
+`STAGED/INSTALLING/TRIAL` 的 metadata `image_size/image_crc32` 描述 candidate；
+`CONFIRMED` 状态描述 confirmed。rollback、repair 或掉电 salvage 成功后，Bootloader 从
+confirmed slot 的已校验镜像头回填这两个字段，再提交 `CONFIRMED`。
 
 `CONFIRMED` 普通启动同样按 confirmed 槽镜像头校验内部 Application 的完整 CRC；校验
 失败时从 confirmed 槽重新安装。Application 与 Bootloader 均通过共享的
@@ -193,11 +200,11 @@ arm-none-eabi-objcopy -O binary `
   firmware/application/stm32g474/Release/chassis_controller.bin
 
 python tools/ota/create_factory_image.py `
-  _output/bootloader/boot-v0.1.0-b18.bin `
-  _output/application/app-v0.1.0-b8.bin `
-  _output/factory/factory-a8-b18.bin `
-  --ota _output/application/app-v0.1.0-b8.ota `
-  --qspi-output _output/factory/qspi-a8-confirmed.bin
+  _output/bootloader/boot-v0.1.0-b19.bin `
+  _output/application/app-v0.1.0-b9.bin `
+  _output/factory/factory-a9-b19.bin `
+  --ota _output/application/app-v0.1.0-b9.ota `
+  --qspi-output _output/factory/qspi-a9-confirmed.bin
 ```
 
 生成器校验两个向量表、区域上限和 Reset Handler 地址，并将 Application 固定放到
@@ -206,6 +213,8 @@ python tools/ota/create_factory_image.py `
 写入 Slot A，并生成 `CONFIRMED/SLOT_A` Metadata A；Metadata B 保持擦除态。生产初始化
 必须使用 External Loader 或等价工具同时写入内部 factory BIN 和 QSPI raw 镜像，才能建立
 首次 OTA 可回滚基线。该 provisioning 流程尚未完成目标板验收。
+工具默认缺少 `--ota/--qspi-output` 会失败。仅用于内部 Flash 诊断时可显式传入
+`--internal-only`；该产物没有 QSPI confirmed 基线，不得作为正式 factory 发布。
 
 ## 主机发送
 

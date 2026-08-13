@@ -5,7 +5,7 @@
 #include "components/crc/crc32.h"
 #include "../../../shared/flash_layout.h"
 
-#define BOOT_INSTALL_ATTEMPT_LIMIT 3U
+#include "boot/boot_install_recovery.h"
 
 static bool IsKnownState(uint32_t state);
 static bool IsKnownSlot(uint32_t slot, bool allow_none);

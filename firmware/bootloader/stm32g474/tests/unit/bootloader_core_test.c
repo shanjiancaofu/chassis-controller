@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "boot/boot_install_recovery.h"
+#include "boot/boot_installer.h"
 #include "boot/image_validator.h"
 #include "boot/ota_metadata_store.h"
 #include "components/crc/crc32.h"
@@ -158,6 +160,66 @@ static void TestConfirmedInstallLimit(void)
          "confirmed_install_limit_fails");
 }
 
+static void TestInstallPowerCutRecovery(void)
+{
+  OtaMetadata metadata = MakeMetadata(35U, OTA_STATE_INSTALLING);
+
+  metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;
+  Expect(BootInstallRecovery_DecideCandidate(&metadata, true) ==
+             BOOT_INSTALL_RECOVERY_SALVAGE,
+         "candidate_success_before_commit_is_salvaged");
+  Expect(BootInstallRecovery_DecideCandidate(&metadata, false) ==
+             BOOT_INSTALL_RECOVERY_ROLLBACK,
+         "candidate_invalid_after_limit_rolls_back");
+  metadata.confirmed_slot = OTA_SLOT_NONE;
+  Expect(BootInstallRecovery_DecideCandidate(&metadata, false) ==
+             BOOT_INSTALL_RECOVERY_FAILED,
+         "candidate_invalid_without_confirmed_fails");
+
+  metadata = MakeMetadata(36U, OTA_STATE_ROLLBACK_PENDING);
+  metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;
+  Expect(BootInstallRecovery_DecideConfirmed(&metadata, true) ==
+             BOOT_INSTALL_RECOVERY_SALVAGE,
+         "confirmed_success_before_commit_is_salvaged");
+  Expect(BootInstallRecovery_DecideConfirmed(&metadata, false) ==
+             BOOT_INSTALL_RECOVERY_FAILED,
+         "confirmed_invalid_after_limit_fails");
+
+  metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT - 1U;
+  Expect(BootInstallRecovery_DecideCandidate(&metadata, false) ==
+             BOOT_INSTALL_RECOVERY_BEGIN,
+         "candidate_below_limit_reinstalls");
+  Expect(BootInstallRecovery_DecideConfirmed(&metadata, false) ==
+             BOOT_INSTALL_RECOVERY_BEGIN,
+         "confirmed_below_limit_reinstalls");
+
+  metadata.state = OTA_STATE_INSTALLING;
+  metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;
+  metadata.trial_boot_count = 2U;
+  metadata.last_error = BOOT_INSTALL_ERROR_VERIFY;
+  BootInstallRecovery_MarkTrial(&metadata);
+  Expect(metadata.state == OTA_STATE_TRIAL &&
+             metadata.install_attempts == 0U &&
+             metadata.trial_boot_count == 0U &&
+             metadata.last_error == 0U,
+         "candidate_salvage_commits_trial_state");
+
+  metadata.state = OTA_STATE_ROLLBACK_PENDING;
+  metadata.candidate_slot = OTA_SLOT_B;
+  metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;
+  metadata.trial_boot_count = 3U;
+  metadata.last_error = BOOT_INSTALL_ERROR_PROGRAM;
+  BootInstallRecovery_MarkConfirmed(&metadata, 2048U, 0x89ABCDEFUL);
+  Expect(metadata.state == OTA_STATE_CONFIRMED &&
+             metadata.candidate_slot == OTA_SLOT_NONE &&
+             metadata.image_size == 2048U &&
+             metadata.image_crc32 == 0x89ABCDEFUL &&
+             metadata.install_attempts == 0U &&
+             metadata.trial_boot_count == 0U &&
+             metadata.last_error == 0U,
+         "confirmed_salvage_restores_metadata_semantics");
+}
+
 static void TestMetadataStateSlots(void)
 {
   OtaMetadata metadata = MakeMetadata(40U, OTA_STATE_EMPTY);
@@ -209,6 +271,7 @@ int main(void)
   TestMetadataSelection();
   TestInterruptedInstallLimit();
   TestConfirmedInstallLimit();
+  TestInstallPowerCutRecovery();
   TestMetadataStateSlots();
   TestFactoryMetadataDetection();
 

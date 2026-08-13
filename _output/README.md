@@ -35,7 +35,7 @@ factory/factory-a6-b15.bin
 ```
 
 These files document the last hardware-verified factory/UART baseline. They are not a claim that
-the current b8/build18 source has been burned. CAN FD OTA, interrupted installation recovery, and
+the current b9/build19 source has been burned. CAN FD OTA, interrupted installation recovery, and
 trial rollback remain unverified; see
 [`docs/verification.md`](../docs/verification.md).
 
@@ -51,6 +51,8 @@ QSPI raw image:  external loader / QSPI base `0x000000`
 The factory QSPI image is generated from the same `.ota` package as the Application BIN. It
 contains Slot A and `CONFIRMED` Metadata A, while Metadata B remains erased. Program it with an
 External Loader or equivalent factory provisioning step before claiming first-install rollback.
+The factory generator requires both `--ota` and `--qspi-output` by default. Internal-Flash-only
+diagnostic images require the explicit `--internal-only` opt-out and are not production baselines.
 
 CubeIDE currently updates ELF but does not reliably regenerate BIN. Recreate each BIN from the
 matching final ELF with `arm-none-eabi-objcopy -O binary` before packaging or combining images.
