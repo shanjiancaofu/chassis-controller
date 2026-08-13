@@ -1,5 +1,9 @@
 # CAN FD 协议
 
+本文只定义 STM32 与 Jetson 的 CAN FD 线协议。实现和验证状态不以本文为准；当前摘要见
+[`../docs/current_status.md`](../docs/current_status.md)，实物证据见
+[`../docs/verification.md`](../docs/verification.md)。
+
 当前协议用于 STM32G474 与 Jetson 的开发联调，已经接入双电机速度目标、开发测试报文、
 200 ms 命令超时安全链路和 OTA V1 ID 分配。正式状态反馈、故障帧和物理速度单位尚未冻结。
 

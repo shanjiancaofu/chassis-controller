@@ -1,6 +1,8 @@
 # 硬件与接线
 
 硬件和引脚变更先修改 `chassis_controller.ioc`，生成并检查无冲突后再同步本文。
+本文不记录软件阶段和验收结论；当前状态见 [`current_status.md`](current_status.md)，
+实物证据见 [`verification.md`](verification.md)。
 
 ## 硬件
 

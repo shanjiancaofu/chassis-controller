@@ -1,5 +1,9 @@
 # Firmware artifacts
 
+Current development versions and pending hardware verification are summarized in
+[`docs/current_status.md`](../docs/current_status.md). Detailed evidence remains in
+[`docs/verification.md`](../docs/verification.md); artifact files do not establish a hardware pass.
+
 Burn and update artifacts are grouped by type:
 
 ```text
@@ -21,7 +25,7 @@ qspi:        factory/qspi-a<app-build>-confirmed.bin
 Current artifact names omit timestamps. The version/build pair identifies release inputs;
 timestamped and diagnostic files belong under `archive/`.
 
-Current verified artifacts:
+Most recent hardware-verified baseline artifacts (historical b6/build15):
 
 ```text
 application/app-v0.1.0-b6.bin
@@ -30,8 +34,9 @@ bootloader/boot-v0.1.0-b15.bin
 factory/factory-a6-b15.bin
 ```
 
-The factory image and UART OTA chain have passed hardware verification. CAN FD OTA, interrupted
-installation recovery, and trial rollback remain unverified; see
+These files document the last hardware-verified factory/UART baseline. They are not a claim that
+the current b8/build18 source has been burned. CAN FD OTA, interrupted installation recovery, and
+trial rollback remain unverified; see
 [`docs/verification.md`](../docs/verification.md).
 
 Programming addresses:

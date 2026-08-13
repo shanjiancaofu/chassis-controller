@@ -1,5 +1,10 @@
 # Bootloader 与 OTA
 
+本文是 Bootloader、Flash/QSPI 布局、OTA 状态机和恢复策略的权威设计文档。当前实现与
+待验证项见 [`current_status.md`](current_status.md)，线协议见
+[`../protocol/ota_canfd_protocol.md`](../protocol/ota_canfd_protocol.md)，证据见
+[`verification.md`](verification.md)。
+
 ## 方案
 
 STM32G474VET6 使用“内部单 Application + QSPI 双镜像槽”：
@@ -76,7 +81,7 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
   Recovery 状态。
 
 Bootloader 的功能版本和构建号定义在 `config/build_info.h`。启动串口输出格式为
-`BOOT: VERSION=0.1.0 BUILD=17`：功能或兼容行为变化时更新语义版本，同一版本下的不同
+`BOOT: VERSION=0.1.0 BUILD=18`：功能或兼容行为变化时更新语义版本，同一版本下的不同
 构建递增 build 号。
 
 ## QSPI
@@ -165,8 +170,8 @@ Metadata A/B，只接受最新合法 `TRIAL`，擦除并写入非当前副本，
 ```powershell
 python tools/ota/package_firmware.py `
   firmware/application/stm32g474/Release/chassis_controller.bin `
-  _output/application/app-v0.1.0-b6.ota `
-  --version 0.1.0 --build 6
+  _output/application/app-v<version>-b<app-build>.ota `
+  --version <version> --build <app-build>
 ```
 
 打包器检查向量表、链接地址、长度、头部 CRC32 和 payload CRC32。仍链接到
@@ -209,7 +214,7 @@ UART 需要 Python 3 和 `pyserial`：
 ```powershell
 python -m pip install pyserial
 python tools/ota/send_uart.py COM8 `
-  _output/application/app-v0.1.0-b6.ota
+  _output/application/app-v<version>-b<app-build>.ota
 ```
 
 工具先发送 `telemetry off` 和 `ota uart confirm`，收到 READY 后切换为二进制协议。
@@ -219,7 +224,7 @@ Jetson 先按 `verification.md` 配置 `can0`，再发送：
 
 ```bash
 python3 tools/ota/send_canfd.py can0 \
-  _output/application/app-v0.1.0-b6.ota
+  _output/application/app-v<version>-b<app-build>.ota
 ```
 
 两个工具都等待 `PREPARING -> RECEIVING`，逐块等待 ACK，并只在最终收到 `STAGED`

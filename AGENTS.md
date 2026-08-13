@@ -3,6 +3,8 @@
 ## Scope
 
 - Work against the current repository and current `.ioc`; do not rely on old chat conclusions.
+- For a new conversation, read `docs/current_status.md` first, then load only the task-specific
+  authoritative documents listed in `docs/README.md`.
 - Keep changes scoped to the requested feature. Do not create speculative modules or documents.
 - Do not commit or push unless explicitly requested.
 - Resolve conflicts in this order: current code and `.ioc`, wire protocol, responsibility-specific
@@ -38,3 +40,14 @@
 - Update only the authoritative document for the changed information.
 - Keep build/test evidence in `docs/verification.md`; do not duplicate hardware status in
   protocol documents or infer a hardware pass from source review.
+
+## Documentation
+
+- Keep `docs/current_status.md` concise: current baseline, verified facts, open verification,
+  and immediate next steps only.
+- Preserve information during merges and reorganizations. Content missing from one side is not
+  authorization to delete content present on the other side.
+- Delete documentation only when it is proven obsolete, conflicts with current code/configuration,
+  or has been fully migrated to a linked authoritative location.
+- Preserve dated hardware evidence and its version scope. New results supplement or supersede the
+  current status but do not erase useful historical evidence.

@@ -1,5 +1,10 @@
 # OTA V1 传输协议
 
+本文定义 UART/CAN FD OTA V1 的线格式、消息语义和兼容规则。Bootloader 与恢复设计见
+[`../docs/bootloader_and_ota.md`](../docs/bootloader_and_ota.md)，当前状态见
+[`../docs/current_status.md`](../docs/current_status.md)，测试证据见
+[`../docs/verification.md`](../docs/verification.md)。
+
 ## 范围
 
 OTA V1 由 Application 接收完整 `.ota` 包并写入 QSPI candidate slot。Bootloader

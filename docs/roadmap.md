@@ -1,5 +1,8 @@
 # 开发路线
 
+本文保留阶段完成项和后续范围。新对话需要的短状态见
+[`current_status.md`](current_status.md)，可复现构建和硬件证据见 [`verification.md`](verification.md)。
+
 ## 当前基线
 
 阶段 4 已完成代码实现：

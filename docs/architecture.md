@@ -1,5 +1,8 @@
 # 系统架构
 
+本文只维护软件边界、目录职责、依赖方向和运行模型。当前版本与下一步见
+[`current_status.md`](current_status.md)，构建和实物结果见 [`verification.md`](verification.md)。
+
 ## 目标
 
 `chassis-controller` 是 STM32G474VET6 底盘实时控制固件。它通过 CAN FD 接收
