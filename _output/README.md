@@ -35,7 +35,7 @@ factory/factory-a6-b15.bin
 ```
 
 These files document the last hardware-verified factory/UART baseline. They are not a claim that
-the current b11/build21 source has been burned. CAN FD OTA, interrupted installation recovery, and
+the current b12/build22 source has been burned. CAN FD OTA, interrupted installation recovery, and
 trial rollback remain unverified; see
 [`docs/verification.md`](../docs/verification.md).
 

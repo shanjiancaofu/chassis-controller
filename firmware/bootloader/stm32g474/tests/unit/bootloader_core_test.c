@@ -229,6 +229,18 @@ static void TestInstallPowerCutRecovery(void)
   Expect(BootInstaller_ClassifyFailure((BootInstallStatus)99) ==
              BOOT_INSTALL_FAILURE_GLOBAL_FATAL,
          "unknown_install_error_is_global_fatal");
+  Expect(BootInstaller_RecoveryAllowsReinstall(
+             BOOT_RECOVERY_VERIFY_INTERNAL_MISMATCH),
+         "internal_mismatch_allows_reinstall");
+  Expect(!BootInstaller_RecoveryAllowsReinstall(
+             BOOT_RECOVERY_VERIFY_SOURCE_INVALID),
+         "invalid_source_blocks_reinstall");
+  Expect(!BootInstaller_RecoveryAllowsReinstall(
+             BOOT_RECOVERY_VERIFY_IO_ERROR),
+         "io_error_blocks_reinstall");
+  Expect(!BootInstaller_RecoveryAllowsReinstall(
+             BOOT_RECOVERY_VERIFY_MATCH),
+         "matching_internal_image_does_not_reinstall");
 
   metadata.state = OTA_STATE_INSTALLING;
   metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;

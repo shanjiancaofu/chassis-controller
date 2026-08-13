@@ -46,11 +46,11 @@ Application Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 222948 | 96 | 34072 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 183492 | 96 | 34224 | `BUILD PASS`，2026-08-13，b11，0 errors，0 warnings |
+| Release | 183492 | 96 | 34224 | `BUILD PASS`，2026-08-13，b12，0 errors，0 warnings |
 
 Debug/Release 的 `.isr_vector` 均位于 `0x08008000`；反汇编确认 `SystemInit()` 将
 VTOR 写入 `0x08008000`。最高 Flash load 地址未超出 `0x0807FFFF`。构建结果只说明
-当前 Application b11 源码可编译和链接，不代表本轮固件已通过实物启动；b6 仍是最近一次
+当前 Application b12 源码可编译和链接，不代表本轮固件已通过实物启动；b6 仍是最近一次
 完成 UART OTA 实物闭环的 Application。
 
 Bootloader Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
@@ -59,11 +59,11 @@ Bootloader Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug �
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
 | Debug | 17652 | 44 | 1668 | `BUILD PASS`，2026-07-28，0 errors，0 warnings |
-| Release | 13028 | 48 | 1656 | `BUILD PASS`，2026-08-13，build21，0 errors，0 warnings |
+| Release | 13400 | 48 | 1656 | `BUILD PASS`，2026-08-13，build22，0 errors，0 warnings |
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
-本次 build21 尚未生成正式发布产物、
+本次 build22 尚未生成正式发布产物、
 烧录或执行目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
 
 2026-08-13 在当前工作树完成宿主机回归：
@@ -74,7 +74,7 @@ Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果
   CRC、擦除态 Metadata B、默认缺少 QSPI 参数时失败，以及显式 `--internal-only` 调试路径。
 - `tools/ota/test_shared_abi.py`：3 项测试通过，直接解析共享 C 头文件并核对两个 Python
   打包工具的 Flash 地址、大小、magic、格式版本、枚举值，以及镜像头/metadata 的字段类型、
-  声明顺序、数组长度、逐字段 offset 和 64 字节总大小。
+  声明顺序、数组长度、逐字段 offset、C `_Static_assert(offsetof(...))` 和 64 字节总大小。
 - `test_command_manager.c`：WSL GCC 使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过，
   覆盖 OTA owner、运动命令清除、非法 source、Console 持续目标和 CAN 200 ms 超时。
 - `test_ota_metadata.c`：同参数编译运行通过，覆盖 metadata 状态和严格槽约束。
@@ -83,11 +83,11 @@ Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果
 - `bootloader_core_test.c`：此前使用同参数编译运行通过，覆盖 CRC32 标准向量、镜像校验、
   metadata 双副本选择、factory 擦除态识别、candidate/confirmed 安装三次上限、attempt 1/2/3
   中断后的 `TRIAL/CONFIRMED` salvage、无效镜像重装边界和 confirmed size/CRC 回填。
-- 本轮为该测试新增 rollback attempts=0 健康 confirmed 恢复和 `FLASH_LAYOUT` fatal 分类断言。
+- 本轮继续新增恢复 source 状态和“仅 internal mismatch 允许重装”的纯策略断言。
   ARM GCC 使用 `-std=c11 -Wall -Wextra -Werror` 编译通过；Windows 环境无桌面 GCC，WSL
-  启动返回 `E_ACCESSDENIED`，因此新增断言尚未在宿主机执行。目标 build21 已编译链接通过。
+  启动返回 `E_ACCESSDENIED`，因此新增断言尚未在宿主机执行。目标 build22 已编译链接通过。
 
-本轮新增的 rollback 前健康 confirmed 恢复、安装 fatal 分类和字段 offset 级共享 ABI 对照均只完成
+本轮新增的可诊断 confirmed 恢复、I/O 重试、confirmed fatal 处理和编译器 ABI 断言均只完成
 代码审查、主机测试或目标构建，尚未完成目标板故障注入/烧录回归。
 
 主机测试和目标构建均不替代 STM32 实物验收。

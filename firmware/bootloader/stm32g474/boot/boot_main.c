@@ -15,6 +15,7 @@
 #include "../../../shared/qspi_flash_identity.h"
 
 #define BOOT_TRIAL_LIMIT 3U
+#define BOOT_RECOVERY_VERIFY_IO_RETRIES 3U
 
 static void BeginCandidateInstall(BootMetadataSnapshot *snapshot);
 static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot);
@@ -200,11 +201,40 @@ static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot)
 {
   OtaMetadata next = *snapshot->selection.metadata;
   BootInstallRecoveryAction recovery = BOOT_INSTALL_RECOVERY_BEGIN;
+  BootRecoveryVerifyStatus verify_status =
+      BOOT_RECOVERY_VERIFY_INTERNAL_MISMATCH;
+  uint32_t verify_attempt;
 
   if (next.state == OTA_STATE_ROLLBACK_PENDING) {
+    for (verify_attempt = 0U;
+         verify_attempt < BOOT_RECOVERY_VERIFY_IO_RETRIES;
+         ++verify_attempt) {
+      verify_status = BootInstaller_VerifyInstalledRecovery(
+          (OtaSlotId)next.confirmed_slot);
+      if (verify_status != BOOT_RECOVERY_VERIFY_IO_ERROR) {
+        break;
+      }
+      BootTrace_Write("BOOT: CONFIRMED VERIFY IO RETRY\r\n");
+      BootWatchdog_Refresh();
+    }
+    if (verify_status == BOOT_RECOVERY_VERIFY_SOURCE_INVALID) {
+      BootTrace_Write("BOOT: CONFIRMED SOURCE INVALID\r\n");
+      next.state = OTA_STATE_FAILED;
+      next.last_error = BOOT_INSTALL_ERROR_VERIFY;
+      (void)CommitAndReload(snapshot, &next);
+      EnterRecovery();
+    }
+    if (verify_status == BOOT_RECOVERY_VERIFY_IO_ERROR) {
+      BootTrace_Write("BOOT: CONFIRMED VERIFY IO FAILED\r\n");
+      EnterRecovery();
+    }
+    if (!BootInstaller_RecoveryAllowsReinstall(verify_status) &&
+        verify_status != BOOT_RECOVERY_VERIFY_MATCH) {
+      BootTrace_Write("BOOT: CONFIRMED REINSTALL BLOCKED\r\n");
+      EnterRecovery();
+    }
     recovery = BootInstallRecovery_DecideConfirmed(
-        &next, BootInstaller_VerifyInstalledRecovery(
-                   (OtaSlotId)next.confirmed_slot));
+        &next, verify_status == BOOT_RECOVERY_VERIFY_MATCH);
   } else {
     recovery = BootInstallRecovery_DecideConfirmed(&next, false);
   }
@@ -304,7 +334,17 @@ static void InstallConfirmed(BootMetadataSnapshot *snapshot)
       (OtaSlotId)snapshot->selection.metadata->confirmed_slot);
 
   if (status != BOOT_INSTALL_OK) {
+    const BootInstallFailureClass failure_class =
+        BootInstaller_ClassifyFailure(status);
+
     BootTrace_WriteValue("BOOT: ROLLBACK FAILED=", status);
+    if (failure_class == BOOT_INSTALL_FAILURE_GLOBAL_FATAL) {
+      BootTrace_Write("BOOT: ROLLBACK GLOBAL FATAL\r\n");
+      next.state = OTA_STATE_FAILED;
+      next.last_error = (uint32_t)status;
+      (void)CommitAndReload(snapshot, &next);
+      EnterRecovery();
+    }
     next.state = OTA_STATE_ROLLBACK_PENDING;
     next.last_error = (uint32_t)status;
     if (!CommitAndReload(snapshot, &next)) {

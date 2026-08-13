@@ -1,6 +1,7 @@
 #ifndef OTA_METADATA_H
 #define OTA_METADATA_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define OTA_METADATA_MAGIC 0x314D544FUL
@@ -47,6 +48,33 @@ typedef struct
 static_assert(sizeof(OtaMetadata) == 64U, "OTA metadata ABI changed");
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(OtaMetadata) == 64U, "OTA metadata ABI changed");
+_Static_assert(offsetof(OtaMetadata, magic) == 0U, "metadata magic offset");
+_Static_assert(offsetof(OtaMetadata, format_version) == 4U,
+               "metadata format offset");
+_Static_assert(offsetof(OtaMetadata, record_size) == 6U,
+               "metadata size offset");
+_Static_assert(offsetof(OtaMetadata, sequence) == 8U,
+               "metadata sequence offset");
+_Static_assert(offsetof(OtaMetadata, state) == 12U,
+               "metadata state offset");
+_Static_assert(offsetof(OtaMetadata, confirmed_slot) == 16U,
+               "metadata confirmed offset");
+_Static_assert(offsetof(OtaMetadata, candidate_slot) == 20U,
+               "metadata candidate offset");
+_Static_assert(offsetof(OtaMetadata, image_size) == 24U,
+               "metadata image size offset");
+_Static_assert(offsetof(OtaMetadata, image_crc32) == 28U,
+               "metadata image crc offset");
+_Static_assert(offsetof(OtaMetadata, install_attempts) == 32U,
+               "metadata attempts offset");
+_Static_assert(offsetof(OtaMetadata, trial_boot_count) == 36U,
+               "metadata trial offset");
+_Static_assert(offsetof(OtaMetadata, last_error) == 40U,
+               "metadata error offset");
+_Static_assert(offsetof(OtaMetadata, reserved) == 44U,
+               "metadata reserved offset");
+_Static_assert(offsetof(OtaMetadata, record_crc32) == 60U,
+               "metadata crc offset");
 #endif
 
 #endif

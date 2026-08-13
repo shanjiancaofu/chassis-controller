@@ -1,6 +1,7 @@
 #ifndef FIRMWARE_IMAGE_H
 #define FIRMWARE_IMAGE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define OTA_IMAGE_MAGIC 0x3141544FUL
@@ -29,6 +30,32 @@ static_assert(sizeof(OtaImageHeader) == 64U, "OTA image header ABI changed");
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 _Static_assert(sizeof(OtaImageHeader) == 64U,
                "OTA image header ABI changed");
+_Static_assert(offsetof(OtaImageHeader, magic) == 0U,
+               "image magic offset");
+_Static_assert(offsetof(OtaImageHeader, format_version) == 4U,
+               "image format offset");
+_Static_assert(offsetof(OtaImageHeader, header_size) == 6U,
+               "image header size offset");
+_Static_assert(offsetof(OtaImageHeader, payload_size) == 8U,
+               "image payload size offset");
+_Static_assert(offsetof(OtaImageHeader, payload_crc32) == 12U,
+               "image payload crc offset");
+_Static_assert(offsetof(OtaImageHeader, load_address) == 16U,
+               "image load offset");
+_Static_assert(offsetof(OtaImageHeader, vector_address) == 20U,
+               "image vector offset");
+_Static_assert(offsetof(OtaImageHeader, firmware_version) == 24U,
+               "image version offset");
+_Static_assert(offsetof(OtaImageHeader, build_number) == 28U,
+               "image build offset");
+_Static_assert(offsetof(OtaImageHeader, rollback_counter) == 32U,
+               "image rollback offset");
+_Static_assert(offsetof(OtaImageHeader, flags) == 36U,
+               "image flags offset");
+_Static_assert(offsetof(OtaImageHeader, reserved) == 40U,
+               "image reserved offset");
+_Static_assert(offsetof(OtaImageHeader, header_crc32) == 60U,
+               "image crc offset");
 #endif
 
 #endif

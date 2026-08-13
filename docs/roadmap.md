@@ -95,8 +95,11 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - `test_ota_transfer.py`、`test_factory_image.py`、`test_shared_abi.py`、Application OTA metadata
   和 Bootloader core 宿主机测试覆盖安装上限、每次中断后的完整 QSPI/internal salvage、
   rollback attempts=0 健康镜像恢复、状态槽约束、factory fail-closed、QSPI 布局和字段
-  offset 级共享 C/Python ABI；本轮 Python 9 项于 2026-08-13 通过
-- Bootloader 已嵌入 `0.1.0` 功能版本和 build21 构建号，启动串口输出两者；build21
+  offset 级共享 C/Python ABI；共享 C 头同时使用 ARM GCC `offsetof` 静态断言，本轮 Python
+  9 项于 2026-08-13 通过
+- confirmed 恢复已区分 source invalid、I/O error 和 internal mismatch；只有 source 完整且
+  internal mismatch 才允许擦写，I/O 先有限非破坏性重试，confirmed global fatal 直接 Recovery
+- Bootloader 已嵌入 `0.1.0` 功能版本和 build22 构建号，启动串口输出两者；build22
   Release 已 clean build，尚未烧板回归
 - 已清除 Git 跟踪的 `tools/ota/__pycache__/*.pyc`，并增加通用 Python 缓存忽略规则
 - Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，

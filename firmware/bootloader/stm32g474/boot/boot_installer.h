@@ -29,6 +29,20 @@ typedef enum
   BOOT_INSTALL_FAILURE_GLOBAL_FATAL
 } BootInstallFailureClass;
 
+typedef enum
+{
+  BOOT_RECOVERY_VERIFY_MATCH = 0,
+  BOOT_RECOVERY_VERIFY_INTERNAL_MISMATCH,
+  BOOT_RECOVERY_VERIFY_SOURCE_INVALID,
+  BOOT_RECOVERY_VERIFY_IO_ERROR
+} BootRecoveryVerifyStatus;
+
+static inline bool BootInstaller_RecoveryAllowsReinstall(
+    BootRecoveryVerifyStatus status)
+{
+  return status == BOOT_RECOVERY_VERIFY_INTERNAL_MISMATCH;
+}
+
 BootInstallStatus BootInstaller_Install(const OtaMetadata *metadata,
                                         OtaSlotId slot);
 bool BootInstaller_ReadImageHeader(OtaSlotId slot, OtaImageHeader *header);
@@ -56,7 +70,8 @@ BootInstaller_ClassifyFailure(BootInstallStatus status)
   }
 }
 bool BootInstaller_VerifyInstalledCandidate(const OtaMetadata *metadata);
-bool BootInstaller_VerifyInstalledRecovery(OtaSlotId slot);
+BootRecoveryVerifyStatus BootInstaller_VerifyInstalledRecovery(
+    OtaSlotId slot);
 bool BootInstaller_VerifyInstalled(OtaSlotId slot);
 
 #endif

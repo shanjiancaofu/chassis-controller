@@ -15,6 +15,8 @@
 static uint32_t SlotAddress(OtaSlotId slot);
 static bool ValidatePayload(uint32_t payload_address,
                             const OtaImageHeader *header);
+static BootRecoveryVerifyStatus ValidateRecoveryPayload(
+    uint32_t payload_address, const OtaImageHeader *header);
 static bool ProgramPayload(uint32_t payload_address,
                            const OtaImageHeader *header);
 static bool VerifyInstalledPayload(const OtaImageHeader *header);
@@ -89,15 +91,38 @@ bool BootInstaller_VerifyInstalledCandidate(const OtaMetadata *metadata)
          VerifyInstalledPayload(&header);
 }
 
-bool BootInstaller_VerifyInstalledRecovery(OtaSlotId slot)
+BootRecoveryVerifyStatus BootInstaller_VerifyInstalledRecovery(
+    OtaSlotId slot)
 {
   const uint32_t slot_address = SlotAddress(slot);
   OtaImageHeader header;
+  BootRecoveryVerifyStatus source_status;
+  uint32_t vectors[2];
 
-  return slot_address != 0U &&
-         BootInstaller_ReadImageHeader(slot, &header) &&
-         ValidatePayload(slot_address + sizeof(header), &header) &&
-         VerifyInstalledPayload(&header);
+  if (slot_address == 0U) {
+    return BOOT_RECOVERY_VERIFY_SOURCE_INVALID;
+  }
+  if (!BootQspiFlash_Read(slot_address, &header, sizeof(header))) {
+    return BOOT_RECOVERY_VERIFY_IO_ERROR;
+  }
+  if (BootImageValidator_ValidateHeader(&header) != BOOT_IMAGE_OK) {
+    return BOOT_RECOVERY_VERIFY_SOURCE_INVALID;
+  }
+  if (!BootQspiFlash_Read(slot_address + sizeof(header), vectors,
+                          sizeof(vectors))) {
+    return BOOT_RECOVERY_VERIFY_IO_ERROR;
+  }
+  if (!BootImageValidator_IsVectorTableValid(vectors, sizeof(vectors))) {
+    return BOOT_RECOVERY_VERIFY_SOURCE_INVALID;
+  }
+  source_status = ValidateRecoveryPayload(
+      slot_address + sizeof(header), &header);
+  if (source_status != BOOT_RECOVERY_VERIFY_MATCH) {
+    return source_status;
+  }
+  return VerifyInstalledPayload(&header)
+             ? BOOT_RECOVERY_VERIFY_MATCH
+             : BOOT_RECOVERY_VERIFY_INTERNAL_MISMATCH;
 }
 
 bool BootInstaller_ReadImageHeader(OtaSlotId slot, OtaImageHeader *header)
@@ -142,6 +167,32 @@ static bool ValidatePayload(uint32_t payload_address,
     BootWatchdog_Refresh();
   }
   return BootCrc32_Finalize(&crc) == header->payload_crc32;
+}
+
+static BootRecoveryVerifyStatus ValidateRecoveryPayload(
+    uint32_t payload_address, const OtaImageHeader *header)
+{
+  uint8_t buffer[BOOT_INSTALL_CHUNK_SIZE];
+  BootCrc32Context crc;
+  uint32_t offset = 0U;
+
+  BootCrc32_Init(&crc);
+  while (offset < header->payload_size) {
+    const uint32_t remaining = header->payload_size - offset;
+    const uint32_t chunk = remaining < sizeof(buffer)
+                               ? remaining
+                               : sizeof(buffer);
+
+    if (!BootQspiFlash_Read(payload_address + offset, buffer, chunk)) {
+      return BOOT_RECOVERY_VERIFY_IO_ERROR;
+    }
+    BootCrc32_Update(&crc, buffer, chunk);
+    offset += chunk;
+    BootWatchdog_Refresh();
+  }
+  return BootCrc32_Finalize(&crc) == header->payload_crc32
+             ? BOOT_RECOVERY_VERIFY_MATCH
+             : BOOT_RECOVERY_VERIFY_SOURCE_INVALID;
 }
 
 static bool ProgramPayload(uint32_t payload_address,

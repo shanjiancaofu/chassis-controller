@@ -155,6 +155,11 @@ class SharedAbiTest(unittest.TestCase):
         self.assertEqual(create_factory_image.OTA_METADATA_FORMAT, "<IHH9I16sI")
         self.assertEqual(struct.calcsize(create_factory_image.OTA_METADATA_FORMAT), size)
         self.assertRegex(metadata, r"_Static_assert\(sizeof\(OtaMetadata\) == 64U")
+        for name, offset, _size in expected_layout:
+            self.assertRegex(
+                metadata,
+                rf"_Static_assert\(offsetof\(OtaMetadata,\s*{name}\)\s*==\s*{offset}U",
+            )
 
     def test_image_header_abi_matches_package_tool(self):
         image = read_shared("firmware_image.h")
@@ -196,6 +201,11 @@ class SharedAbiTest(unittest.TestCase):
         self.assertEqual(package_firmware.HEADER_FORMAT, "<IHH8I20sI")
         self.assertEqual(struct.calcsize(package_firmware.HEADER_FORMAT), size)
         self.assertRegex(image, r"_Static_assert\(sizeof\(OtaImageHeader\) == 64U")
+        for name, offset, _size in expected_layout:
+            self.assertRegex(
+                image,
+                rf"_Static_assert\(offsetof\(OtaImageHeader,\s*{name}\)\s*==\s*{offset}U",
+            )
 
 
 if __name__ == "__main__":

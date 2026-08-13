@@ -81,7 +81,7 @@ VTOR 已同时迁移到 `0x08008000`，并与打包工具和镜像头保持一�
   Recovery 状态。
 
 Bootloader 的功能版本和构建号定义在 `config/build_info.h`。启动串口输出格式为
-`BOOT: VERSION=0.1.0 BUILD=21`：功能或兼容行为变化时更新语义版本，同一版本下的不同
+`BOOT: VERSION=0.1.0 BUILD=22`：功能或兼容行为变化时更新语义版本，同一版本下的不同
 构建递增 build 号。
 
 ## QSPI
@@ -150,6 +150,12 @@ EMPTY -> RECEIVING -> STAGED -> INSTALLING -> TRIAL -> CONFIRMED
     槽时进入 `FAILED`。`BOOT_INSTALL_ERROR_FLASH_LAYOUT` 表示 Bootloader/设备布局不兼容，
     candidate 与 confirmed 都无法安装，因此直接进入 Recovery，不执行无效 rollback。
 
+confirmed 恢复验证返回 `MATCH`、`INTERNAL_MISMATCH`、`SOURCE_INVALID` 或 `IO_ERROR`，而不是
+单一 bool。QSPI header、payload 向量表和完整 payload CRC 全部有效后，才比较内部 Application；
+只有 `INTERNAL_MISMATCH` 允许开始破坏性重装。QSPI 读取错误进行最多 3 次非破坏性重试，持续
+失败进入 Recovery；source header、向量或 CRC 无效时写入 `FAILED` 并进入 Recovery。confirmed
+重装遇到全局 fatal 错误同样立即进入 `FAILED/Recovery`，不执行无意义的复位重试。
+
 `STAGED/INSTALLING/TRIAL` 的 metadata `image_size/image_crc32` 描述 candidate；
 `CONFIRMED` 状态描述 confirmed。rollback、repair 或掉电 salvage 成功后，Bootloader 从
 confirmed slot 的已校验镜像头回填这两个字段，再提交 `CONFIRMED`。
@@ -204,11 +210,11 @@ arm-none-eabi-objcopy -O binary `
   firmware/application/stm32g474/Release/chassis_controller.bin
 
 python tools/ota/create_factory_image.py `
-  _output/bootloader/boot-v0.1.0-b21.bin `
-  _output/application/app-v0.1.0-b11.bin `
-  _output/factory/factory-a11-b21.bin `
-  --ota _output/application/app-v0.1.0-b11.ota `
-  --qspi-output _output/factory/qspi-a11-confirmed.bin
+  _output/bootloader/boot-v0.1.0-b22.bin `
+  _output/application/app-v0.1.0-b12.bin `
+  _output/factory/factory-a12-b22.bin `
+  --ota _output/application/app-v0.1.0-b12.ota `
+  --qspi-output _output/factory/qspi-a12-confirmed.bin
 ```
 
 生成器校验两个向量表、区域上限和 Reset Handler 地址，并将 Application 固定放到
