@@ -39,6 +39,21 @@ the current b12/build22 source has been burned. CAN FD OTA, interrupted installa
 trial rollback remain unverified; see
 [`docs/verification.md`](../docs/verification.md).
 
+Current generated artifacts pending hardware programming and verification:
+
+```text
+application/app-v0.1.0-b12.bin
+application/app-v0.1.0-b12.ota
+bootloader/boot-v0.1.0-b22.bin
+factory/factory-a12-b22.bin
+factory/qspi-a12-confirmed.bin
+```
+
+The matching b12/build22 internal factory image and QSPI confirmed baseline were programmed and
+verified on hardware on 2026-08-13 using STM32 ROM DFU and the repository
+`tools/qspi_factory_provisioner/` maintenance target. Ordinary reset, electrical zero-PWM, UART OTA,
+CAN FD OTA, and fault-injection acceptance remain separate verification items.
+
 Programming addresses:
 
 ```text

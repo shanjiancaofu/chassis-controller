@@ -13,6 +13,7 @@
 | 修改 Bootloader、OTA 或 QSPI | `bootloader_and_ota.md` | `protocol/ota_canfd_protocol.md`、`verification.md` |
 | 修改 CAN FD 线协议 | `protocol/canfd_protocol.md` | `protocol/ota_canfd_protocol.md` |
 | 构建、烧录或板上验收 | `verification.md` | `_output/README.md` |
+| CMake/Ninja 构建 | `cmake_build.md` | `verification.md` |
 | 规划后续工作 | `roadmap.md` | `current_status.md` |
 
 ## 权威职责

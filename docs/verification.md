@@ -63,8 +63,63 @@ Bootloader Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug �
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
-本次 build22 尚未生成正式发布产物、
-烧录或执行目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
+本次 build22 已于 2026-08-13 从当前 Release ELF 生成正式配套产物，但尚未烧录或执行
+目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
+
+### b12/build22 上板准备（2026-08-13）
+
+从当前 Release ELF 重新执行 `arm-none-eabi-objcopy -O binary`，随后生成 OTA、内部 factory
+组合镜像和 QSPI confirmed raw。工具输出确认 Application payload CRC32 为 `0x3A5DFAD0`，
+QSPI metadata 为 `CONFIRMED/SLOT_A`。产物如下：
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `app-v0.1.0-b12.bin` | 183596 | `1A881962E44E298A8BE064834E5FF3CA81366B5CFB925004FF942FF03FD716FF` |
+| `app-v0.1.0-b12.ota` | 183660 | `F7FF629B1E02C45CF582ABF96904E0E3500C00EBB7F6BB6F7358D8320505F6FF` |
+| `boot-v0.1.0-b22.bin` | 13448 | `B56E787611A0FBA816E11801EE4BAF62DEB9D61A965B369D58A4A276B2A25358` |
+| `factory-a12-b22.bin` | 216364 | `A7FB68D07022D7C12D88F2EA9D744B7E9EE249947B5E9E35F60A4ADAA9FBE243` |
+| `qspi-a12-confirmed.bin` | 8388608 | `6A86EC1E297D525023CE8D024971E359B13939302C6B3D8A5EA439CD39A26F81` |
+
+同轮重新运行 OTA Python 9 项测试，全部通过。COM9 可打开并返回 `PONG` 和完整 `status`；
+在线固件报告 QSPI `EF4017`、`MOTOR: DISABLED`、`OTA_CONFIRM: NOT_REQUIRED`，但串口命令
+不输出 Application/Bootloader 版本，不能据此认定板上已是 b12/build22。
+
+STM32CubeProgrammer 2.23.0 未检测到 ST-Link 或 DFU 设备，安装目录也没有匹配本板
+STM32G474 + W25Q64 自定义引脚的 External Loader。因此本轮未执行内部 Flash/QSPI 烧录，
+当时冻结清单七项继续保持 `NOT VERIFIED`。
+
+后续同日通过 STM32 ROM DFU 和独立
+`tools/qspi_factory_provisioner/` 完成匹配基线写入。Provisioner 固定校验内部暂存的 b12
+OTA package 和 `CONFIRMED/SLOT_A` Metadata A，擦除并读回确认 Metadata A/B，擦写 Slot A，
+逐字节读回比较完整 183660 字节 package，最后提交并读回 Metadata A。板上日志为：
+
+```text
+PROVISION: INPUTS VALID
+PROVISION: METADATA ERASED
+PROVISION: SLOT A ERASED
+PROVISION: SLOT A WRITTEN
+PROVISION: SLOT A VERIFIED
+PROVISION: METADATA A VERIFIED
+PROVISION: METADATA B ERASED
+PROVISION: PASS
+```
+
+随后通过 DFU 全擦内部临时工具和暂存数据，将 `factory-a12-b22.bin` 下载到
+`0x08000000` 并由 CubeProgrammer 校验成功。启动日志确认：
+
+```text
+BOOT: VERSION=0.1.0 BUILD=22
+BOOT: QSPI READY
+BOOT: METADATA READY
+BOOT: STATE=0x00000005
+chassis-controller started
+```
+
+Application 健康窗口后 `status` 报告 QSPI `EF4017`、`OTA_CONFIRM: NOT_REQUIRED`、
+`MOTOR: DISABLED`、`CONTROL_OVERRUN: count=0 missed=0`。因此匹配的 QSPI factory confirmed
+基线写入和 b12/build22 confirmed 启动已完成实物验证。该启动由 DFU `go 0x08000000`
+触发；仍需单独执行普通按键/断电复位回归。`MOTOR: DISABLED` 是软件状态证据，四路 PWM
+上电电气零输出仍需示波器或逻辑分析仪测量。
 
 2026-08-13 在当前工作树完成宿主机回归：
 
@@ -149,6 +204,22 @@ _output/factory/factory-a6-b15.bin 215560 bytes
 UART OTA 主链已达到 `HARDWARE PASS`。CAN FD OTA、安装中断电、TRIAL 失败回滚和无有效
 Application 的 Recovery 行为仍为 `NOT VERIFIED`。
 
+## CMake/Ninja 等价构建（2026-08-13）
+
+使用 GNU Arm Embedded 14.3.rel1（GCC 14.3.1）、CMake 和 Ninja clean build 三个目标。
+`--specs=nano.specs` 同时用于 C 编译和链接，以保持 newlib-nano 头文件 ABI 与 CubeIDE
+一致。结果如下：
+
+| 目标 | text | data | bss | BIN SHA-256 | 结果 |
+| --- | ---: | ---: | ---: | --- | --- |
+| Application | 183492 | 96 | 34224 | `1A881962E44E298A8BE064834E5FF3CA81366B5CFB925004FF942FF03FD716FF` | `BUILD PASS`，与 b12 基线一致 |
+| Bootloader | 13400 | 48 | 1656 | `B56E787611A0FBA816E11801EE4BAF62DEB9D61A965B369D58A4A276B2A25358` | `BUILD PASS`，与 build22 基线一致 |
+| QSPI provisioner | 9192 | 12 | 1644 | `01EF25D46787D45A91B66C7BAA481990DADA5E1C5C6C789B4375A42B8CF70E30` | `BUILD PASS`，与已上板工具一致 |
+
+Application `.isr_vector` 位于 `0x08008000`，Bootloader 和 provisioner `.isr_vector` 位于
+`0x08000000`。同轮 OTA Python 9 项测试全部通过。三个 BIN 均与已经生成或上板验证的基线
+逐哈希一致，因此不需要为 CMake 构建重复烧录同一字节产物。
+
 ## CubeIDE 构建与烧录
 
 1. 以仓库 `firmware/` 为工作区，分别导入 `application/stm32g474/` 和
@@ -166,10 +237,11 @@ CubeMX 重新生成后必须重新检查自定义 source folder、include path �
 
 ## VS Code 构建
 
-VS Code 只作为 STM32CubeIDE 命令行构建入口，编译器仍是 STM32CubeIDE GCC，
-工程配置仍来自 `.cproject`，不改用桌面 GCC 或 CMake。
+VS Code 可调用仓库 CMake preset；编译器仍使用 STM32CubeIDE 附带的 GNU Arm Embedded
+14.3.rel1。CubeIDE 命令行任务暂时保留作对照，不再是唯一构建入口。
 
-- `Ctrl+Shift+B`：执行本机 `.vscode/tasks.json` 中的 Debug 增量构建任务。
+- CMake/Ninja 命令和工具链要求见 [`cmake_build.md`](cmake_build.md)。
+- 既有 `Ctrl+Shift+B` 仍执行本机 `.vscode/tasks.json` 中的 CubeIDE Debug 增量构建任务。
 - 工程路径：`firmware/application/stm32g474/`。
 - 遇到产物未更新时执行 clean build，再检查 ELF 和相关 `.o` 的修改时间。
 - `.vscode/` 是本机配置；换电脑后需更新 `stm32cubeidec.exe` 的实际安装路径。
@@ -296,6 +368,9 @@ cansend can0 720##15041535301000000
    将 READY 当成 OTA 硬件通过。
 
 本轮 b12/build22 只按以下冻结清单验收：
+
+匹配的内部 factory 镜像和 QSPI `CONFIRMED/SLOT_A` 基线已通过 DFU provisioner 写入、
+完整读回和启动校验；该 factory provisioning 前置项不替代以下七项各自的验收。
 
 | 顺序 | 项目 | 当前状态 | 通过条件 |
 | ---: | --- | --- | --- |

@@ -36,18 +36,26 @@
 
 - Application b12 Release clean build：`text=183492 data=96 bss=34224`。
 - Bootloader build22 Release clean build：`text=13400 data=48 bss=1656`。
+- CMake + Ninja 已使用 GNU Arm Embedded 14.3.rel1 完成 Application、Bootloader 和 QSPI
+  provisioner clean build；三个 BIN 的 SHA-256 分别与既有 b12、build22 和已上板 provisioner
+  基线完全一致。CMake 作为主命令行构建入口，CubeIDE 暂留作对照和调试。
 - OTA Python 共 9 项通过，包含字段顺序/offset 级共享 C/Python ABI 对照；两个目标 clean build
   已由 ARM GCC 验证共享结构体的逐字段 `offsetof` 静态断言。既有 factory、
   UART arm guard、Application metadata 和 Bootloader core 主机测试记录保持有效；本轮新增的
   rollback attempts=0/fatal 分类断言已通过目标 GCC `-Werror` 编译，尚未在宿主机执行。
 - 最近完成实物 UART OTA 闭环的是 Application b6 + Bootloader build15。
 - factory 普通启动和 UART `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` 已实物通过。
+- 已从当前 Release ELF 生成匹配的 b12/build22 Application BIN、OTA、内部 factory BIN 和
+  8 MiB QSPI confirmed raw；OTA Python 9 项重新通过。产物生成不代表已烧录或实物通过。
+- 已通过独立 DFU provisioner 将匹配的 b12 OTA package 和 `CONFIRMED/SLOT_A` metadata
+  写入 W25Q64 并完成全包读回校验；随后恢复内部 factory BIN，实物确认 build22 读取
+  `CONFIRMED` 并启动 b12。Application 稳定报告 QSPI `EF4017`、`OTA_CONFIRM: NOT_REQUIRED`
+  和 `MOTOR: DISABLED`。
 
 ## 尚未验证
 
-- b12/build22 普通启动和上电零 PWM。
+- b12/build22 普通按键/断电复位启动和上电四路 PWM 电气零输出。
 - b12/build22 UART OTA 与 CAN FD OTA。
-- QSPI External Loader 写入匹配的 factory confirmed 基线。
 - Application 安装过程中断电恢复。
 - TRIAL 不确认后的自动回滚。
 - rollback 安装过程中断电恢复。
@@ -57,11 +65,11 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 生成并烧录匹配的 b12/build22 内部 factory BIN 与 QSPI confirmed raw 镜像。
-2. 完成普通启动、上电 PWM 为零、UART OTA 和 CAN FD OTA 实物验收。
-3. 只执行三个故障测试：Application 安装中断电、TRIAL 不确认自动回滚、rollback 安装中断电。
-4. 上述项目通过后冻结 OTA V1；签名、防回滚和 Bootloader CAN Recovery 延后到 OTA V2。
-5. 进入底盘功能：PID 实物闭环、左右轮标定与加减速、里程计、安全保护、诊断、正式 CAN FD 协议。
+1. 在已完成 CMake 产物等价验证的基线上接入 ICM45686；外设配置仍由 `.ioc`/CubeMX 管理。
+2. 执行普通按键/断电复位启动和四路 PWM 上电电气零输出验收。
+3. 完成 UART OTA 和 CAN FD OTA 实物验收。
+4. 只执行三个故障测试：Application 安装中断电、TRIAL 不确认自动回滚、rollback 安装中断电。
+5. 上述 OTA 项目通过后冻结 OTA V1；签名、防回滚和 Bootloader CAN Recovery 延后到 OTA V2。
 
 当前路线：
 

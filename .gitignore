@@ -80,6 +80,7 @@ dkms.conf
 /firmware/bootloader/stm32g474/bootloader.launch
 firmware/.metadata/
 /.cubeide-workspace/
+/build/
 
 # Generated firmware packages
 /_output/*
