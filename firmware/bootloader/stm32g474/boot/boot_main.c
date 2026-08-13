@@ -201,8 +201,7 @@ static void BeginConfirmedInstall(BootMetadataSnapshot *snapshot)
   OtaMetadata next = *snapshot->selection.metadata;
   BootInstallRecoveryAction recovery = BOOT_INSTALL_RECOVERY_BEGIN;
 
-  if (next.state == OTA_STATE_ROLLBACK_PENDING &&
-      next.install_attempts > 0U) {
+  if (next.state == OTA_STATE_ROLLBACK_PENDING) {
     recovery = BootInstallRecovery_DecideConfirmed(
         &next, BootInstaller_VerifyInstalledRecovery(
                    (OtaSlotId)next.confirmed_slot));
@@ -264,8 +263,19 @@ static void HandleCandidateFailure(BootMetadataSnapshot *snapshot,
                                    BootInstallStatus status)
 {
   OtaMetadata next = *snapshot->selection.metadata;
+  const BootInstallFailureClass failure_class =
+      BootInstaller_ClassifyFailure(status);
 
   next.last_error = (uint32_t)status;
+  if (failure_class == BOOT_INSTALL_FAILURE_GLOBAL_FATAL) {
+    BootTrace_Write("BOOT: INSTALL GLOBAL FATAL\r\n");
+    next.state = OTA_STATE_FAILED;
+    (void)CommitAndReload(snapshot, &next);
+    EnterRecovery();
+  }
+  BootTrace_Write(failure_class == BOOT_INSTALL_FAILURE_PRE_DESTRUCTIVE
+                      ? "BOOT: INSTALL FAILED BEFORE ERASE\r\n"
+                      : "BOOT: INSTALL MAY HAVE MODIFIED FLASH\r\n");
   if (next.confirmed_slot != OTA_SLOT_NONE) {
     next.state = OTA_STATE_ROLLBACK_PENDING;
     next.install_attempts = 0U;

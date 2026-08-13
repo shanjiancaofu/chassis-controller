@@ -43,7 +43,7 @@ BootInstallRecovery_DecideConfirmed(const OtaMetadata *metadata,
     return BOOT_INSTALL_RECOVERY_FAILED;
   }
   if (metadata->state == OTA_STATE_ROLLBACK_PENDING &&
-      metadata->install_attempts > 0U && installed_confirmed_valid) {
+      installed_confirmed_valid) {
     return BOOT_INSTALL_RECOVERY_SALVAGE;
   }
   return metadata->install_attempts < BOOT_INSTALL_ATTEMPT_LIMIT

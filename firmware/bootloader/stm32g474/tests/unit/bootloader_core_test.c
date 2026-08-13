@@ -182,6 +182,10 @@ static void TestInstallPowerCutRecovery(void)
          "candidate_invalid_without_confirmed_fails");
 
   metadata = MakeMetadata(36U, OTA_STATE_ROLLBACK_PENDING);
+  metadata.install_attempts = 0U;
+  Expect(BootInstallRecovery_DecideConfirmed(&metadata, true) ==
+             BOOT_INSTALL_RECOVERY_SALVAGE,
+         "confirmed_already_installed_before_rollback_is_salvaged");
   for (attempt = 1U; attempt <= BOOT_INSTALL_ATTEMPT_LIMIT;
        ++attempt) {
     metadata.install_attempts = attempt;
@@ -212,6 +216,19 @@ static void TestInstallPowerCutRecovery(void)
   Expect(BootInstallRecovery_DecideConfirmed(&metadata, true) ==
              BOOT_INSTALL_RECOVERY_BEGIN,
          "confirmed_state_does_not_salvage");
+
+  Expect(BootInstaller_ClassifyFailure(BOOT_INSTALL_ERROR_FLASH_LAYOUT) ==
+             BOOT_INSTALL_FAILURE_GLOBAL_FATAL,
+         "flash_layout_error_is_global_fatal");
+  Expect(BootInstaller_ClassifyFailure(BOOT_INSTALL_ERROR_PAYLOAD_CRC) ==
+             BOOT_INSTALL_FAILURE_PRE_DESTRUCTIVE,
+         "payload_crc_error_is_pre_destructive");
+  Expect(BootInstaller_ClassifyFailure(BOOT_INSTALL_ERROR_PROGRAM) ==
+             BOOT_INSTALL_FAILURE_DESTRUCTIVE_OR_UNCERTAIN,
+         "program_error_may_modify_application");
+  Expect(BootInstaller_ClassifyFailure((BootInstallStatus)99) ==
+             BOOT_INSTALL_FAILURE_GLOBAL_FATAL,
+         "unknown_install_error_is_global_fatal");
 
   metadata.state = OTA_STATE_INSTALLING;
   metadata.install_attempts = BOOT_INSTALL_ATTEMPT_LIMIT;

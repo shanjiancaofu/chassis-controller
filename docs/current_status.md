@@ -5,10 +5,11 @@
 
 ## 代码基线
 
-- 当前未提交固件工作树基于 `ffb967d`（`[fix]: recover completed OTA installs after power loss`），
-  包含中断安装优先 salvage、QSPI payload 完整校验和共享 ABI 对照测试。
-- Application：`0.1.0-b10`。
-- Bootloader：`0.1.0 build20`。
+- 当前已提交固件实现基线：`8247522 [fix]: salvage interrupted OTA installs before retry`。
+- 当前工作树包含 rollback 前健康 confirmed 恢复、全局 fatal 安装错误分类和字段 offset 级
+  共享 ABI 测试。
+- Application：`0.1.0-b11`。
+- Bootloader：`0.1.0 build21`。
 - 当前阶段：Bootloader 与 OTA V1 实物验证。
 
 ## 当前实现
@@ -21,6 +22,9 @@
 - candidate、rollback、confirmed repair 每次擦除内部 Flash 前持久化增加尝试次数，最多 3 次；
   任意一次安装中断后都会先校验 QSPI slot payload 和内部镜像，若上次安装已成功则直接补交
   `TRIAL/CONFIRMED`，不再执行下一次破坏性擦除。
+- 进入 `ROLLBACK_PENDING` 时即使 `install_attempts=0` 也先完整验证 confirmed；内部已是健康
+  confirmed 时直接提交 `CONFIRMED`，不执行无意义擦除。Flash 布局不支持属于全局 fatal，
+  直接进入 Recovery，不尝试同样无法成功的 rollback。
 - rollback/repair 成功后从 confirmed slot header 回填 metadata `image_size/image_crc32`。
 - UART 最终响应等待对应 DMA token 成功；30 秒超时只作用于等待 BEGIN 阶段。
 - factory 工具默认必须同时生成内部组合 BIN 和 QSPI confirmed raw；只生成内部镜像必须显式
@@ -29,16 +33,17 @@
 
 ## 已验证
 
-- Application b10 Release clean build：`text=183492 data=96 bss=34224`。
-- Bootloader build20 Release clean build：`text=12884 data=48 bss=1656`。
-- OTA Python 共 9 项（含共享 C/Python ABI 对照）、factory fail-closed、安装掉电 salvage、
-  UART arm guard、Application metadata 和 Bootloader core 主机测试通过。
+- Application b11 Release clean build：`text=183492 data=96 bss=34224`。
+- Bootloader build21 Release clean build：`text=13028 data=48 bss=1656`。
+- OTA Python 共 9 项通过，包含字段顺序/offset 级共享 C/Python ABI 对照。既有 factory、
+  UART arm guard、Application metadata 和 Bootloader core 主机测试记录保持有效；本轮新增的
+  rollback attempts=0/fatal 分类断言已通过目标 GCC `-Werror` 编译，尚未在宿主机执行。
 - 最近完成实物 UART OTA 闭环的是 Application b6 + Bootloader build15。
 - factory 普通启动和 UART `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` 已实物通过。
 
 ## 尚未验证
 
-- Application b10 + Bootloader build20 目标板回归。
+- Application b11 + Bootloader build21 目标板回归。
 - QSPI External Loader 写入 factory confirmed 基线。
 - CAN FD OTA 完整升级。
 - QSPI 暂存和内部安装期间断电恢复。
@@ -47,7 +52,7 @@
 
 ## 下一步
 
-1. 生成并烧录匹配的 b10/build20 内部 factory BIN 与 QSPI confirmed raw 镜像。
+1. 生成并烧录匹配的 b11/build21 内部 factory BIN 与 QSPI confirmed raw 镜像。
 2. 验证普通启动、版本输出和零 PWM。
 3. 完成 UART 回归，再完成 CAN FD OTA。
 4. 按 `verification.md` 执行安装断电、rollback、确认失败和 Recovery 故障注入。

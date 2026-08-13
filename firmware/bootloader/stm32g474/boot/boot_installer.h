@@ -22,9 +22,39 @@ typedef enum
   BOOT_INSTALL_ERROR_VERIFY
 } BootInstallStatus;
 
+typedef enum
+{
+  BOOT_INSTALL_FAILURE_PRE_DESTRUCTIVE = 0,
+  BOOT_INSTALL_FAILURE_DESTRUCTIVE_OR_UNCERTAIN,
+  BOOT_INSTALL_FAILURE_GLOBAL_FATAL
+} BootInstallFailureClass;
+
 BootInstallStatus BootInstaller_Install(const OtaMetadata *metadata,
                                         OtaSlotId slot);
 bool BootInstaller_ReadImageHeader(OtaSlotId slot, OtaImageHeader *header);
+static inline BootInstallFailureClass
+BootInstaller_ClassifyFailure(BootInstallStatus status)
+{
+  switch (status) {
+    case BOOT_INSTALL_ERROR_SLOT:
+    case BOOT_INSTALL_ERROR_READ:
+    case BOOT_INSTALL_ERROR_HEADER:
+    case BOOT_INSTALL_ERROR_METADATA:
+    case BOOT_INSTALL_ERROR_PAYLOAD_CRC:
+    case BOOT_INSTALL_ERROR_VECTOR:
+      return BOOT_INSTALL_FAILURE_PRE_DESTRUCTIVE;
+
+    case BOOT_INSTALL_ERROR_ERASE:
+    case BOOT_INSTALL_ERROR_PROGRAM:
+    case BOOT_INSTALL_ERROR_VERIFY:
+      return BOOT_INSTALL_FAILURE_DESTRUCTIVE_OR_UNCERTAIN;
+
+    case BOOT_INSTALL_ERROR_FLASH_LAYOUT:
+    case BOOT_INSTALL_OK:
+    default:
+      return BOOT_INSTALL_FAILURE_GLOBAL_FATAL;
+  }
+}
 bool BootInstaller_VerifyInstalledCandidate(const OtaMetadata *metadata);
 bool BootInstaller_VerifyInstalledRecovery(OtaSlotId slot);
 bool BootInstaller_VerifyInstalled(OtaSlotId slot);

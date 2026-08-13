@@ -9,7 +9,7 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 当前处于 Bootloader 与 OTA V1 实物验证阶段。独立 Bootloader、Application 重定位、
 UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建；最近的
 factory 普通启动和 UART OTA 主链已通过实物验证，但对应的是 b6/build15 基线。当前
-b10/build20 尚待目标板回归；CAN FD OTA、断电恢复和回滚故障注入仍未验证。最新摘要见
+b11/build21 尚待目标板回归；CAN FD OTA、断电恢复和回滚故障注入仍未验证。最新摘要见
 [`docs/current_status.md`](docs/current_status.md)，完整证据见 `docs/verification.md`。
 
 ## 目录
