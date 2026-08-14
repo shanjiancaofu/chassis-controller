@@ -104,6 +104,7 @@ int main(void)
   MX_FDCAN2_Init();
   MX_QUADSPI1_Init();
   MX_SPI2_Init();
+  MX_SPI3_Init();
   MX_RTC_Init();
   MX_TIM3_Init();
   MX_TIM2_Init();

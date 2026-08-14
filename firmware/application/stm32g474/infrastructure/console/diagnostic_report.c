@@ -2,7 +2,9 @@
 
 #include <stdio.h>
 
+#include "bsp/button/bsp_button.h"
 #include "bsp/lcd/bsp_lcd.h"
+#include "bsp/imu/bsp_icm45686.h"
 #include "bsp/uart/uart_bsp.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
@@ -44,7 +46,7 @@ void DiagnosticReport_Init(uint32_t now_ms)
 void DiagnosticReport_Run(uint32_t now_ms)
 {
   static const char iwdg_armed[] =
-      "IWDG_RESET_TEST: ARMED, reset expected within 2 seconds\r\n";
+      "IWDG_RESET_TEST: ARMED, reset expected within 10 seconds\r\n";
 
   if (QspiTargetTest_TakeCompletion()) {
     qspi_report_requested = true;
@@ -126,6 +128,8 @@ void DiagnosticReport_MotorTestResult(MotorTargetTestAction action,
 static bool WriteSelfTestReport(void)
 {
   BoardHealthSnapshot health;
+  BspButtonSnapshot buttons;
+  BspIcm45686Snapshot imu;
   RTC_TimeTypeDef time;
   RTC_DateTypeDef date;
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
@@ -136,6 +140,7 @@ static bool WriteSelfTestReport(void)
   const char *lcd_text = "DISABLED";
   const char *qspi_rw_text = "DISABLED";
   const char *iwdg_text = "DISABLED";
+  const char *imu_text = "NOT_INITIALIZED";
   const char *ota_text = "WAITING";
   char rtc_text[48];
   char qspi_text[96];
@@ -151,6 +156,8 @@ static bool WriteSelfTestReport(void)
 
   (void)help_length;
   BoardHealth_GetSnapshot(&health);
+  BspButton_GetSnapshot(&buttons);
+  BspIcm45686_GetSnapshot(&imu);
   if (can_status == CAN_TRANSPORT_LINK_PASSED) {
     fdcan_text = "PASS";
   } else if (can_status == CAN_TRANSPORT_LINK_FAILED) {
@@ -183,6 +190,13 @@ static bool WriteSelfTestReport(void)
     ota_text = "CONFIRMED";
   } else if (ota_status == OTA_CONFIRMATION_FAILED) {
     ota_text = "FAIL";
+  }
+  if (imu.status == BSP_ICM45686_NOT_FOUND) {
+    imu_text = "NOT_FOUND";
+  } else if (imu.status == BSP_ICM45686_READY) {
+    imu_text = imu.sample_valid ? "READY" : "STARTING";
+  } else if (imu.status == BSP_ICM45686_DEGRADED) {
+    imu_text = "DEGRADED";
   }
 
   if (rtc_ok) {
@@ -234,6 +248,9 @@ static bool WriteSelfTestReport(void)
       "FDCAN_INTERNAL: DISABLED\r\n"
       "FDCAN_EXTERNAL: %s\r\n"
       "KEY: %s\r\n"
+      "BUTTON_1: READY pressed=%u count=%lu\r\n"
+      "BUTTON_2: READY pressed=%u count=%lu\r\n"
+      "ICM45686: %s whoami=0x%02X samples=%lu irq=%lu errors=%lu raw_a=%d,%d,%d raw_g=%d,%d,%d\r\n"
       "ENCODER: READY\r\n"
       "MOTOR: DISABLED\r\n"
       "CONTROL_OVERRUN: count=%lu missed=%lu\r\n"
@@ -247,6 +264,15 @@ static bool WriteSelfTestReport(void)
       (unsigned long)OtaUartTransport_GetErrorCount(),
       (unsigned long)OtaCanTransport_GetDroppedCount(), lcd_text, fdcan_text,
       health.button_test_passed ? "PASS" : "READY",
+      buttons.pressed[BOARD_BUTTON_1] ? 1U : 0U,
+      (unsigned long)buttons.pressed_count[BOARD_BUTTON_1],
+      buttons.pressed[BOARD_BUTTON_2] ? 1U : 0U,
+      (unsigned long)buttons.pressed_count[BOARD_BUTTON_2],
+      imu_text, imu.who_am_i, (unsigned long)imu.sample_count,
+      (unsigned long)imu.interrupt_count,
+      (unsigned long)imu.transfer_error_count,
+      (int)imu.accel[0], (int)imu.accel[1], (int)imu.accel[2],
+      (int)imu.gyro[0], (int)imu.gyro[1], (int)imu.gyro[2],
       (unsigned long)health.control_overrun_count,
       (unsigned long)health.control_missed_tick_count, iwdg_text,
       telemetry_mode == TELEMETRY_MODE_TEXT

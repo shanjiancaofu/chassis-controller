@@ -5,7 +5,9 @@
 #include <stdio.h>
 
 #include "FreeRTOS.h"
+#include "bsp/button/bsp_button.h"
 #include "bsp/encoder/bsp_encoder.h"
+#include "bsp/imu/bsp_icm45686.h"
 #include "bsp/motor/bsp_motor.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
 #include "bsp/uart/uart_bsp.h"
@@ -103,6 +105,8 @@ void ChassisApp_Init(void)
   if (!BspEncoder_Start() || !BspPowerSample_Init()) {
     Error_Handler();
   }
+  BspButton_Init();
+  BspIcm45686_Init(HAL_GetTick());
   (void)StatusDisplay_Init();
 
   CommandManager_Init();
@@ -142,6 +146,8 @@ void ChassisApp_Run(void)
   const uint32_t now_ms = HAL_GetTick();
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
+  BspButton_Run(now_ms);
+  BspIcm45686_Run(now_ms);
   BspUart_Run();
   if (OtaUartTransport_IsEnabled()) {
     OtaUartTransport_Run();
@@ -984,6 +990,12 @@ bool ChassisApp_ClearEmergencyStop(void)
 
 void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin)
 {
+  if (gpio_pin == BUTTON_1_Pin || gpio_pin == BUTTON_2_Pin) {
+    BspButton_OnInterrupt(gpio_pin);
+  }
+  if (gpio_pin == IMU_INT1_Pin) {
+    BspIcm45686_OnDataReadyInterrupt();
+  }
   if (gpio_pin == KEY_Pin) {
     StatusDisplay_OnKeyInterrupt();
   }

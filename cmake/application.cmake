@@ -58,9 +58,11 @@ set(APP_SOURCES
   Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c
   Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c
   app/chassis_app.c
+  bsp/button/bsp_button.c
   bsp/encoder/bsp_encoder.c
   bsp/fdcan/fdcan_bsp.c
   bsp/lcd/bsp_lcd.c
+  bsp/imu/bsp_icm45686.c
   bsp/motor/bsp_motor.c
   bsp/power_monitor/bsp_power_sample.c
   bsp/qspi/bsp_qspi_flash.c

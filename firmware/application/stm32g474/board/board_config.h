@@ -27,6 +27,8 @@
 #define BOARD_LCD_BACKLIGHT_TIMER htim3
 #define BOARD_LCD_BACKLIGHT_CHANNEL TIM_CHANNEL_1
 
+#define BOARD_IMU_SPI hspi3
+
 #define BOARD_QSPI hqspi1
 
 #endif

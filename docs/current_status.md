@@ -12,6 +12,9 @@
 
 ## 当前实现
 
+- Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）和两个预留按钮（PD3/PD4）配置；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()` 以及 EXTI1/3/4。
+- 已加入 `bsp/button` 通用按钮事件驱动和 `bsp/imu/bsp_icm45686` 最小 SPI 驱动。按钮目前只产生消抖后的 pressed event，不绑定业务；ICM45686 只做 WHO_AM_I、低噪声模式和原始六轴采样，姿态融合与 FIFO 暂不启用。
+
 - 内部 Flash 使用 32 KiB Bootloader + 480 KiB 单 Application。
 - QSPI 使用双 metadata 和 Slot A/B，confirmed/candidate 由 metadata 分配。
 - UART 与 CAN FD 共用 OTA 会话、QSPI 暂存、校验和 `STAGED` 提交流程。
@@ -34,6 +37,8 @@
 
 ## 已验证
 
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 build 通过：Application `text=185888 data=120 bss=34392`，Bootloader `text=13400 data=48 bss=1656`，QSPI provisioner `text=9192 data=12 bss=1644`。
+
 - Application b12 Release clean build：`text=183492 data=96 bss=34224`。
 - Bootloader build22 Release clean build：`text=13400 data=48 bss=1656`。
 - CMake + Ninja 已使用 GNU Arm Embedded 14.3.rel1 完成 Application、Bootloader 和 QSPI
@@ -54,6 +59,8 @@
 
 ## 尚未验证
 
+- ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、原始数据连续性、两个预留按钮的机械消抖尚未上板验证；当前诊断应显示 `NOT_FOUND` 或 `READY`，不得据此标记硬件 PASS。
+
 - b12/build22 普通按键/断电复位启动和上电四路 PWM 电气零输出。
 - b12/build22 UART OTA 与 CAN FD OTA。
 - Application 安装过程中断电恢复。
@@ -65,7 +72,7 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 在已完成 CMake 产物等价验证的基线上接入 ICM45686；外设配置仍由 `.ioc`/CubeMX 管理。
+1. 按 SPI3/PD0/PD1 和 PD3/PD4 接线，上板确认 ICM45686 `WHO_AM_I`、原始六轴采样和两个按钮事件。
 2. 执行普通按键/断电复位启动和四路 PWM 上电电气零输出验收。
 3. 完成 UART OTA 和 CAN FD OTA 实物验收。
 4. 只执行三个故障测试：Application 安装中断电、TRIAL 不确认自动回滚、rollback 安装中断电。

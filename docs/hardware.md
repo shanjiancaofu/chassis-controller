@@ -40,6 +40,9 @@
 | QSPI IO0..IO3 | `PE12/PE13/PE14/PE15` |
 | LCD RST/BLK/CS | `PA5/PA6/PA7` |
 | LCD SCK/DC/MOSI | `PB13/PB14/PB15` |
+| ICM45686 SPI3 | `PC10/PC11/PC12`，SCK/MISO/MOSI |
+| ICM45686 CS/INT1 | `PD0/PD1`，高电平空闲/EXTI1 上升沿 |
+| 通用按钮 1/2 | `PD3/PD4`，内部上拉、低有效、EXTI3/EXTI4 |
 | 左编码器 | `PA0/PA1`, TIM2 CH1/CH2 |
 | 右编码器 | `PD12/PD13`, TIM4 CH1/CH2 |
 | 左电机 | `PC6/PC7`, TIM8 CH1/CH2 |
@@ -168,6 +171,36 @@ GND  -> GND
 ```
 
 LCD 使用 SPI2 TX DMA。当前屏幕没有触摸控制器，通过 `PB8/BOOT0` 按键切换页面。
+
+## ICM45686
+
+ICM45686 使用独立 SPI3，不与 LCD SPI2 共用总线。模块使用 3.3 V 供电：
+
+```text
+PC10 / SPI3_SCK  -> SCL/SCLK
+PC11 / SPI3_MISO <- AD0/MISO
+PC12 / SPI3_MOSI -> SDA/MOSI
+PD0              -> CS
+PD1 / EXTI1      <- INT1
+3.3V             -> VCC
+GND              -> GND
+```
+
+`INT2`、`SCX` 和 `SDX` 暂不连接。SPI3 初始使用 Mode 0、8-bit、MSB first、软件 NSS 和
+约 1.33 Mbit/s；`CS` 空闲为高电平，`INT1` 使用上升沿中断。第一阶段使用轮询 SPI 读取
+身份和原始数据，FIFO 与 DMA 在基础通信通过实物验证后再启用。
+
+## 通用按钮
+
+两个预留按钮暂不绑定业务功能，均使用常开触点：
+
+```text
+PD3 -> BUTTON_1 -> GND
+PD4 -> BUTTON_2 -> GND
+```
+
+`PD3/PD4` 使用内部上拉，按下为低电平，分别触发 EXTI3/EXTI4 下降沿。ISR 只通知按钮
+驱动，消抖和按下事件识别在非 ISR 上下文执行。
 
 ## RTC
 

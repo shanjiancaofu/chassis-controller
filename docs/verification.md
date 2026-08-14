@@ -408,3 +408,8 @@ Bootloader 的 Debug 与 Release 已使用 STM32CubeIDE 自带 `arm-none-eabi-gc
 完成构建。该 PC 测试已于 2026-07-30 使用 WSL GCC 和
 `-std=c11 -Wall -Wextra -Werror` 编译运行通过；结果仅覆盖纯逻辑，不覆盖 QSPI、内部
 Flash、IWDG、复位和跳转的目标板行为。
+## 2026-08-14 ICM45686 与预留按钮构建
+
+- 独立 CubeMX 生成器：`E:\STM32CubeMX\STM32CubeMX.exe -q .cubemx-generate.script`。
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 clean build：Application、Bootloader、QSPI provisioner 均通过。
+- 本次仅有编译/链接证据；ICM45686、PD3/PD4 按钮尚未进行实物验收。
