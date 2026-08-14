@@ -5,15 +5,19 @@
 
 ## 代码基线
 
-- 当前已提交固件实现基线：`f496cd5 [fix]: verify recovery source before reinstall`。
+- 当前已提交固件实现基线：`7f9d70d [feature]: add ICM45686 and button BSP`。
 - Application：`0.1.0-b12`。
 - Bootloader：`0.1.0 build22`。
-- 当前阶段：OTA V1 最终实物验证；除实测发现的 P0/P1 外，不再增加 recovery 细节。
+- 当前阶段：ICM45686 FIFO/DMA、零偏和六轴融合代码已就绪；上板验证后置，OTA V1 基线不变。
 
 ## 当前实现
 
 - Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）和两个预留按钮（PD3/PD4）配置；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()` 以及 EXTI1/3/4。
-- 已加入 `bsp/button` 通用按钮事件驱动和 `bsp/imu/bsp_icm45686` 最小 SPI 驱动。按钮目前只产生消抖后的 pressed event，不绑定业务；ICM45686 只做 WHO_AM_I、低噪声模式和原始六轴采样，姿态融合与 FIFO 暂不启用。
+- 已加入 `bsp/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
+- ICM45686 已拆分为 HAL 无关的 `components/icm45686` 寄存器/FIFO 驱动、HAL 无关的
+  `components/imu_fusion` 六轴融合组件，以及 `bsp/imu` STM32 HAL SPI3/DMA 适配层。
+  当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、FIFO watermark、16 字节帧、DMA
+  批量读取、静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。
 
 - 内部 Flash 使用 32 KiB Bootloader + 480 KiB 单 Application。
 - QSPI 使用双 metadata 和 Slot A/B，confirmed/candidate 由 metadata 分配。
@@ -37,7 +41,10 @@
 
 ## 已验证
 
-- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 build 通过：Application `text=185888 data=120 bss=34392`，Bootloader `text=13400 data=48 bss=1656`，QSPI provisioner `text=9192 data=12 bss=1644`。
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 build 通过：Application
+  `text=197624 data=120 bss=35216`，Bootloader `text=13400 data=48 bss=1656`，QSPI
+  provisioner `text=9192 data=12 bss=1644`。ICM45686 FIFO/MREG 和 IMU fusion 纯组件测试
+  均使用 MSVC `/W4 /WX` 编译并执行通过。
 
 - Application b12 Release clean build：`text=183492 data=96 bss=34224`。
 - Bootloader build22 Release clean build：`text=13400 data=48 bss=1656`。
@@ -59,7 +66,7 @@
 
 ## 尚未验证
 
-- ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、原始数据连续性、两个预留按钮的机械消抖尚未上板验证；当前诊断应显示 `NOT_FOUND` 或 `READY`，不得据此标记硬件 PASS。
+- ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA 连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；当前诊断只能显示 `NOT_FOUND`、`STARTING` 或 `CALIBRATING`，不得据此标记硬件 PASS。
 
 - b12/build22 普通按键/断电复位启动和上电四路 PWM 电气零输出。
 - b12/build22 UART OTA 与 CAN FD OTA。
@@ -72,8 +79,8 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 按 SPI3/PD0/PD1 和 PD3/PD4 接线，上板确认 ICM45686 `WHO_AM_I`、原始六轴采样和两个按钮事件。
-2. 执行普通按键/断电复位启动和四路 PWM 上电电气零输出验收。
+1. 后续上板确认 ICM45686 `WHO_AM_I`、FIFO/DMA 连续采样、静止零偏收敛和轴向映射；再决定是否持久化标定参数。
+2. 完成普通按键/断电复位启动和四路 PWM 上电电气零输出验收。
 3. 完成 UART OTA 和 CAN FD OTA 实物验收。
 4. 只执行三个故障测试：Application 安装中断电、TRIAL 不确认自动回滚、rollback 安装中断电。
 5. 上述 OTA 项目通过后冻结 OTA V1；签名、防回滚和 Bootloader CAN Recovery 延后到 OTA V2。

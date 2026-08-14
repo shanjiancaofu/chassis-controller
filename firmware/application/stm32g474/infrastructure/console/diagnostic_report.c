@@ -11,6 +11,7 @@
 #include "communication/ota_transport/ota_confirmation.h"
 #include "communication/ota_transport/ota_session.h"
 #include "communication/ota_transport/ota_uart_transport.h"
+#include "components/imu_fusion/imu_fusion.h"
 #include "config/storage_layout.h"
 #include "infrastructure/console/console.h"
 #include "infrastructure/telemetry/telemetry.h"
@@ -28,7 +29,7 @@ static bool qspi_report_requested;
 static bool iwdg_report_requested;
 static bool motor_report_requested;
 static char motor_report[96];
-static char report_buffer[1280];
+static char report_buffer[1536];
 
 static bool WriteSelfTestReport(void);
 static bool WriteQspiTestReport(void);
@@ -250,7 +251,8 @@ static bool WriteSelfTestReport(void)
       "KEY: %s\r\n"
       "BUTTON_1: READY pressed=%u count=%lu\r\n"
       "BUTTON_2: READY pressed=%u count=%lu\r\n"
-      "ICM45686: %s whoami=0x%02X samples=%lu irq=%lu errors=%lu raw_a=%d,%d,%d raw_g=%d,%d,%d\r\n"
+      "ICM45686: %s whoami=0x%02X samples=%lu fifo=%lu irq=%lu errors=%lu parse=%lu dma_timeout=%lu raw_a=%d,%d,%d raw_g=%d,%d,%d\r\n"
+      "IMU_FUSION: %s calibration=%u/%u bias_urad=%ld,%ld,%ld rpy_mrad=%ld,%ld,%ld yaw_unbounded=1\r\n"
       "ENCODER: READY\r\n"
       "MOTOR: DISABLED\r\n"
       "CONTROL_OVERRUN: count=%lu missed=%lu\r\n"
@@ -269,10 +271,22 @@ static bool WriteSelfTestReport(void)
       buttons.pressed[BOARD_BUTTON_2] ? 1U : 0U,
       (unsigned long)buttons.pressed_count[BOARD_BUTTON_2],
       imu_text, imu.who_am_i, (unsigned long)imu.sample_count,
+      (unsigned long)imu.fifo_frame_count,
       (unsigned long)imu.interrupt_count,
       (unsigned long)imu.transfer_error_count,
+      (unsigned long)imu.fifo_parse_error_count,
+      (unsigned long)imu.dma_timeout_count,
       (int)imu.accel[0], (int)imu.accel[1], (int)imu.accel[2],
       (int)imu.gyro[0], (int)imu.gyro[1], (int)imu.gyro[2],
+      imu.orientation_valid ? "READY"
+                            : imu.calibrated ? "STARTING" : "CALIBRATING",
+      (unsigned int)imu.calibration_samples,
+      (unsigned int)IMU_FUSION_CALIBRATION_SAMPLES,
+      (long)(imu.gyro_bias_rad_s[0] * 1000000.0f),
+      (long)(imu.gyro_bias_rad_s[1] * 1000000.0f),
+      (long)(imu.gyro_bias_rad_s[2] * 1000000.0f),
+      (long)(imu.roll_rad * 1000.0f), (long)(imu.pitch_rad * 1000.0f),
+      (long)(imu.yaw_rad * 1000.0f),
       (unsigned long)health.control_overrun_count,
       (unsigned long)health.control_missed_tick_count, iwdg_text,
       telemetry_mode == TELEMETRY_MODE_TEXT

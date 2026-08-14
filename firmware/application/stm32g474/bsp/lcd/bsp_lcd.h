@@ -46,5 +46,7 @@ void BspLcd_SetPage(BspLcdPage page);
 void BspLcd_SetStatusData(const BspLcdStatusData *data);
 BspLcdStatus BspLcd_GetStatus(void);
 BspLcdPage BspLcd_GetPage(void);
+void BspLcd_OnSpiTxComplete(void);
+void BspLcd_OnSpiError(void);
 
 #endif

@@ -63,6 +63,7 @@ set(APP_SOURCES
   bsp/fdcan/fdcan_bsp.c
   bsp/lcd/bsp_lcd.c
   bsp/imu/bsp_icm45686.c
+  bsp/imu/bsp_icm45686_dma.c
   bsp/motor/bsp_motor.c
   bsp/power_monitor/bsp_power_sample.c
   bsp/qspi/bsp_qspi_flash.c
@@ -75,6 +76,8 @@ set(APP_SOURCES
   communication/ota_transport/ota_session.c
   communication/ota_transport/ota_uart_transport.c
   components/crc/crc32.c
+  components/icm45686/icm45686.c
+  components/imu_fusion/imu_fusion.c
   components/pid/speed_pid.c
   infrastructure/console/console.c
   infrastructure/console/diagnostic_report.c
@@ -93,6 +96,8 @@ set(APP_SOURCES
   tests/target/motor_target_test.c
   tests/target/qspi_target_test.c
   tests/unit/test_command_manager.c
+  tests/unit/test_icm45686.c
+  tests/unit/test_imu_fusion.c
   tests/unit/test_ota_metadata.c)
 list(TRANSFORM APP_SOURCES PREPEND "${APP_ROOT}/")
 

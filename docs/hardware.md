@@ -186,9 +186,10 @@ PD1 / EXTI1      <- INT1
 GND              -> GND
 ```
 
-`INT2`、`SCX` 和 `SDX` 暂不连接。SPI3 初始使用 Mode 0、8-bit、MSB first、软件 NSS 和
-约 1.33 Mbit/s；`CS` 空闲为高电平，`INT1` 使用上升沿中断。第一阶段使用轮询 SPI 读取
-身份和原始数据，FIFO 与 DMA 在基础通信通过实物验证后再启用。
+`INT2`、`SCX` 和 `SDX` 暂不连接。SPI3 使用 Mode 0、8-bit、MSB first、软件 NSS 和约
+1.33 Mbit/s；`CS` 空闲为高电平。INT1 使用上升沿中断并触发 FIFO watermark。应用层
+通过 STM32G4 HAL 的 SPI3 RX/TX DMA 批量读取最多 4 个 16 字节 FIFO 帧；DMA1 CH5 为 RX、
+CH6 为 TX。`.ioc` 是通道配置的权威来源，当前板上仍未验证通信、电气时序或 FIFO 连续性。
 
 ## 通用按钮
 
@@ -222,5 +223,7 @@ PD4 -> BUTTON_2 -> GND
 | DMA1 CH2 | USART1 TX |
 | DMA1 CH3 | SPI2 TX |
 | DMA1 CH4 | QUADSPI |
+| DMA1 CH5 | SPI3 RX |
+| DMA1 CH6 | SPI3 TX |
 
 ADC 每 100 ms 软件触发，不使用 DMA。QSPI 正式分区见 `bootloader_and_ota.md`。

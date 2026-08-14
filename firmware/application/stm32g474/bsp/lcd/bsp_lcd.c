@@ -443,16 +443,12 @@ BspLcdPage BspLcd_GetPage(void)
   return lcd_requested_page;
 }
 
-void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
+void BspLcd_OnSpiTxComplete(void)
 {
-  if (hspi == &BOARD_LCD_SPI) {
-    lcd_dma_complete = true;
-  }
+  lcd_dma_complete = true;
 }
 
-void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
+void BspLcd_OnSpiError(void)
 {
-  if (hspi == &BOARD_LCD_SPI) {
-    lcd_dma_failed = true;
-  }
+  lcd_dma_failed = true;
 }

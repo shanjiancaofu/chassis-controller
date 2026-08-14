@@ -8,6 +8,7 @@
 #include "bsp/button/bsp_button.h"
 #include "bsp/encoder/bsp_encoder.h"
 #include "bsp/imu/bsp_icm45686.h"
+#include "bsp/lcd/bsp_lcd.h"
 #include "bsp/motor/bsp_motor.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
 #include "bsp/uart/uart_bsp.h"
@@ -1003,5 +1004,31 @@ void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin)
       HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET) {
     BspMotor_EmergencyStop();
     SafetyManager_LatchEmergencyStopFromIsr();
+  }
+}
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi != NULL && hspi->Instance == SPI2) {
+    BspLcd_OnSpiTxComplete();
+  }
+}
+
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi != NULL && hspi->Instance == SPI3) {
+    BspIcm45686_OnSpiTransferComplete();
+  }
+}
+
+void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi == NULL) {
+    return;
+  }
+  if (hspi->Instance == SPI2) {
+    BspLcd_OnSpiError();
+  } else if (hspi->Instance == SPI3) {
+    BspIcm45686_OnSpiTransferError();
   }
 }

@@ -58,11 +58,13 @@ chassis-controller/
 │  │     │  ├─ qspi/
 │  │     │  ├─ reset/
 │  │     │  ├─ uart/
-│  │     │  └─ imu/                  # 硬件确认后再创建
+│  │     │  └─ imu/                  # ICM45686 SPI3/DMA 板级适配
 │  │     │
 │  │     ├─ components/              # 不依赖 HAL 的通用算法组件
 │  │     │  ├─ pid/
 │  │     │  ├─ ring_buffer/
+│  │     │  ├─ icm45686/
+│  │     │  ├─ imu_fusion/
 │  │     │  └─ crc/
 │  │     │
 │  │     ├─ communication/           # 通信协议、编解码和传输
@@ -97,7 +99,7 @@ chassis-controller/
 │  │     │  │  ├─ safety_manager.h
 │  │     │  │  ├─ fault_manager.c
 │  │     │  │  └─ fault_manager.h
-│  │     │  └─ imu/                  # IMU 阶段再创建
+│  │     │  └─ imu/                  # 后续姿态业务封装
 │  │     │
 │  │     ├─ rtos/                    # FreeRTOS 对象、任务和 hooks
 │  │     │  ├─ rtos_app.c
@@ -200,7 +202,9 @@ BSP 不决定是否允许车辆运动，也不持有业务状态机。
 
 ### `components`
 
-保存可独立测试、无 HAL 依赖的算法。当前包括速度 PID 和 Application CRC32。
+保存可独立测试、无 HAL 依赖的组件。当前包括速度 PID、Application CRC32、ICM45686
+寄存器/FIFO 协议组件和 `imu_fusion` 六轴 Mahony/静止零偏算法。组件不直接持有 SPI、
+DMA 或 CubeMX 句柄。
 
 ### `communication`
 
@@ -216,8 +220,8 @@ UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提�
 ### `modules`
 
 按 `chassis`、`safety`、`parameters`、`diagnostics` 业务域聚合相关状态和规则。
-域内文件职责明确，域之间通过接口协作，不直接操作 CubeMX 句柄。IMU 在硬件确认后
-建立独立业务域。
+域内文件职责明确，域之间通过接口协作，不直接操作 CubeMX 句柄。IMU 当前仍属于
+BSP/组件能力，姿态结果进入诊断快照；需要上层业务消费时再建立独立业务域。
 
 ### `rtos`
 
