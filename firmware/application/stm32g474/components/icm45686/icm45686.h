@@ -60,10 +60,21 @@ typedef enum {
   ICM45686_ODR_1_5625_HZ = 0xF
 } Icm45686OutputDataRate;
 
+typedef enum {
+  ICM45686_LN_BW_NO_FILTER = 0x0,
+  ICM45686_LN_BW_ODR_DIV_4 = 0x1,
+  ICM45686_LN_BW_ODR_DIV_8 = 0x2,
+  ICM45686_LN_BW_ODR_DIV_16 = 0x3,
+  ICM45686_LN_BW_ODR_DIV_32 = 0x4,
+  ICM45686_LN_BW_ODR_DIV_64 = 0x5,
+  ICM45686_LN_BW_ODR_DIV_128 = 0x6
+} Icm45686LowNoiseBandwidth;
+
 typedef struct {
   Icm45686AccelFullScale accel_full_scale;
   Icm45686GyroFullScale gyro_full_scale;
   Icm45686OutputDataRate output_data_rate;
+  Icm45686LowNoiseBandwidth low_noise_bandwidth;
   bool data_ready_interrupt_enabled;
   bool fifo_enabled;
   uint16_t fifo_watermark_frames;
@@ -81,6 +92,11 @@ typedef struct {
 } Icm45686FifoSample;
 
 typedef struct {
+  bool full;
+  bool threshold;
+} Icm45686FifoStatus;
+
+typedef struct {
   float accel_mps2[3];
   float gyro_rad_s[3];
   float temperature_c;
@@ -91,7 +107,8 @@ typedef enum {
   ICM45686_RESULT_INVALID_ARGUMENT,
   ICM45686_RESULT_TRANSPORT_ERROR,
   ICM45686_RESULT_DEVICE_ID_MISMATCH,
-  ICM45686_RESULT_RESET_FAILED
+  ICM45686_RESULT_RESET_FAILED,
+  ICM45686_RESULT_TIMEOUT
 } Icm45686Result;
 
 typedef struct {
@@ -108,8 +125,12 @@ Icm45686Result Icm45686_ReadRaw(Icm45686Device *device,
                                 Icm45686RawSample *sample);
 Icm45686Result Icm45686_ReadFifoCount(Icm45686Device *device,
                                      uint16_t *frame_count);
+Icm45686Result Icm45686_ReadFifoStatus(Icm45686Device *device,
+                                      Icm45686FifoStatus *status);
+Icm45686Result Icm45686_FlushFifo(Icm45686Device *device);
 Icm45686Result Icm45686_ParseFifoFrame(const uint8_t *frame, size_t length,
                                       Icm45686FifoSample *sample);
+float Icm45686_TimestampDeltaSeconds(uint16_t previous, uint16_t current);
 void Icm45686_ConvertSample(const Icm45686Device *device,
                             const Icm45686RawSample *raw,
                             Icm45686Sample *sample);

@@ -251,7 +251,7 @@ static bool WriteSelfTestReport(void)
       "KEY: %s\r\n"
       "BUTTON_1: READY pressed=%u count=%lu\r\n"
       "BUTTON_2: READY pressed=%u count=%lu\r\n"
-      "ICM45686: %s whoami=0x%02X samples=%lu fifo=%lu irq=%lu errors=%lu parse=%lu dma_timeout=%lu raw_a=%d,%d,%d raw_g=%d,%d,%d\r\n"
+      "ICM45686: %s whoami=0x%02X samples=%lu fifo=%lu irq=%lu errors=%lu parse=%lu full=%lu flush=%lu/%lu timestamp_errors=%lu dt_us=%lu dma_timeout=%lu raw_a=%d,%d,%d raw_g=%d,%d,%d\r\n"
       "IMU_FUSION: %s calibration=%u/%u bias_urad=%ld,%ld,%ld rpy_mrad=%ld,%ld,%ld yaw_unbounded=1\r\n"
       "ENCODER: READY\r\n"
       "MOTOR: DISABLED\r\n"
@@ -275,6 +275,11 @@ static bool WriteSelfTestReport(void)
       (unsigned long)imu.interrupt_count,
       (unsigned long)imu.transfer_error_count,
       (unsigned long)imu.fifo_parse_error_count,
+      (unsigned long)imu.fifo_full_count,
+      (unsigned long)imu.fifo_flush_count,
+      (unsigned long)imu.fifo_flush_error_count,
+      (unsigned long)imu.timestamp_error_count,
+      (unsigned long)(imu.sample_period_s * 1000000.0f),
       (unsigned long)imu.dma_timeout_count,
       (int)imu.accel[0], (int)imu.accel[1], (int)imu.accel[2],
       (int)imu.gyro[0], (int)imu.gyro[1], (int)imu.gyro[2],

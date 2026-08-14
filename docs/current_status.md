@@ -5,7 +5,7 @@
 
 ## 代码基线
 
-- 当前已提交固件实现基线：`ff829e6 feat(imu): add ICM45686 FIFO DMA and fusion`。
+- 当前已提交固件实现基线：`1ed95b7 fix(imu): use CubeMX generated SPI3 DMA`。
 - Application：`0.1.0-b12`。
 - Bootloader：`0.1.0 build22`。
 - 当前阶段：ICM45686 FIFO/DMA、零偏和六轴融合代码已就绪；上板验证后置，OTA V1 基线不变。
@@ -16,8 +16,9 @@
 - 已加入 `bsp/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
 - ICM45686 已拆分为 HAL 无关的 `components/icm45686` 寄存器/FIFO 驱动、HAL 无关的
   `components/imu_fusion` 六轴融合组件，以及 `bsp/imu` STM32 HAL SPI3/DMA 适配层。
-  当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、FIFO watermark、16 字节帧、DMA
-  批量读取、静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。
+  当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、ODR/4 内部低通、FIFO watermark、
+  16 字节帧、DMA批量读取、FIFO full/非法帧/传输失败flush恢复、16位timestamp动态采样周期、
+  静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。
 
 - 内部 Flash 使用 32 KiB Bootloader + 480 KiB 单 Application。
 - QSPI 使用双 metadata 和 Slot A/B，confirmed/candidate 由 metadata 分配。

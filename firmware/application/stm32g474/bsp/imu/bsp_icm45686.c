@@ -20,7 +20,9 @@
 #define ICM45686_STARTUP_TIME_MS 70U
 #define ICM45686_RETRY_PERIOD_MS 1000U
 #define ICM45686_MAX_CONSECUTIVE_ERRORS 5U
-#define ICM45686_SAMPLE_PERIOD_SECONDS 0.01f
+#define ICM45686_DEFAULT_SAMPLE_PERIOD_SECONDS 0.01f
+#define ICM45686_MIN_SAMPLE_PERIOD_SECONDS 0.002f
+#define ICM45686_MAX_SAMPLE_PERIOD_SECONDS 0.05f
 
 typedef enum {
   DMA_IDLE = 0,
@@ -33,6 +35,7 @@ static const Icm45686Config imu_config = {
     .accel_full_scale = ICM45686_ACCEL_FS_4_G,
     .gyro_full_scale = ICM45686_GYRO_FS_500_DPS,
     .output_data_rate = ICM45686_ODR_100_HZ,
+    .low_noise_bandwidth = ICM45686_LN_BW_ODR_DIV_4,
     .data_ready_interrupt_enabled = false,
     .fifo_enabled = true,
     .fifo_watermark_frames = ICM45686_FIFO_WATERMARK_FRAMES,
@@ -62,6 +65,8 @@ static uint32_t ready_after_ms;
 static uint32_t last_attempt_ms;
 static uint32_t last_fifo_poll_ms;
 static uint32_t consecutive_errors;
+static uint16_t last_fifo_timestamp;
+static bool fifo_timestamp_valid;
 
 static bool SpiRead(void *context, uint8_t reg, uint8_t *data, size_t length);
 static bool SpiWrite(void *context, uint8_t reg, const uint8_t *data,
@@ -72,6 +77,8 @@ static bool ConfigureDevice(uint32_t now_ms);
 static bool StartFifoDma(uint32_t now_ms);
 static void ProcessDmaFrames(uint32_t now_ms);
 static void RecordTransferError(uint32_t now_ms);
+static bool FlushFifo(void);
+static float GetSamplePeriod(uint16_t timestamp);
 static void UpdateFusionSnapshot(void);
 
 void BspIcm45686_Init(uint32_t now_ms)
@@ -90,6 +97,9 @@ void BspIcm45686_Init(uint32_t now_ms)
   last_attempt_ms = now_ms;
   last_fifo_poll_ms = now_ms;
   consecutive_errors = 0U;
+  last_fifo_timestamp = 0U;
+  fifo_timestamp_valid = false;
+  imu_snapshot.sample_period_s = ICM45686_DEFAULT_SAMPLE_PERIOD_SECONDS;
   (void)ConfigureDevice(now_ms);
 }
 
@@ -102,6 +112,7 @@ void BspIcm45686_Run(uint32_t now_ms)
     ProcessDmaFrames(now_ms);
   } else if (state == DMA_ERROR) {
     dma_state = DMA_IDLE;
+    (void)FlushFifo();
     RecordTransferError(now_ms);
   } else if (state == DMA_BUSY &&
              now_ms - dma_started_ms >= ICM45686_DMA_TIMEOUT_MS) {
@@ -110,6 +121,7 @@ void BspIcm45686_Run(uint32_t now_ms)
       HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
       dma_state = DMA_IDLE;
       ++imu_snapshot.dma_timeout_count;
+      (void)FlushFifo();
       RecordTransferError(now_ms);
     }
   }
@@ -267,6 +279,8 @@ static bool ConfigureDevice(uint32_t now_ms)
   consecutive_errors = 0U;
   drain_pending = false;
   fifo_interrupt = false;
+  fifo_timestamp_valid = false;
+  imu_snapshot.sample_period_s = ICM45686_DEFAULT_SAMPLE_PERIOD_SECONDS;
   ready_after_ms = now_ms + ICM45686_STARTUP_TIME_MS;
   last_fifo_poll_ms = now_ms;
   imu_snapshot.status = BSP_ICM45686_READY;
@@ -275,9 +289,18 @@ static bool ConfigureDevice(uint32_t now_ms)
 
 static bool StartFifoDma(uint32_t now_ms)
 {
+  Icm45686FifoStatus fifo_status;
   uint16_t available_frames;
   uint16_t transfer_length;
 
+  if (Icm45686_ReadFifoStatus(&imu_device, &fifo_status) !=
+      ICM45686_RESULT_OK) {
+    return false;
+  }
+  if (fifo_status.full) {
+    ++imu_snapshot.fifo_full_count;
+    return FlushFifo();
+  }
   if (Icm45686_ReadFifoCount(&imu_device, &available_frames) !=
       ICM45686_RESULT_OK) {
     return false;
@@ -309,6 +332,8 @@ static bool StartFifoDma(uint32_t now_ms)
 
 static void ProcessDmaFrames(uint32_t now_ms)
 {
+  bool parse_error = false;
+  bool recovery_failed = false;
   uint16_t valid_frames = 0U;
 
   for (uint16_t index = 0U; index < dma_frame_count; ++index) {
@@ -320,11 +345,13 @@ static void ProcessDmaFrames(uint32_t now_ms)
     if (Icm45686_ParseFifoFrame(frame, ICM45686_FIFO_FRAME_SIZE,
                                &fifo_sample) != ICM45686_RESULT_OK) {
       ++imu_snapshot.fifo_parse_error_count;
+      parse_error = true;
       continue;
     }
     Icm45686_ConvertSample(&imu_device, &fifo_sample.raw, &sample);
+    imu_snapshot.sample_period_s = GetSamplePeriod(fifo_sample.timestamp);
     ImuFusion_Update(&imu_fusion, sample.accel_mps2, sample.gyro_rad_s,
-                     ICM45686_SAMPLE_PERIOD_SECONDS);
+                     imu_snapshot.sample_period_s);
     memcpy(imu_snapshot.accel, fifo_sample.raw.accel,
            sizeof(fifo_sample.raw.accel));
     memcpy(imu_snapshot.gyro, fifo_sample.raw.gyro,
@@ -339,14 +366,55 @@ static void ProcessDmaFrames(uint32_t now_ms)
     ++valid_frames;
   }
   imu_snapshot.fifo_frame_count += dma_frame_count;
+  if (parse_error) {
+    recovery_failed = !FlushFifo();
+  }
   if (valid_frames > 0U) {
     imu_snapshot.last_sample_ms = now_ms;
     imu_snapshot.sample_valid = true;
-    consecutive_errors = 0U;
+    if (!parse_error) {
+      consecutive_errors = 0U;
+    }
     UpdateFusionSnapshot();
+    if (recovery_failed) {
+      RecordTransferError(now_ms);
+    }
   } else if (dma_frame_count > 0U) {
     RecordTransferError(now_ms);
   }
+}
+
+static bool FlushFifo(void)
+{
+  ++imu_snapshot.fifo_flush_count;
+  drain_pending = false;
+  fifo_interrupt = false;
+  fifo_timestamp_valid = false;
+  if (Icm45686_FlushFifo(&imu_device) == ICM45686_RESULT_OK) {
+    return true;
+  }
+  ++imu_snapshot.fifo_flush_error_count;
+  return false;
+}
+
+static float GetSamplePeriod(uint16_t timestamp)
+{
+  float period = ICM45686_DEFAULT_SAMPLE_PERIOD_SECONDS;
+
+  if (fifo_timestamp_valid) {
+    const float measured_period = Icm45686_TimestampDeltaSeconds(
+        last_fifo_timestamp, timestamp);
+
+    if (measured_period >= ICM45686_MIN_SAMPLE_PERIOD_SECONDS &&
+        measured_period <= ICM45686_MAX_SAMPLE_PERIOD_SECONDS) {
+      period = measured_period;
+    } else {
+      ++imu_snapshot.timestamp_error_count;
+    }
+  }
+  last_fifo_timestamp = timestamp;
+  fifo_timestamp_valid = true;
+  return period;
 }
 
 static void RecordTransferError(uint32_t now_ms)

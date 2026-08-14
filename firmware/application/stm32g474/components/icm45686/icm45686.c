@@ -17,6 +17,7 @@
 #define REG_FIFO_CONFIG2 0x20U
 #define REG_FIFO_CONFIG3 0x21U
 #define REG_FIFO_CONFIG4 0x22U
+#define REG_TMST_WOM_CONFIG 0x23U
 #define REG_INTF_CONFIG1_OVRD 0x2DU
 #define REG_DRIVE_CONFIG0 0x32U
 #define REG_IREG_ADDR_15_8 0x7CU
@@ -25,11 +26,14 @@
 #define REG_MISC2 0x7FU
 #define MREG_SMC_CONTROL_0 0xA258U
 #define MREG_SREG_CTRL 0xA267U
+#define MREG_GYRO_UI_LPFBW 0xA4ACU
+#define MREG_ACCEL_UI_LPFBW 0xA583U
 
 #define SOFT_RESET 0x02U
 #define RESET_DONE 0x80U
 #define INT1_DRDY_ENABLE 0x04U
 #define INT1_FIFO_THRESHOLD_ENABLE 0x02U
+#define INT1_FIFO_FULL_ENABLE 0x01U
 #define INT1_ACTIVE_HIGH_PULSE_PUSH_PULL 0x01U
 #define SPI_SLEW_MASK 0x0EU
 #define SPI_SLEW_TYPICAL_10_NS 0x04U
@@ -40,10 +44,19 @@
 #define FIFO_DEPTH_MASK 0x3FU
 #define FIFO_DEPTH_MAX 0x1EU
 #define FIFO_WATERMARK_GE 0x08U
+#define FIFO_FLUSH 0x80U
 #define FIFO_ACCEL_GYRO 0x06U
 #define FIFO_TIMESTAMP_ENABLE 0x02U
 #define SMC_TIMESTAMP_ENABLE 0x01U
 #define SREG_DATA_BIG_ENDIAN 0x01U
+#define LOW_NOISE_BANDWIDTH_MASK 0x07U
+#define TIMESTAMP_CONFIG_MASK 0x60U
+#define TIMESTAMP_RESOLUTION_16_US 0x20U
+#define FIFO_STATUS_FULL 0x01U
+#define FIFO_STATUS_THRESHOLD 0x02U
+#define FIFO_FLUSH_POLL_US 100U
+#define FIFO_FLUSH_TIMEOUT_US 10000U
+#define TIMESTAMP_TICK_SECONDS 0.000016f
 #define FIFO_HEADER_ACCEL_GYRO 0x60U
 #define FIFO_HEADER_TIMESTAMP 0x08U
 #define FIFO_HEADER_HIGH_RESOLUTION 0x10U
@@ -66,6 +79,8 @@ static Icm45686Result ReadMreg(const Icm45686Device *device, uint16_t reg,
                               uint8_t *data, size_t length);
 static Icm45686Result WriteMreg(const Icm45686Device *device, uint16_t reg,
                                const uint8_t *data, size_t length);
+static Icm45686Result UpdateMreg(const Icm45686Device *device, uint16_t reg,
+                                uint8_t mask, uint8_t value);
 static Icm45686Result SoftReset(Icm45686Device *device);
 static Icm45686Result ConfigureFifo(Icm45686Device *device);
 static int16_t DecodeBigEndian(const uint8_t *data);
@@ -135,6 +150,18 @@ Icm45686Result Icm45686_Init(Icm45686Device *device,
   if (result != ICM45686_RESULT_OK) {
     return result;
   }
+  result = UpdateMreg(device, MREG_ACCEL_UI_LPFBW,
+                      LOW_NOISE_BANDWIDTH_MASK,
+                      (uint8_t)config->low_noise_bandwidth);
+  if (result != ICM45686_RESULT_OK) {
+    return result;
+  }
+  result = UpdateMreg(device, MREG_GYRO_UI_LPFBW,
+                      LOW_NOISE_BANDWIDTH_MASK,
+                      (uint8_t)config->low_noise_bandwidth);
+  if (result != ICM45686_RESULT_OK) {
+    return result;
+  }
   result = Update(device, REG_INT1_CONFIG2, 0x07U,
                   INT1_ACTIVE_HIGH_PULSE_PUSH_PULL);
   if (result != ICM45686_RESULT_OK) {
@@ -147,7 +174,7 @@ Icm45686Result Icm45686_Init(Icm45686Device *device,
   result = Write(
       device, REG_INT1_CONFIG0,
       config->fifo_enabled
-          ? INT1_FIFO_THRESHOLD_ENABLE
+          ? INT1_FIFO_THRESHOLD_ENABLE | INT1_FIFO_FULL_ENABLE
           : (config->data_ready_interrupt_enabled ? INT1_DRDY_ENABLE : 0U));
   if (result != ICM45686_RESULT_OK) {
     return result;
@@ -187,6 +214,54 @@ Icm45686Result Icm45686_ReadFifoCount(Icm45686Device *device,
   return ICM45686_RESULT_OK;
 }
 
+Icm45686Result Icm45686_ReadFifoStatus(Icm45686Device *device,
+                                      Icm45686FifoStatus *status)
+{
+  uint8_t interrupt_status;
+  Icm45686Result result;
+
+  if (device == NULL || status == NULL || !device->initialized ||
+      !device->config.fifo_enabled) {
+    return ICM45686_RESULT_INVALID_ARGUMENT;
+  }
+  result = Read(device, REG_INT1_STATUS0, &interrupt_status, 1U);
+  if (result != ICM45686_RESULT_OK) {
+    return result;
+  }
+  status->full = (interrupt_status & FIFO_STATUS_FULL) != 0U;
+  status->threshold = (interrupt_status & FIFO_STATUS_THRESHOLD) != 0U;
+  return ICM45686_RESULT_OK;
+}
+
+Icm45686Result Icm45686_FlushFifo(Icm45686Device *device)
+{
+  uint8_t fifo_config;
+  Icm45686Result result;
+
+  if (device == NULL || !device->initialized ||
+      !device->config.fifo_enabled) {
+    return ICM45686_RESULT_INVALID_ARGUMENT;
+  }
+  result = Update(device, REG_FIFO_CONFIG2, FIFO_FLUSH, FIFO_FLUSH);
+  if (result != ICM45686_RESULT_OK) {
+    return result;
+  }
+  device->transport.delay_us(device->transport.context, 10U);
+  for (uint32_t waited_us = 0U; waited_us < FIFO_FLUSH_TIMEOUT_US;
+       waited_us += FIFO_FLUSH_POLL_US) {
+    result = Read(device, REG_FIFO_CONFIG2, &fifo_config, 1U);
+    if (result != ICM45686_RESULT_OK) {
+      return result;
+    }
+    if ((fifo_config & FIFO_FLUSH) == 0U) {
+      return ICM45686_RESULT_OK;
+    }
+    device->transport.delay_us(device->transport.context,
+                               FIFO_FLUSH_POLL_US);
+  }
+  return ICM45686_RESULT_TIMEOUT;
+}
+
 Icm45686Result Icm45686_ParseFifoFrame(const uint8_t *frame, size_t length,
                                       Icm45686FifoSample *sample)
 {
@@ -204,6 +279,11 @@ Icm45686Result Icm45686_ParseFifoFrame(const uint8_t *frame, size_t length,
   sample->timestamp =
       (uint16_t)(((uint16_t)frame[14] << 8) | (uint16_t)frame[15]);
   return ICM45686_RESULT_OK;
+}
+
+float Icm45686_TimestampDeltaSeconds(uint16_t previous, uint16_t current)
+{
+  return (float)(uint16_t)(current - previous) * TIMESTAMP_TICK_SECONDS;
 }
 
 Icm45686Result Icm45686_ReadRaw(Icm45686Device *device,
@@ -256,6 +336,7 @@ static bool IsConfigValid(const Icm45686Config *config)
          config->gyro_full_scale <= ICM45686_GYRO_FS_15_625_DPS &&
          config->output_data_rate >= ICM45686_ODR_6400_HZ &&
          config->output_data_rate <= ICM45686_ODR_1_5625_HZ &&
+         config->low_noise_bandwidth <= ICM45686_LN_BW_ODR_DIV_128 &&
          (!config->fifo_enabled ||
           (config->fifo_watermark_frames > 0U &&
            config->fifo_watermark_frames <= FIFO_MAX_FRAME_COUNT));
@@ -337,6 +418,19 @@ static Icm45686Result WriteMreg(const Icm45686Device *device, uint16_t reg,
   return result;
 }
 
+static Icm45686Result UpdateMreg(const Icm45686Device *device, uint16_t reg,
+                                uint8_t mask, uint8_t value)
+{
+  uint8_t current;
+  Icm45686Result result = ReadMreg(device, reg, &current, 1U);
+
+  if (result != ICM45686_RESULT_OK) {
+    return result;
+  }
+  current = (current & (uint8_t)~mask) | (value & mask);
+  return WriteMreg(device, reg, &current, 1U);
+}
+
 static Icm45686Result ConfigureFifo(Icm45686Device *device)
 {
   Icm45686Result result;
@@ -376,6 +470,11 @@ static Icm45686Result ConfigureFifo(Icm45686Device *device)
   }
   result = Update(device, REG_FIFO_CONFIG4, FIFO_TIMESTAMP_ENABLE,
                   FIFO_TIMESTAMP_ENABLE);
+  if (result != ICM45686_RESULT_OK) {
+    return result;
+  }
+  result = Update(device, REG_TMST_WOM_CONFIG, TIMESTAMP_CONFIG_MASK,
+                  TIMESTAMP_RESOLUTION_16_US);
   if (result != ICM45686_RESULT_OK) {
     return result;
   }

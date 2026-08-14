@@ -17,6 +17,7 @@
 #define REG_FIFO_CONFIG2 0x20U
 #define REG_FIFO_CONFIG3 0x21U
 #define REG_FIFO_CONFIG4 0x22U
+#define REG_TMST_WOM_CONFIG 0x23U
 #define REG_PWR_MGMT0 0x10U
 #define REG_INT1_CONFIG0 0x16U
 #define REG_INT1_CONFIG1 0x17U
@@ -38,6 +39,9 @@ typedef struct {
   uint16_t mreg_address;
   uint8_t smc_control_0;
   uint8_t sreg_control;
+  uint8_t gyro_lpf_bandwidth;
+  uint8_t accel_lpf_bandwidth;
+  bool fifo_flush_stuck;
 } FakeTransport;
 
 static bool FakeRead(void *context, uint8_t reg, uint8_t *data,
@@ -51,7 +55,13 @@ static bool FakeRead(void *context, uint8_t reg, uint8_t *data,
   if (reg == REG_IREG_DATA && length == 1U) {
     data[0] = fake->mreg_address == 0xA258U
                   ? fake->smc_control_0
-                  : fake->mreg_address == 0xA267U ? fake->sreg_control : 0U;
+                  : fake->mreg_address == 0xA267U
+                        ? fake->sreg_control
+                        : fake->mreg_address == 0xA4ACU
+                              ? fake->gyro_lpf_bandwidth
+                              : fake->mreg_address == 0xA583U
+                                    ? fake->accel_lpf_bandwidth
+                                    : 0U;
     ++fake->mreg_address;
     return true;
   }
@@ -75,22 +85,38 @@ static bool FakeWrite(void *context, uint8_t reg, const uint8_t *data,
     } else if (length == 3U && fake->mreg_address == 0xA267U) {
       fake->sreg_control = data[2];
       ++fake->mreg_address;
+    } else if (length == 3U && fake->mreg_address == 0xA4ACU) {
+      fake->gyro_lpf_bandwidth = data[2];
+      ++fake->mreg_address;
+    } else if (length == 3U && fake->mreg_address == 0xA583U) {
+      fake->accel_lpf_bandwidth = data[2];
+      ++fake->mreg_address;
     }
   } else if (reg == REG_IREG_DATA && length == 1U) {
     if (fake->mreg_address == 0xA258U) {
       fake->smc_control_0 = data[0];
     } else if (fake->mreg_address == 0xA267U) {
       fake->sreg_control = data[0];
+    } else if (fake->mreg_address == 0xA4ACU) {
+      fake->gyro_lpf_bandwidth = data[0];
+    } else if (fake->mreg_address == 0xA583U) {
+      fake->accel_lpf_bandwidth = data[0];
     }
     ++fake->mreg_address;
   }
   memcpy(&fake->registers[reg], data, length);
+  if (reg == REG_FIFO_CONFIG2 && length == 1U &&
+      (data[0] & 0x80U) != 0U && !fake->fifo_flush_stuck) {
+    fake->registers[REG_FIFO_CONFIG2] &= 0x7FU;
+  }
   if (reg == REG_MISC2 && length == 1U && (data[0] & 0x02U) != 0U) {
     const uint8_t who_am_i = fake->registers[REG_WHO_AM_I];
 
     memset(fake->registers, 0, sizeof(fake->registers));
     fake->smc_control_0 = 0U;
     fake->sreg_control = 0U;
+    fake->gyro_lpf_bandwidth = 0U;
+    fake->accel_lpf_bandwidth = 0U;
     fake->mreg_address = 0U;
     fake->registers[REG_WHO_AM_I] = who_am_i;
     fake->registers[REG_INT1_STATUS0] = 0x80U;
@@ -119,6 +145,7 @@ int main(void)
   Icm45686RawSample raw;
   Icm45686FifoSample fifo_sample;
   Icm45686Sample sample;
+  Icm45686FifoStatus fifo_status;
   uint16_t fifo_count;
   const Icm45686Transport transport = {
       .context = &fake,
@@ -131,6 +158,7 @@ int main(void)
       .accel_full_scale = ICM45686_ACCEL_FS_4_G,
       .gyro_full_scale = ICM45686_GYRO_FS_500_DPS,
       .output_data_rate = ICM45686_ODR_100_HZ,
+      .low_noise_bandwidth = ICM45686_LN_BW_ODR_DIV_4,
       .data_ready_interrupt_enabled = true,
       .fifo_enabled = true,
       .fifo_watermark_frames = 4U,
@@ -146,7 +174,7 @@ int main(void)
   assert(fake.registers[REG_INTF_CONFIG1_OVRD] == 0x05U);
   assert(fake.registers[REG_ACCEL_CONFIG0] == 0x39U);
   assert(fake.registers[REG_GYRO_CONFIG0] == 0x39U);
-  assert(fake.registers[REG_INT1_CONFIG0] == 0x02U);
+  assert(fake.registers[REG_INT1_CONFIG0] == 0x03U);
   assert(fake.registers[REG_INT1_CONFIG1] == 0U);
   assert((fake.registers[REG_INT1_CONFIG2] & 0x07U) == 0x01U);
   assert((fake.registers[REG_PWR_MGMT0] & 0x0FU) == 0x0FU);
@@ -156,10 +184,24 @@ int main(void)
   assert((fake.registers[REG_FIFO_CONFIG2] & 0x08U) == 0x08U);
   assert((fake.registers[REG_FIFO_CONFIG3] & 0x0FU) == 0x07U);
   assert((fake.registers[REG_FIFO_CONFIG4] & 0x02U) == 0x02U);
+  assert((fake.registers[REG_TMST_WOM_CONFIG] & 0x60U) == 0x20U);
   assert((fake.smc_control_0 & 0x01U) == 0x01U);
   assert((fake.sreg_control & 0x01U) == 0x01U);
+  assert((fake.accel_lpf_bandwidth & 0x07U) == 0x01U);
+  assert((fake.gyro_lpf_bandwidth & 0x07U) == 0x01U);
   assert(fake.delay_total_ms == 4U);
-  assert(fake.delay_total_us == 32U);
+  assert(fake.delay_total_us == 64U);
+
+  fake.registers[REG_INT1_STATUS0] = 0x03U;
+  assert(Icm45686_ReadFifoStatus(&device, &fifo_status) ==
+         ICM45686_RESULT_OK);
+  assert(fifo_status.full);
+  assert(fifo_status.threshold);
+  assert(Icm45686_FlushFifo(&device) == ICM45686_RESULT_OK);
+  assert((fake.registers[REG_FIFO_CONFIG2] & 0x80U) == 0U);
+  fake.fifo_flush_stuck = true;
+  assert(Icm45686_FlushFifo(&device) == ICM45686_RESULT_TIMEOUT);
+  fake.fifo_flush_stuck = false;
 
   fake.registers[REG_FIFO_COUNT_0] = 0U;
   fake.registers[REG_FIFO_COUNT_0 + 1U] = 3U;
@@ -209,6 +251,10 @@ int main(void)
     assert(fifo_sample.raw.temperature == 256);
     assert(fifo_sample.timestamp == 0x1234U);
   }
+  assert(fabsf(Icm45686_TimestampDeltaSeconds(100U, 725U) - 0.01f) <
+         0.000001f);
+  assert(fabsf(Icm45686_TimestampDeltaSeconds(65500U, 589U) - 0.01f) <
+         0.000001f);
   return 0;
 }
 

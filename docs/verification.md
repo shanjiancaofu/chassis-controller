@@ -414,9 +414,10 @@ Flash、IWDG、复位和跳转的目标板行为。
   `E:\STM32CubeMX\STM32CubeMX.exe -q .cubemx-generate.script`。
 - CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 clean build：Application、Bootloader、QSPI provisioner 均通过。
 - ICM45686 FIFO/MREG 与融合组件接入后，Application 构建通过：
-  `text=197304 data=120 bss=35208`。
+  `text=197960 data=120 bss=35232`。
 - `test_icm45686.c` 使用 Visual Studio 2022 MSVC `/std:c11 /W4 /WX` 编译并实际运行通过，
-  覆盖软复位恢复、MREG 字节序、FIFO 配置/计数、16 字节大端帧解析和 SI 单位换算。
+  覆盖软复位恢复、MREG 字节序、ODR/4低通、FIFO配置/计数/状态/flush、16字节大端帧解析、
+  timestamp正常差值与16位回绕，以及SI单位换算。
 - `test_imu_fusion.c` 使用相同 MSVC 参数编译并实际运行通过，覆盖 200 样本静止零偏收敛、
   姿态初始化、四元数归一化和 1 秒陀螺旋转积分。
 - SPI3 DMA1 CH5/CH6 已写入 `.ioc`；CubeMX 6.18 CLI 已生成 `hdma_spi3_rx/tx`、DMA NVIC

@@ -36,8 +36,13 @@ typedef struct {
   uint32_t interrupt_count;
   uint32_t fifo_frame_count;
   uint32_t fifo_parse_error_count;
+  uint32_t fifo_full_count;
+  uint32_t fifo_flush_count;
+  uint32_t fifo_flush_error_count;
+  uint32_t timestamp_error_count;
   uint32_t dma_timeout_count;
   uint32_t transfer_error_count;
+  float sample_period_s;
 } BspIcm45686Snapshot;
 
 void BspIcm45686_Init(uint32_t now_ms);
