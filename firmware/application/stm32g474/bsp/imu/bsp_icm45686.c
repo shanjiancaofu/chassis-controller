@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "board/board_config.h"
-#include "bsp/imu/bsp_icm45686_dma.h"
 #include "components/icm45686/icm45686.h"
 #include "components/imu_fusion/imu_fusion.h"
 #include "main.h"
@@ -91,11 +90,6 @@ void BspIcm45686_Init(uint32_t now_ms)
   last_attempt_ms = now_ms;
   last_fifo_poll_ms = now_ms;
   consecutive_errors = 0U;
-  if (!BspIcm45686Dma_Init()) {
-    imu_snapshot.status = BSP_ICM45686_DEGRADED;
-    ++imu_snapshot.transfer_error_count;
-    return;
-  }
   (void)ConfigureDevice(now_ms);
 }
 
@@ -254,11 +248,6 @@ static bool ConfigureDevice(uint32_t now_ms)
   };
   Icm45686Result result;
 
-  if (!BspIcm45686Dma_Init()) {
-    ++imu_snapshot.transfer_error_count;
-    imu_snapshot.status = BSP_ICM45686_DEGRADED;
-    return false;
-  }
   result = Icm45686_Init(&imu_device, &transport, &imu_config);
 
   imu_snapshot.sample_valid = false;

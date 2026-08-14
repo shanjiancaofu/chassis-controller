@@ -410,15 +410,16 @@ Bootloader 的 Debug 与 Release 已使用 STM32CubeIDE 自带 `arm-none-eabi-gc
 Flash、IWDG、复位和跳转的目标板行为。
 ## 2026-08-14 ICM45686 与预留按钮构建
 
-- 独立 CubeMX 生成器：`E:\STM32CubeMX\STM32CubeMX.exe -q .cubemx-generate.script`（本轮 CLI 未完成生成）。
+- 独立 CubeMX 生成器已使用带目标目录的 CLI 脚本完成生成：
+  `E:\STM32CubeMX\STM32CubeMX.exe -q .cubemx-generate.script`。
 - CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 clean build：Application、Bootloader、QSPI provisioner 均通过。
 - ICM45686 FIFO/MREG 与融合组件接入后，Application 构建通过：
-  `text=197624 data=120 bss=35216`。
+  `text=197304 data=120 bss=35208`。
 - `test_icm45686.c` 使用 Visual Studio 2022 MSVC `/std:c11 /W4 /WX` 编译并实际运行通过，
   覆盖软复位恢复、MREG 字节序、FIFO 配置/计数、16 字节大端帧解析和 SI 单位换算。
 - `test_imu_fusion.c` 使用相同 MSVC 参数编译并实际运行通过，覆盖 200 样本静止零偏收敛、
   姿态初始化、四元数归一化和 1 秒陀螺旋转积分。
-- SPI3 DMA1 CH5/CH6 已写入 `.ioc`，BSP HAL DMA glue 已编译链接；CubeMX 6.18 CLI 在本机
-  两次脚本调用均停留在 `javaw` 加载阶段且未改写 `Core/`，因此没有把 CubeMX 生成视为验证证据。
+- SPI3 DMA1 CH5/CH6 已写入 `.ioc`；CubeMX 6.18 CLI 已生成 `hdma_spi3_rx/tx`、DMA NVIC
+  配置和 CH5/CH6 IRQ handler，原临时 BSP DMA glue 已移除。
 - 本轮仅有源码、宿主测试和编译/链接证据；ICM45686、FIFO/DMA、零偏、姿态和 PD3/PD4
   按钮尚未进行实物验收。

@@ -5,14 +5,14 @@
 
 ## 代码基线
 
-- 当前已提交固件实现基线：`7f9d70d [feature]: add ICM45686 and button BSP`。
+- 当前已提交固件实现基线：`ff829e6 feat(imu): add ICM45686 FIFO DMA and fusion`。
 - Application：`0.1.0-b12`。
 - Bootloader：`0.1.0 build22`。
 - 当前阶段：ICM45686 FIFO/DMA、零偏和六轴融合代码已就绪；上板验证后置，OTA V1 基线不变。
 
 ## 当前实现
 
-- Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）和两个预留按钮（PD3/PD4）配置；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()` 以及 EXTI1/3/4。
+- Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）和两个预留按钮（PD3/PD4）配置；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()`、SPI3 DMA1 CH5/CH6 以及 EXTI1/3/4。
 - 已加入 `bsp/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
 - ICM45686 已拆分为 HAL 无关的 `components/icm45686` 寄存器/FIFO 驱动、HAL 无关的
   `components/imu_fusion` 六轴融合组件，以及 `bsp/imu` STM32 HAL SPI3/DMA 适配层。

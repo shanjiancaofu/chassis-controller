@@ -63,7 +63,6 @@ set(APP_SOURCES
   bsp/fdcan/fdcan_bsp.c
   bsp/lcd/bsp_lcd.c
   bsp/imu/bsp_icm45686.c
-  bsp/imu/bsp_icm45686_dma.c
   bsp/motor/bsp_motor.c
   bsp/power_monitor/bsp_power_sample.c
   bsp/qspi/bsp_qspi_flash.c
