@@ -145,14 +145,18 @@ OTA V1 冻结后立即进入底盘功能，顺序如下：
 
 ### IMU 与里程计
 
-IMU 暂缓。STM32 轮式里程计属于当前底盘阶段；IMU 后续只在硬件确认后实现原始数据、
-时间戳和掉线检测，融合和 ROS 2 里程计放在 Jetson。
+STM32端ICM45686 SPI3/DMA、16字节FIFO、timestamp、掉线恢复、RAM零偏标定和六轴Mahony
+已经实现，当前等待实物确认 `WHO_AM_I`、连续采样、零偏收敛和安装轴向。硬件确认后再决定
+是否持久化零偏；20-bit、压缩FIFO和自检不属于当前上板门槛。
+
+STM32轮式里程计仍属于当前底盘阶段。Jetson后续消费轮式里程计和IMU输出并负责ROS 2
+定位融合，不在STM32重复实现导航级融合。
 
 ## 暂不实施
 
 - 位置环
 - 复杂底盘运动学
-- STM32 端复杂姿态融合
+- 超出当前六轴Mahony的STM32端复杂姿态/导航融合
 - 内部 Flash 双 Application Bank
 - Bootloader FreeRTOS
 - 无人值守远程发布

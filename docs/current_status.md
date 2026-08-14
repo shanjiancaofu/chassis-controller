@@ -5,7 +5,6 @@
 
 ## 代码基线
 
-- 当前已提交固件实现基线：`1ed95b7 fix(imu): use CubeMX generated SPI3 DMA`。
 - Application：`0.1.0-b12`。
 - Bootloader：`0.1.0 build22`。
 - 当前阶段：ICM45686 FIFO/DMA、零偏和六轴融合代码已就绪；上板验证后置，OTA V1 基线不变。
@@ -18,7 +17,8 @@
   `components/imu_fusion` 六轴融合组件，以及 `bsp/imu` STM32 HAL SPI3/DMA 适配层。
   当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、ODR/4 内部低通、FIFO watermark、
   16 字节帧、DMA批量读取、FIFO full/非法帧/传输失败flush恢复、16位timestamp动态采样周期、
-  静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。
+  静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。当前不启用20-bit、压缩FIFO
+  或自检；零偏仅保存在RAM，安装方向和轴映射等待实物确认。
 
 - 内部 Flash 使用 32 KiB Bootloader + 480 KiB 单 Application。
 - QSPI 使用双 metadata 和 Slot A/B，confirmed/candidate 由 metadata 分配。
@@ -43,7 +43,7 @@
 ## 已验证
 
 - CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 build 通过：Application
-  `text=197624 data=120 bss=35216`，Bootloader `text=13400 data=48 bss=1656`，QSPI
+  `text=197960 data=120 bss=35232`，Bootloader `text=13400 data=48 bss=1656`，QSPI
   provisioner `text=9192 data=12 bss=1644`。ICM45686 FIFO/MREG 和 IMU fusion 纯组件测试
   均使用 MSVC `/W4 /WX` 编译并执行通过。
 
@@ -67,7 +67,7 @@
 
 ## 尚未验证
 
-- ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA 连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；当前诊断只能显示 `NOT_FOUND`、`STARTING` 或 `CALIBRATING`，不得据此标记硬件 PASS。
+- ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及FIFO恢复计数，但任何软件状态均不得据此标记硬件PASS。
 
 - b12/build22 普通按键/断电复位启动和上电四路 PWM 电气零输出。
 - b12/build22 UART OTA 与 CAN FD OTA。

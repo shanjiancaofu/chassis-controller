@@ -189,7 +189,9 @@ GND              -> GND
 `INT2`、`SCX` 和 `SDX` 暂不连接。SPI3 使用 Mode 0、8-bit、MSB first、软件 NSS 和约
 1.33 Mbit/s；`CS` 空闲为高电平。INT1 使用上升沿中断并触发 FIFO watermark。应用层
 通过 STM32G4 HAL 的 SPI3 RX/TX DMA 批量读取最多 4 个 16 字节 FIFO 帧；DMA1 CH5 为 RX、
-CH6 为 TX。`.ioc` 是通道配置的权威来源，当前板上仍未验证通信、电气时序或 FIFO 连续性。
+CH6 为 TX。当前传感器配置为100 Hz、加速度计 +/-4 g、陀螺仪 +/-500 dps、低噪声带宽
+ODR/4和16 us timestamp；不启用20-bit或压缩FIFO。`.ioc` 是STM32通道配置的权威来源，
+当前板上仍未验证通信、电气时序或FIFO连续性。
 
 ## 通用按钮
 

@@ -20,7 +20,7 @@
 
 | 文档 | 唯一职责 |
 | --- | --- |
-| `current_status.md` | 当前代码基线、已验证状态、未验证项和下一步；保持短小 |
+| `current_status.md` | 当前固件版本、开发阶段、已验证状态、未验证项和下一步；保持短小 |
 | `architecture.md` | 软件分层、目录职责、依赖方向和运行模型 |
 | `hardware.md` | 实际硬件、引脚、接线和外设资源 |
 | `bootloader_and_ota.md` | Bootloader、Flash/QSPI 布局、OTA 状态机和恢复设计 |
@@ -38,6 +38,9 @@
 2. `docs/current_status.md`。
 3. 本索引中与任务直接相关的文档。
 4. 当前代码和 `.ioc`，以代码和配置作为最终事实来源。
+
+当前Git提交ID属于仓库实时状态，使用 `git log -1 --oneline` 查询，不写入受版本控制的
+`current_status.md`。Application、Bootloader等固件版本属于产品基线，仍应记录在文档中。
 
 完成一轮工作后：
 
