@@ -7,6 +7,8 @@
 
 - Application：`0.1.0-b12`。
 - Bootloader：`0.1.0 build22`。
+- 当前工作树已加入 ICM45686 和调试配置，正式生成新产物前必须分配新的 Application build 号；
+  不得覆盖已上板的 b12/build22 冻结产物。
 - 当前阶段：ICM45686 FIFO/DMA、零偏和六轴融合代码已就绪；上板验证后置，OTA V1 基线不变。
 
 ## 当前实现
@@ -42,23 +44,27 @@
 
 ## 已验证
 
-- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 build 通过：Application
-  `text=197960 data=120 bss=35232`，Bootloader `text=13400 data=48 bss=1656`，QSPI
-  provisioner `text=9192 data=12 bss=1644`。ICM45686 FIFO/MREG 和 IMU fusion 纯组件测试
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前 Release clean build 通过：Application
+  `text=198060 data=120 bss=35232`，Bootloader `text=13480 data=48 bss=1656`，QSPI
+  provisioner `text=9272 data=12 bss=1644`。ICM45686 FIFO/MREG 和 IMU fusion 纯组件测试
   均使用 MSVC `/W4 /WX` 编译并执行通过。
 
-- Application b12 Release clean build：`text=183492 data=96 bss=34224`。
-- Bootloader build22 Release clean build：`text=13400 data=48 bss=1656`。
-- CMake + Ninja 已使用 GNU Arm Embedded 14.3.rel1 完成 Application、Bootloader 和 QSPI
-  provisioner clean build；三个 BIN 的 SHA-256 分别与既有 b12、build22 和已上板 provisioner
-  基线完全一致。CMake 作为主命令行构建入口，CubeIDE 暂留作对照和调试。
+- 已写入目标板的 b12/build22 factory 产物尺寸仍为 Application `text=183492 data=96 bss=34224`、
+  Bootloader `text=13400 data=48 bss=1656`；这是冻结产物证据，不等于当前工作树构建。
+- `arm-debug` 已使用 `-Og -g3` 构建，ELF 含源码调试信息和 FreeRTOS 内核符号；VS Code
+  Cortex-Debug/OpenOCD 配置已就绪。2026-08-15 已在目标板验证无 `sudo` OpenOCD、GDB
+  烧写 Debug ELF、停在 `main`、源码断点、调用栈、FreeRTOS `pxCurrentTCB` 和 Debug IWDG
+  冻结；VS Code 图形界面 F5 仍需人工按键确认。
+- 在引入当前 ICM45686/调试改动之前，CMake 生成的三个 BIN 曾与已上板 b12/build22/provisioner
+  冻结产物逐哈希一致；当前工作树的 clean build 已变化，不能沿用旧哈希或直接覆盖 `_output/`。
+  CMake 作为主命令行构建入口，CubeIDE 暂留作对照和调试。
 - OTA Python 共 9 项通过，包含字段顺序/offset 级共享 C/Python ABI 对照；两个目标 clean build
   已由 ARM GCC 验证共享结构体的逐字段 `offsetof` 静态断言。既有 factory、
   UART arm guard、Application metadata 和 Bootloader core 主机测试记录保持有效；本轮新增的
   rollback attempts=0/fatal 分类断言已通过目标 GCC `-Werror` 编译，尚未在宿主机执行。
 - 最近完成实物 UART OTA 闭环的是 Application b6 + Bootloader build15。
 - factory 普通启动和 UART `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` 已实物通过。
-- 已从当前 Release ELF 生成匹配的 b12/build22 Application BIN、OTA、内部 factory BIN 和
+- 已从冻结 Release ELF 生成匹配的 b12/build22 Application BIN、OTA、内部 factory BIN 和
   8 MiB QSPI confirmed raw；OTA Python 9 项重新通过。产物生成不代表已烧录或实物通过。
 - 已通过独立 DFU provisioner 将匹配的 b12 OTA package 和 `CONFIRMED/SLOT_A` metadata
   写入 W25Q64 并完成全包读回校验；随后恢复内部 factory BIN，实物确认 build22 读取
@@ -66,6 +72,9 @@
   和 `MOTOR: DISABLED`。
 
 ## 尚未验证
+
+- VS Code 图形界面 F5 尚未人工确认；其底层 OpenOCD/GDB 自动烧写、停在 `main`、源码断点、
+  调用栈、FreeRTOS 符号和 Debug IWDG 冻结已完成命令行等价目标板验证。
 
 - ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及FIFO恢复计数，但任何软件状态均不得据此标记硬件PASS。
 

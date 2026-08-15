@@ -38,7 +38,7 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE)
 if(NOT ARM_GNU_VERSION VERSION_EQUAL "14.3.1")
   message(FATAL_ERROR
-    "Expected GNU Arm Embedded 14.3.1 (STM32 14.3.rel1), found ${ARM_GNU_VERSION}")
+    "Expected Arm GNU Toolchain 14.3.Rel1 (GCC 14.3.1), found ${ARM_GNU_VERSION}")
 endif()
 
 set(CMAKE_EXECUTABLE_SUFFIX ".elf")

@@ -86,8 +86,10 @@ firmware/.metadata/
 /_output/*
 !/_output/README.md
 
-# Local editor settings
-/.vscode/
+# Shared VS Code debug/build configuration
+/.vscode/*
+!/.vscode/launch.json
+!/.vscode/tasks.json
 
 # Python cache
 __pycache__/

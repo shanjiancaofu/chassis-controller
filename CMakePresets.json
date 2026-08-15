@@ -7,6 +7,17 @@
   },
   "configurePresets": [
     {
+      "name": "arm-debug",
+      "displayName": "STM32G474 Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/arm-debug",
+      "toolchainFile": "${sourceDir}/cmake/arm-none-eabi-gcc.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
       "name": "arm-release",
       "displayName": "STM32G474 Release",
       "generator": "Ninja",
@@ -19,6 +30,10 @@
     }
   ],
   "buildPresets": [
+    {
+      "name": "arm-debug",
+      "configurePreset": "arm-debug"
+    },
     {
       "name": "arm-release",
       "configurePreset": "arm-release"

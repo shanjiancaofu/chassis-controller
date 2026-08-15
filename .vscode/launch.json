@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "STM32G474 Application (OpenOCD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/arm-debug/application.elf",
+      "servertype": "openocd",
+      "serverpath": "openocd",
+      "gdbPath": "arm-none-eabi-gdb",
+      "device": "STM32G474VE",
+      "interface": "swd",
+      "configFiles": [
+        "interface/stlink.cfg",
+        "target/stm32g4x.cfg"
+      ],
+      "preLaunchTask": "CMake: build arm-debug",
+      "runToEntryPoint": "main",
+      "showDevDebugOutput": "none"
+    }
+  ]
+}

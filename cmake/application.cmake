@@ -112,6 +112,7 @@ target_include_directories(application PRIVATE
   "${APP_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2"
   "${APP_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F")
 target_compile_definitions(application PRIVATE
-  USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00008000U)
+  USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00008000U
+  $<$<CONFIG:Debug>:APP_DEBUG_IWDG_FREEZE>)
 stm32g474_target(application
   "${APP_ROOT}/STM32G474VETX_FLASH.ld" "application.map")

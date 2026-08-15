@@ -63,8 +63,9 @@ Bootloader Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug �
 
 Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果仅证明编译和
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
-本次 build22 已于 2026-08-13 从当前 Release ELF 生成正式配套产物，但尚未烧录或执行
-目标板回归；build15 仍是最近一次已完成实物启动和 UART OTA 验证的 Bootloader。
+本次 build22 已于 2026-08-13 从当时的 Release ELF 生成正式配套产物。本段记录的是烧录前
+状态；后续同日已完成匹配 factory/QSPI 基线写入并确认 build22 启动 b12，详见下一节。
+build15 仍是最近一次完成 UART OTA 全闭环验证的 Bootloader。
 
 ### b12/build22 上板准备（2026-08-13）
 
@@ -235,17 +236,36 @@ Application `.isr_vector` 位于 `0x08008000`，Bootloader 和 provisioner `.isr
 CubeMX 重新生成后必须重新检查自定义 source folder、include path 和 FreeRTOS 配置，
 不能用旧 ELF 判断当前代码。
 
-## VS Code 构建
+## VS Code Cortex-Debug
 
-VS Code 可调用仓库 CMake preset；编译器仍使用 STM32CubeIDE 附带的 GNU Arm Embedded
-14.3.rel1。CubeIDE 命令行任务暂时保留作对照，不再是唯一构建入口。
+仓库共享 `.vscode/tasks.json` 和 `.vscode/launch.json`。F5 依次配置、构建 `arm-debug`，
+启动 OpenOCD，加载并烧写 `build/arm-debug/application.elf`，复位后停在 `main`。所需命令
+`cmake`、`openocd` 和 `arm-none-eabi-gdb` 必须在 `PATH`，VS Code 需安装 Cortex-Debug。
 
-- CMake/Ninja 命令和工具链要求见 [`cmake_build.md`](cmake_build.md)。
-- 既有 `Ctrl+Shift+B` 仍执行本机 `.vscode/tasks.json` 中的 CubeIDE Debug 增量构建任务。
-- 工程路径：`firmware/application/stm32g474/`。
-- 遇到产物未更新时执行 clean build，再检查 ELF 和相关 `.o` 的修改时间。
-- `.vscode/` 是本机配置；换电脑后需更新 `stm32cubeidec.exe` 的实际安装路径。
-- VS Code 构建默认只编译，不等同于烧录和板上验证。
+2026-08-14 软件侧检查：Debug ELF 含 DWARF，GDB 可定位 `main.c:77`，并可解析
+`pxCurrentTCB`；Debug Application 含 `APP_DEBUG_IWDG_FREEZE`，Release compile commands
+确认不含该宏。
+
+2026-08-15 目标板检查：ST-Link `0483:3748` 和 CH340 已在 Ubuntu 虚拟机枚举；OpenOCD
+不使用 `sudo` 启动，通过 ST-Link SWD 识别 STM32G47/G48、目标电压约 3.24 V，并在
+3333 端口提供 GDB server。`arm-none-eabi-gdb build/arm-debug/application.elf` 已完成
+`load` 烧写 Debug ELF，命中 `main()` 源码断点 `Core/Src/main.c:77`。
+
+同一会话继续验证源码断点和运行状态：`ChassisApp_Init()` 在 `app/chassis_app.c:80` 命中，
+Call Stack 回到 `main.c:121`；`ControlTaskMain(argument=0x0)` 在 `rtos/rtos_app.c:72`
+命中，`pxCurrentTCB = 0x20007a0c <control_task_buffer>`。断点暂停时读取
+`DBGMCU->APB1FZR1 = 0x1800`，包含 `DBG_IWDG_STOP` 位 `0x1000`；保持暂停 12 秒后仍停在
+同一 FreeRTOS 任务栈，未发生 IWDG 复位。因此底层 OpenOCD/GDB 自动烧写、源码断点、
+调用栈、FreeRTOS 符号和 Debug IWDG 冻结为 `HARDWARE PASS`。
+
+VS Code 图形界面 F5 仍需人工确认；预期流程如下：
+
+1. F5 自动构建、烧写、复位并停在 `main`。
+2. 在 `ChassisApp_Init()` 设置源码断点，确认断点命中并查看变量和 Call Stack。
+3. 继续运行到调度器启动后暂停，确认 `pxCurrentTCB` 非空，并查看任务相关符号。
+4. 在断点保持超过 10 秒后继续，确认没有 IWDG 复位。
+
+CMake/Ninja 命令和工具链要求见 [`cmake_build.md`](cmake_build.md)。
 
 ## 串口
 
@@ -408,13 +428,15 @@ Bootloader 的 Debug 与 Release 已使用 STM32CubeIDE 自带 `arm-none-eabi-gc
 完成构建。该 PC 测试已于 2026-07-30 使用 WSL GCC 和
 `-std=c11 -Wall -Wextra -Werror` 编译运行通过；结果仅覆盖纯逻辑，不覆盖 QSPI、内部
 Flash、IWDG、复位和跳转的目标板行为。
+
 ## 2026-08-14 ICM45686 与预留按钮构建
 
 - 独立 CubeMX 生成器已使用带目标目录的 CLI 脚本完成生成：
   `E:\STM32CubeMX\STM32CubeMX.exe -q .cubemx-generate.script`。
 - CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 clean build：Application、Bootloader、QSPI provisioner 均通过。
-- ICM45686 FIFO/MREG 与融合组件接入后，Application 构建通过：
-  `text=197960 data=120 bss=35232`。
+- ICM45686、VS Code Debug 配置和 IWDG 调试冻结接入后，当前 Release clean build 通过：
+  Application `text=198060 data=120 bss=35232`、Bootloader `text=13480 data=48 bss=1656`、
+  QSPI provisioner `text=9272 data=12 bss=1644`。
 - `test_icm45686.c` 使用 Visual Studio 2022 MSVC `/std:c11 /W4 /WX` 编译并实际运行通过，
   覆盖软复位恢复、MREG 字节序、ODR/4低通、FIFO配置/计数/状态/flush、16字节大端帧解析、
   timestamp正常差值与16位回绕，以及SI单位换算。

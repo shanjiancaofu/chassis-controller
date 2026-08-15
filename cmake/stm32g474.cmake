@@ -9,12 +9,13 @@ function(stm32g474_target target linker_script map_name)
   target_compile_definitions(${target} PRIVATE USE_HAL_DRIVER STM32G474xx)
   target_compile_options(${target} PRIVATE
     ${STM32G474_CPU_OPTIONS}
-    -Os
+    $<$<CONFIG:Debug>:-Og>
+    $<$<CONFIG:Debug>:-g3>
+    $<$<CONFIG:Release>:-Os>
     -ffunction-sections
     -fdata-sections
     -Wall
     -fstack-usage
-    -fcyclomatic-complexity
     $<$<COMPILE_LANGUAGE:C>:--specs=nano.specs>
     $<$<COMPILE_LANGUAGE:ASM>:-x$<SEMICOLON>assembler-with-cpp>)
   target_link_options(${target} PRIVATE
