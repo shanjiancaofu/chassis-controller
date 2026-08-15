@@ -88,7 +88,7 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 后续上板确认 ICM45686 `WHO_AM_I`、FIFO/DMA 连续采样、静止零偏收敛和轴向映射；再决定是否持久化标定参数。
+1. 先确认无 ICM45686 时 Application 仍能正常启动，不触发 critical fault / IWDG 复位。
 2. 完成普通按键/断电复位启动和四路 PWM 上电电气零输出验收。
 3. 完成 UART OTA 和 CAN FD OTA 实物验收。
 4. 只执行三个故障测试：Application 安装中断电、TRIAL 不确认自动回滚、rollback 安装中断电。
