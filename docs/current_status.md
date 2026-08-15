@@ -5,11 +5,10 @@
 
 ## 代码基线
 
-- Application：`0.1.0-b12`。
+- Application：`0.1.0-b13`。
 - Bootloader：`0.1.0 build22`。
-- 当前工作树已加入 ICM45686 和调试配置，正式生成新产物前必须分配新的 Application build 号；
-  不得覆盖已上板的 b12/build22 冻结产物。
-- 当前阶段：ICM45686 FIFO/DMA、零偏和六轴融合代码已就绪；上板验证后置，OTA V1 基线不变。
+- 当前工作树已升到 Application `0.1.0-b13`；b12/build22 仍是已上板冻结产物，不得覆盖。
+- 当前阶段：ICM45686 已后置为 `DEFERRED`，不再阻塞 OTA V1 主线；IMU 代码保持现状，后续仅在硬件可接入时再单独验证。
 
 ## 当前实现
 
