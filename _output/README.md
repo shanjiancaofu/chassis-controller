@@ -1,19 +1,19 @@
-# Firmware artifacts
+# 固件产物
 
-Current development versions and pending hardware verification are summarized in
-[`docs/current_status.md`](../docs/current_status.md). Detailed evidence remains in
-[`docs/verification.md`](../docs/verification.md); artifact files do not establish a hardware pass.
+当前开发版本和待验证项目见
+[`docs/current_status.md`](../docs/current_status.md)，完整证据见
+[`docs/verification.md`](../docs/verification.md)。产物文件本身不能证明硬件通过。
 
-Burn and update artifacts are grouped by type:
+烧录和升级产物按类型组织：
 
 ```text
-application/  Application BIN and OTA package
+application/  Application BIN 和 OTA 包
 bootloader/   Bootloader BIN
-factory/      Combined Bootloader + Application BIN
-archive/      Historical, candidate, diagnostic, readback, and host-test files
+factory/      Bootloader + Application 组合 BIN，以及 QSPI factory raw
+archive/      历史、候选、诊断、读回和宿主测试文件
 ```
 
-Naming rules:
+命名规则：
 
 ```text
 application: app-v<version>-b<N>.<bin|ota>
@@ -22,10 +22,10 @@ factory:     factory-a<app-build>-b<boot-build>.bin
 qspi:        factory/qspi-a<app-build>-confirmed.bin
 ```
 
-Current artifact names omit timestamps. The version/build pair identifies release inputs;
-timestamped and diagnostic files belong under `archive/`.
+当前产物名不带时间戳；版本号和 build 号共同标识发布输入。带时间戳的文件和诊断文件应放入
+`archive/`。
 
-Most recent hardware-verified baseline artifacts (historical b6/build15):
+历史硬件验证基线（b6/build15）：
 
 ```text
 application/app-v0.1.0-b6.bin
@@ -34,12 +34,11 @@ bootloader/boot-v0.1.0-b15.bin
 factory/factory-a6-b15.bin
 ```
 
-These files document the last hardware-verified factory/UART baseline. They are not a claim that
-the current b12/build22 source has been burned. CAN FD OTA, interrupted installation recovery, and
-trial rollback remain unverified; see
-[`docs/verification.md`](../docs/verification.md).
+这些文件保留最近一次完整 factory/UART OTA 历史闭环，不代表当前源码。当前 b12/build22
+的匹配 factory 和 QSPI confirmed 基线已经上板，但普通复位、零 PWM、UART/CAN FD OTA
+及故障注入仍是独立验收项。
 
-Current generated artifacts pending hardware programming and verification:
+当前冻结的 b12/build22 factory 产物：
 
 ```text
 application/app-v0.1.0-b12.bin
@@ -49,27 +48,28 @@ factory/factory-a12-b22.bin
 factory/qspi-a12-confirmed.bin
 ```
 
-The matching b12/build22 internal factory image and QSPI confirmed baseline were programmed and
-verified on hardware on 2026-08-13 using STM32 ROM DFU and the repository
-`tools/qspi_factory_provisioner/` maintenance target. Ordinary reset, electrical zero-PWM, UART OTA,
-CAN FD OTA, and fault-injection acceptance remain separate verification items.
+这些产物与当前含 ICM45686 和调试配置的工作树构建不同；重新发布前必须分配新 build 号，
+不得直接覆盖。2026-08-13 已通过 STM32 ROM DFU 和仓库
+`tools/qspi_factory_provisioner/` 维护目标写入并读回匹配的内部 factory 镜像和 QSPI
+`CONFIRMED/SLOT_A` 基线；随后已确认 build22 启动 b12。普通按键/断电复位、电气零 PWM、
+UART OTA、CAN FD OTA 和故障注入仍需分别验证。
 
-Programming addresses:
+烧录地址：
 
 ```text
 Application BIN: 0x08008000
 Bootloader BIN:  0x08000000
 Factory BIN:     0x08000000
-QSPI raw image:  external loader / QSPI base `0x000000`
+QSPI raw image:  外部加载器 / QSPI 基址 0x000000
 ```
 
-The factory QSPI image is generated from the same `.ota` package as the Application BIN. It
-contains Slot A and `CONFIRMED` Metadata A, while Metadata B remains erased. Program it with an
-External Loader or equivalent factory provisioning step before claiming first-install rollback.
-The factory generator requires both `--ota` and `--qspi-output` by default. Internal-Flash-only
-diagnostic images require the explicit `--internal-only` opt-out and are not production baselines.
+QSPI factory 镜像与 Application BIN 使用同一个 `.ota` 包生成，包含 Slot A 和
+`CONFIRMED` Metadata A，Metadata B 保持擦除态。首次安装回滚基线必须通过外部加载器或
+等价 factory provisioning 步骤写入。factory 生成器默认同时要求 `--ota` 和
+`--qspi-output`；仅内部 Flash 的诊断镜像必须显式使用 `--internal-only`，且不能作为
+生产基线。
 
-CubeIDE currently updates ELF but does not reliably regenerate BIN. Recreate each BIN from the
-matching final ELF with `arm-none-eabi-objcopy -O binary` before packaging or combining images.
+CubeIDE 当前会更新 ELF，但不保证同步重建 BIN。打包或组合镜像前，必须从匹配的最终 ELF
+执行 `arm-none-eabi-objcopy -O binary` 重新生成 BIN。
 
-Files under `archive/` are not release artifacts.
+`archive/` 下的文件不属于发布产物。

@@ -6,10 +6,11 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前处于 Bootloader 与 OTA V1 实物验证阶段。独立 Bootloader、Application 重定位、
-UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建；最近的
-factory 普通启动和 UART OTA 主链已通过实物验证，但对应的是 b6/build15 基线。当前
-b12/build22 尚待目标板回归；CAN FD OTA、断电恢复和回滚故障注入仍未验证。最新摘要见
+当前处于 ICM45686 上板准备和 OTA V1 剩余实物验收阶段。独立 Bootloader、Application 重定位、
+UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建。2026-08-13
+已写入并读回匹配的 b12/build22 factory 与 QSPI confirmed 基线，并确认 build22 启动 b12；
+普通按键/断电复位、零 PWM、UART/CAN FD OTA、断电恢复和回滚故障注入仍需分别验证。
+最新摘要见
 [`docs/current_status.md`](docs/current_status.md)，完整证据见 `docs/verification.md`。
 当前不再扩展 OTA recovery；完成 b12/build22 主链和三个关键故障测试后冻结 OTA V1，随后
 进入 PID、轮组标定与加减速、里程计、安全保护、诊断和正式 CAN FD 底盘协议。
@@ -53,14 +54,16 @@ infrastructure/  modules/  rtos/  tests/  config/
 
 ## 构建
 
-工具链：
+主要工具链：
 
-- STM32CubeMX 6.18
-- STM32CubeG4 V1.6.3
-- STM32CubeIDE GCC
-- ST-Link 或 STM32CubeProgrammer
+- CMake 3.22 + Ninja
+- GNU Arm Embedded 14.3.rel1
+- STM32CubeMX 6.18 + STM32CubeG4 V1.6.3
+- ST-Link/OpenOCD 或 STM32CubeProgrammer
 
-CubeIDE 工作区使用仓库的 `firmware/`，导入两个独立工程：
+日常命令行构建使用 `cmake --preset arm-debug` 或 `arm-release`，详见
+[`docs/cmake_build.md`](docs/cmake_build.md)。CubeIDE 暂时保留作对照和备用调试，其工作区使用
+仓库的 `firmware/`，导入两个独立工程：
 
 ```text
 firmware/application/stm32g474
@@ -69,9 +72,9 @@ firmware/bootloader/stm32g474
 
 日常流程：
 
-1. 在 CubeIDE 选择 `Debug` 或 `Release`。
-2. 修改 `.ioc` 或公共头文件后执行 Clean Build。
-3. 确认 `0 errors, 0 warnings` 后烧录对应 ELF。
+1. 使用 CMake preset 构建 Debug 或 Release。
+2. VS Code F5 通过 Cortex-Debug/OpenOCD 自动构建、烧写并停在 `main`。
+3. 修改 `.ioc` 后由 CubeMX 重新生成，再检查 diff 和 CMake 显式源文件列表。
 4. CH340 使用 `115200 8N1` 查看启动、自检、命令和遥测。
 
 CubeMX 生成代码时使用 `STM32CubeIDE` 并勾选 `Generate Under Root`。
