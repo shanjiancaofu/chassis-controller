@@ -10,7 +10,7 @@
         "arm-debug"
       ],
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder:chassis-controller}"
       },
       "problemMatcher": [
         "$gcc"
@@ -27,7 +27,7 @@
         "--parallel"
       ],
       "options": {
-        "cwd": "${workspaceFolder}"
+        "cwd": "${workspaceFolder:chassis-controller}"
       },
       "dependsOn": "CMake: configure arm-debug",
       "dependsOrder": "sequence",
