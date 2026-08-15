@@ -107,7 +107,9 @@ void ChassisApp_Init(void)
     Error_Handler();
   }
   BspButton_Init();
+#if ENABLE_ICM45686
   BspIcm45686_Init(HAL_GetTick());
+#endif
   (void)StatusDisplay_Init();
 
   CommandManager_Init();
@@ -148,7 +150,9 @@ void ChassisApp_Run(void)
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
   BspButton_Run(now_ms);
+#if ENABLE_ICM45686
   BspIcm45686_Run(now_ms);
+#endif
   BspUart_Run();
   if (OtaUartTransport_IsEnabled()) {
     OtaUartTransport_Run();
