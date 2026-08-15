@@ -65,7 +65,7 @@ OpenOCD udev 规则必须允许当前用户访问 ST-Link；不要使用 `sudo` 
 
 2026-08-15 已在 Ubuntu 虚拟机验证无 `sudo` OpenOCD 和命令行 GDB 等价流程可烧写
 `build/arm-debug/application.elf`、停在 `main`、命中源码断点并在断点暂停期间冻结 IWDG。
-VS Code 图形界面 F5 只剩人工按键确认。
+VS Code 图形界面 F5 已于 2026-08-15 人工确认通过。
 
 ## 源文件与 CubeMX
 

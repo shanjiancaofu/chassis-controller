@@ -54,7 +54,7 @@
 - `arm-debug` 已使用 `-Og -g3` 构建，ELF 含源码调试信息和 FreeRTOS 内核符号；VS Code
   Cortex-Debug/OpenOCD 配置已就绪。2026-08-15 已在目标板验证无 `sudo` OpenOCD、GDB
   烧写 Debug ELF、停在 `main`、源码断点、调用栈、FreeRTOS `pxCurrentTCB` 和 Debug IWDG
-  冻结；VS Code 图形界面 F5 仍需人工按键确认。
+  冻结；VS Code 图形界面 F5 已于 2026-08-15 人工确认通过。
 - 在引入当前 ICM45686/调试改动之前，CMake 生成的三个 BIN 曾与已上板 b12/build22/provisioner
   冻结产物逐哈希一致；当前工作树的 clean build 已变化，不能沿用旧哈希或直接覆盖 `_output/`。
   CMake 作为主命令行构建入口，CubeIDE 暂留作对照和调试。
@@ -73,8 +73,8 @@
 
 ## 尚未验证
 
-- VS Code 图形界面 F5 尚未人工确认；其底层 OpenOCD/GDB 自动烧写、停在 `main`、源码断点、
-  调用栈、FreeRTOS 符号和 Debug IWDG 冻结已完成命令行等价目标板验证。
+- VS Code 图形界面 F5 已于 2026-08-15 人工确认通过；底层 OpenOCD/GDB 自动烧写、停在
+  `main`、源码断点、调用栈、FreeRTOS 符号和 Debug IWDG 冻结也已完成命令行等价目标板验证。
 
 - ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及FIFO恢复计数，但任何软件状态均不得据此标记硬件PASS。
 

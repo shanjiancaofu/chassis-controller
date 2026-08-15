@@ -258,12 +258,9 @@ Call Stack 回到 `main.c:121`；`ControlTaskMain(argument=0x0)` 在 `rtos/rtos_
 同一 FreeRTOS 任务栈，未发生 IWDG 复位。因此底层 OpenOCD/GDB 自动烧写、源码断点、
 调用栈、FreeRTOS 符号和 Debug IWDG 冻结为 `HARDWARE PASS`。
 
-VS Code 图形界面 F5 仍需人工确认；预期流程如下：
-
-1. F5 自动构建、烧写、复位并停在 `main`。
-2. 在 `ChassisApp_Init()` 设置源码断点，确认断点命中并查看变量和 Call Stack。
-3. 继续运行到调度器启动后暂停，确认 `pxCurrentTCB` 非空，并查看任务相关符号。
-4. 在断点保持超过 10 秒后继续，确认没有 IWDG 复位。
+2026-08-15 用户在 VS Code 图形界面按 F5 人工确认通过：Cortex-Debug 自动执行
+`CMake: build arm-debug`、启动 OpenOCD、烧写 `build/arm-debug/application.elf`，并进入源码调试。
+因此 VS Code F5 前端流程同样记为 `HARDWARE PASS`。
 
 CMake/Ninja 命令和工具链要求见 [`cmake_build.md`](cmake_build.md)。
 
