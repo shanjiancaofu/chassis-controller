@@ -88,6 +88,7 @@ set(APP_SOURCES
   modules/chassis/odometry.c
   modules/chassis/wheel_controller.c
   modules/diagnostics/board_health.c
+  modules/diagnostics/system_status.c
   modules/parameters/parameter_manager.c
   modules/safety/fault_manager.c
   modules/safety/safety_manager.c

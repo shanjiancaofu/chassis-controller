@@ -19,6 +19,7 @@ void BoardHealth_Init(void)
       IWDG_TEST_MARKER;
 
   board_health = (BoardHealthSnapshot){0};
+  board_health.reset_cause_flags = BspReset_GetCauseFlags();
   __atomic_store_n(&control_overrun_count, 0U, __ATOMIC_RELAXED);
   __atomic_store_n(&control_missed_tick_count, 0U, __ATOMIC_RELAXED);
   board_health.iwdg_reset_test_passed =

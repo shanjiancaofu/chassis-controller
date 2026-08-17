@@ -5,7 +5,7 @@
 
 ## 当前基线
 
-阶段 4 已完成代码实现：
+既有 FreeRTOS/底盘基础代码已完成：
 
 - FreeRTOS 静态 Application task 和高优先级 `control_task`
 - TIM6 100 Hz 任务通知，过期控制周期不连续补跑
@@ -28,7 +28,7 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 | `communication/can_transport/`、`communication/ota_transport/` | 增加 `chassis_protocol/` | 正式底盘协议编解码落地时 |
 | `infrastructure/` | 保留现有命名，后续增加参数存储 | 参数持久化实现时 |
 | `modules/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
-| `rtos/rtos_app.c/h` 两任务模型 | 仅按真实阻塞或周期需求新增任务 | OTA 接收需要独立非实时任务时 |
+| `rtos/rtos_app.c/h` 四任务职责模型 | 继续按真实阻塞或周期需求演进，不按硬件数量增加任务 | 已完成首版迁移 |
 | `tests/target/` 和 `tests/unit/` | 按风险补目标板测试和无 HAL 主机测试 | CommandManager 首批主机测试已落地 |
 | 独立 Bootloader 工程 | 继续与 Application 保持独立 CubeMX、链接脚本和构建配置 | 已完成首版 |
 
@@ -115,16 +115,90 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 - rollback 安装过程中断电恢复
 - Jetson SocketCAN CAN FD OTA（启用 Jetson OTA 前必须完成）
 
+## 分阶段实施路线
+
+用户侧的 FreeRTOS 调度、IMU/Kalman、SR501、LCD 硬件状态/电量/版本和正式串口消息需求
+拆成以下阶段逐项落地。每个阶段先完成代码和构建证据，再进入下一阶段；未完成的硬件项
+保持 `READY`、`NOT VERIFIED` 或 `DEFERRED`，不因代码存在而标记硬件通过。
+
+### 阶段 1：FreeRTOS 运行基础
+
+状态：`IMPLEMENTED`（代码与 Debug/Release 构建完成；目标板运行字段待验证）
+
+- 已完成 `control_task`、`service_task`、`diagnostics_task`、`display_task` 四任务迁移；
+  `control_task` 保持 100 Hz 控制，`service_task` 承担 UART/CAN/OTA，`diagnostics_task` 承担
+  RTC/ADC/IMU/SR501 和快照发布，`display_task` 承担按键/LCD。
+- 四个任务均记录周期、超时、运行状态、运行次数、栈余量、heartbeat age 和 uptime；关键任务
+  健康状态继续作为 IWDG 刷新条件，显示任务单独诊断但不阻塞控制安全路径。
+- UART 和 LCD 当前已读取统一快照中的公共状态，后续不得恢复各自独立拼接。
+
+### 阶段 2：正式 UART 消息
+
+状态：`PLANNED`
+
+格式草案见 [`protocol/uart_message_protocol.md`](../protocol/uart_message_protocol.md)。
+
+- 将命令响应统一为 `OK` / `ERROR`，并给出稳定的命令、错误码和字段名。
+- 将异步日志统一为 `LOG ts_ms=... level=... module=... event=... v=1`。
+- 将遥测统一为版本化 `TEL v=1 seq=... ts_ms=... field=value...`。
+- 所有文本消息使用 ASCII、单行、CRLF 换行；版本、时间戳、错误码和字段名称固定，不再输出
+  无版本的 demo 文本。
+- 启动阶段按 `boot -> board -> 外设 -> application` 顺序输出结构化 `LOG` 行，风格类似 Linux
+  启动日志；初始化失败使用 `WARN`/`ERROR` 和稳定 `code=`，不使用不可解析的长句。
+- `status` 拆为 `SYSTEM`、`MOTOR`、`SENSORS`、`COMMUNICATION` 分区，允许像启动日志一样
+  逐行观察，但每行字段仍保持稳定。
+- OTA 二进制会话与文本输出保持隔离，不能混发。
+
+### 阶段 3：LCD 硬件总览
+
+状态：`PLANNED`
+
+- 多页显示硬件子系统状态：电机/编码器、CAN、QSPI、RTC、IMU、SR501、FreeRTOS 和故障。
+- 按键循环四页：`OVERVIEW`（电压、控制、CAN、Fault、版本）、`MOTOR`（目标、速度、PWM、
+  编码器、PID）、`SENSORS`（IMU、SR501、ADC、RTC）、`SYSTEM`（QSPI、任务健康、运行时间、
+  复位原因）。
+- 显示固件版本和构建信息。
+- 电量先显示经校验的电压；在电池化学体系、串数和电压曲线确定前，不显示伪造的百分比。
+
+### 阶段 4：ICM45686 与估计器
+
+状态：`DEFERRED`
+
+- 先完成 WHO_AM_I、FIFO/DMA、采样连续性、静止零偏和安装方向的实物确认。
+- 在 Kalman 或轮式里程计融合前，建立统一单调时间戳：保留 IMU FIFO 时间戳，给编码器和 ADC
+  记录采样/触发时刻，给 SR501 记录稳定事件时刻；RTC 只用于日历显示和日志，不参与融合校时。
+- 验证传感器时间戳到控制时间轴的映射和延迟，100 Hz 控制下目标对齐误差约 1 ms；未完成前不
+  根据任务处理时刻拼接多传感器数据。
+- 保留现有 Mahony 作为对照，不直接删除；在数据证据成立后实现角度+陀螺零偏两状态 Kalman。
+- yaw 没有磁力计时只能约束短期变化，不能消除长期漂移；底盘航向后续采用轮式里程计和陀螺
+  Z 轴融合。
+
+### 阶段 5：SR501 状态展示与硬件收尾
+
+状态：`DEFERRED`
+
+- 将现有 SR501 快照接入统一 `SystemStatusSnapshot`、LCD 和正式 UART 字段，不绑定电机或安全逻辑。
+- 继续保留 60 秒预热、50 ms 滤波和单次上升沿语义。
+- 完成模块供电、指示灯、OUT 高电平和事件计数实物排查后，才更新硬件验证结论。
+
+### 阶段 6：底盘控制收尾
+
+状态：`PLANNED`
+
+- 在 100 Hz 双轮控制中实现目标加减速限制，确保停止、急停、故障和超时立即清零。
+- 之后进行左右轮标定、里程计累计、堵转/编码器异常/电压保护和 PID 实物调参。
+
 ## 后续阶段
 
-### 底盘功能
+### 底盘功能（阶段 6 之后）
 
-OTA V1 冻结后立即进入底盘功能，顺序如下：
+阶段 5/6 进入底盘功能收尾后，按以下详细项推进：
 
 1. SR501 接线、GPIO/BSP 和诊断已 `IMPLEMENTED`；b16 已完成 UART OTA/确认、60 秒预热和
    低电平零误计数。模块指示灯和 OUT 均未观察到高电平，剩余实物验证 `DEFERRED`。
-2. 当前进入 PID 实物闭环调通；先固定速度单位、正负方向、心跳超时和停车语义。
-3. 左右轮标定和加减速限制。
+2. PID、100 Hz 双轮控制、串口 RAM 调参和遥测入口已 `IMPLEMENTED`；方向、低速闭环、
+   停车和稳定性实物验收 `DEFERRED`。
+3. 目标加减速限制后置；左右轮实物标定后置。
 4. 里程计累计、速度和转角验证。
 5. 堵转、编码器异常和电压保护。
 6. Fault、Health 和 Reset 诊断闭环。
@@ -143,9 +217,9 @@ OTA V1 冻结后立即进入底盘功能，顺序如下：
 ### IMU 与里程计
 
 ICM45686 目前 `DEFERRED`，不再阻塞 OTA V1 主线。现有 STM32 端 ICM45686 SPI3/DMA、
-16 字节 FIFO、timestamp、掉线恢复、RAM 零偏标定和六轴 Mahony 代码保持现状，不继续加新功能。
-等后续硬件可接入时，再单独验证 `WHO_AM_I`、连续采样、零偏收敛和安装轴向；20-bit、压缩 FIFO
-和自检仍不属于当前上板门槛。
+16 字节 FIFO、timestamp、掉线恢复、RAM 零偏标定和六轴 Mahony 代码保持现状，阶段 4 前不扩展。
+阶段 4 先单独验证 `WHO_AM_I`、连续采样、零偏收敛和安装轴向，再实现已定义范围内的
+角度/陀螺零偏两状态 Kalman；20-bit、压缩 FIFO 和自检仍不属于当前上板门槛。
 
 STM32 轮式里程计仍属于当前底盘阶段。Jetson 后续消费轮式里程计和 IMU 输出并负责 ROS 2
 定位融合，不在 STM32 重复实现导航级融合。

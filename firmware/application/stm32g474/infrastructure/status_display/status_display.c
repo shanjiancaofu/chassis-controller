@@ -1,13 +1,9 @@
 #include "infrastructure/status_display/status_display.h"
 
 #include "bsp/lcd/bsp_lcd.h"
-#include "bsp/power_monitor/bsp_power_sample.h"
-#include "communication/can_transport/can_transport.h"
 #include "infrastructure/console/diagnostic_report.h"
 #include "main.h"
-#include "modules/diagnostics/board_health.h"
-#include "modules/safety/fault_manager.h"
-#include "rtc.h"
+#include "modules/diagnostics/system_status.h"
 
 #define KEY_DEBOUNCE_MS 20U
 #define KEY_LOCKOUT_MS 100U
@@ -40,42 +36,35 @@ void StatusDisplay_Run(uint32_t now_ms)
 
   if (last_refresh_ms == 0U ||
       now_ms - last_refresh_ms >= STATUS_DISPLAY_REFRESH_MS) {
-    BoardHealthSnapshot board_health;
+    SystemStatusSnapshot system_status;
     BspLcdStatusData lcd_data = {0};
-    RTC_TimeTypeDef time;
-    RTC_DateTypeDef date;
-    uint32_t supply_mv;
-    const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
     last_refresh_ms = now_ms;
-    BoardHealth_GetSnapshot(&board_health);
-    if (HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN) == HAL_OK &&
-        HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN) == HAL_OK &&
-        time.Hours <= 23U && time.Minutes <= 59U &&
-        time.Seconds <= 59U) {
+    SystemStatus_GetSnapshot(&system_status);
+    if (system_status.rtc_valid) {
       lcd_data.rtc_state = BSP_LCD_VALUE_PASS;
-      lcd_data.rtc_hours = time.Hours;
-      lcd_data.rtc_minutes = time.Minutes;
-      lcd_data.rtc_seconds = time.Seconds;
+      lcd_data.rtc_hours = system_status.rtc_hours;
+      lcd_data.rtc_minutes = system_status.rtc_minutes;
+      lcd_data.rtc_seconds = system_status.rtc_seconds;
     } else {
       lcd_data.rtc_state = BSP_LCD_VALUE_FAIL;
     }
 
-    lcd_data.qspi_state = board_health.qspi_id_valid
+    lcd_data.qspi_state = system_status.board_health.qspi_id_valid
                               ? BSP_LCD_VALUE_PASS
                               : BSP_LCD_VALUE_FAIL;
     lcd_data.qspi_capacity_mib =
-        (uint8_t)(board_health.qspi_capacity_bytes /
+        (uint8_t)(system_status.board_health.qspi_capacity_bytes /
                   (1024UL * 1024UL));
     lcd_data.can_state =
-        can_status == CAN_TRANSPORT_LINK_PASSED
+        system_status.can_state == SYSTEM_STATUS_CAN_PASSED
             ? BSP_LCD_VALUE_PASS
-            : can_status == CAN_TRANSPORT_LINK_FAILED
+            : system_status.can_state == SYSTEM_STATUS_CAN_FAILED
                   ? BSP_LCD_VALUE_FAIL
                   : BSP_LCD_VALUE_READY;
-    lcd_data.adc_valid = BspPowerSample_ReadMillivolts(&supply_mv);
-    lcd_data.adc_mv = lcd_data.adc_valid ? supply_mv : 0U;
-    lcd_data.fault_flags = FaultManager_GetFlags();
+    lcd_data.adc_valid = system_status.supply_valid;
+    lcd_data.adc_mv = system_status.supply_valid ? system_status.supply_mv : 0U;
+    lcd_data.fault_flags = system_status.fault_flags;
     BspLcd_SetStatusData(&lcd_data);
   }
 

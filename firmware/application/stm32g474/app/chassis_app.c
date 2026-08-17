@@ -31,11 +31,13 @@
 #include "modules/chassis/odometry.h"
 #include "modules/chassis/wheel_controller.h"
 #include "modules/diagnostics/board_health.h"
+#include "modules/diagnostics/system_status.h"
 #include "modules/parameters/parameter_manager.h"
 #include "modules/safety/fault_manager.h"
 #include "modules/safety/safety_manager.h"
 #include "rtos/rtos_app.h"
 #include "infrastructure/status_display/status_display.h"
+#include "rtc.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/motor_target_test.h"
 #include "tests/target/qspi_target_test.h"
@@ -49,28 +51,28 @@ static bool ota_terminal_cleaned;
 static bool ota_response_waiting;
 static OtaResponse ota_response;
 
-static void HandleConsoleCommand(const ConsoleCommand *command,
-                                 uint32_t now_ms);
-static void WritePidReport(bool accepted);
-static void WriteEncoderResult(void);
-static void WriteCanDiagnostics(void);
-static void WriteConsoleHelp(void);
+static void ProcessConsoleCommand(const ConsoleCommand *command,
+                                  uint32_t now_ms);
+static void SendPidParameterReport(bool accepted);
+static void SendEncoderResult(void);
+static void SendCanDiagnostics(void);
+static void SendConsoleHelp(void);
 static bool StartControl(void);
 static void StopControl(void);
 static void ReleaseMotionOwner(void);
 static bool StartMotorTargetTest(MotorTargetTestAction action,
                                  uint32_t now_ms);
-static bool PrepareTargetTest(void);
-static bool PrepareOta(void);
-static void ReleaseOta(void);
-static void RunOtaTransports(uint32_t now_ms);
-static void ReleaseCompletedTargetTest(void);
-static void LatchInternalFault(uint32_t fault);
-static void ApplyPendingParameters(void);
-static bool ResetOdometry(void);
-static bool SubmitCommand(int32_t left_target, int32_t right_target,
-                          CommandSource source, uint32_t now_ms,
-                          bool has_sequence, uint8_t sequence);
+static bool AcquireTargetTestLock(void);
+static bool AcquireOtaMaintenanceLock(void);
+static void ReleaseOtaMaintenanceLock(void);
+static void ProcessOtaTransportCycle(uint32_t now_ms);
+static void ReleaseFinishedTargetTestLock(void);
+static void LatchChassisInternalFault(uint32_t fault);
+static void ApplyPendingControlParameters(void);
+static bool ResetWheelOdometry(void);
+static bool SubmitMotionCommand(int32_t left_target, int32_t right_target,
+                                CommandSource source, uint32_t now_ms,
+                                bool has_sequence, uint8_t sequence);
 
 #if ENABLE_MOTOR_DEMO
 static uint8_t demo_stage;
@@ -122,6 +124,7 @@ void ChassisApp_Init(void)
   WheelController_Init();
   Odometry_Init();
   BoardHealth_Init();
+  SystemStatus_Init();
   OtaConfirmation_Init();
   QspiTargetTest_Init();
   IwdgTargetTest_Init();
@@ -134,28 +137,21 @@ void ChassisApp_Init(void)
 #if ENABLE_MOTOR_DEMO
   demo_stage = 0U;
   demo_stage_started_ms = HAL_GetTick();
-  if (!SubmitCommand(0, 0, COMMAND_SOURCE_TARGET_TEST,
-                     demo_stage_started_ms,
-                     false, 0U) ||
+  if (!SubmitMotionCommand(0, 0, COMMAND_SOURCE_TARGET_TEST,
+                           demo_stage_started_ms,
+                           false, 0U) ||
       !StartControl()) {
     Error_Handler();
   }
 #endif
 }
 
-void ChassisApp_Run(void)
+void ChassisApp_RunServiceCycle(void)
 {
-  static uint32_t last_heartbeat_ms;
   ConsoleCommand console_command;
   CanTransportControlCommand control_command;
   const uint32_t now_ms = HAL_GetTick();
-  const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
-  BspButton_Run(now_ms);
-  BspSr501_Run(now_ms);
-#if ENABLE_ICM45686
-  BspIcm45686_Run(now_ms);
-#endif
   BspUart_Run();
   if (OtaUartTransport_IsEnabled()) {
     OtaUartTransport_Run();
@@ -163,7 +159,7 @@ void ChassisApp_Run(void)
     Console_Run();
   }
   while (Console_TakeCommand(&console_command)) {
-    HandleConsoleCommand(&console_command, now_ms);
+    ProcessConsoleCommand(&console_command, now_ms);
   }
 
 #if ENABLE_MOTOR_DEMO
@@ -175,43 +171,43 @@ void ChassisApp_Run(void)
   switch (demo_stage) {
     case 0U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        (void)SubmitCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
+        (void)SubmitMotionCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                                  MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                                  COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
         demo_stage = 1U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 1U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        (void)SubmitCommand(0, 0, COMMAND_SOURCE_TARGET_TEST, now_ms,
-                            false, 0U);
+        (void)SubmitMotionCommand(0, 0, COMMAND_SOURCE_TARGET_TEST, now_ms,
+                                  false, 0U);
         demo_stage = 2U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 2U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        (void)SubmitCommand(-MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
+        (void)SubmitMotionCommand(-MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                                  -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                                  COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
         demo_stage = 3U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 3U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        (void)SubmitCommand(0, 0, COMMAND_SOURCE_TARGET_TEST, now_ms,
-                            false, 0U);
+        (void)SubmitMotionCommand(0, 0, COMMAND_SOURCE_TARGET_TEST, now_ms,
+                                  false, 0U);
         demo_stage = 4U;
         demo_stage_started_ms = now_ms;
       }
       break;
     case 4U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        (void)SubmitCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-                            COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
+        (void)SubmitMotionCommand(MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                                  -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+                                  COMMAND_SOURCE_TARGET_TEST, now_ms, false, 0U);
         demo_stage = 5U;
         demo_stage_started_ms = now_ms;
       }
@@ -245,13 +241,13 @@ void ChassisApp_Run(void)
       taskEXIT_CRITICAL();
     }
   }
-  RunOtaTransports(now_ms);
+  ProcessOtaTransportCycle(now_ms);
   if (CanTransport_TakeControlCommand(&control_command)) {
     if (control_command.enabled) {
-      if (SubmitCommand(control_command.left_target,
-                        control_command.right_target,
-                        COMMAND_SOURCE_CAN_REMOTE,
-                        now_ms, true, control_command.sequence)) {
+      if (SubmitMotionCommand(control_command.left_target,
+                              control_command.right_target,
+                              COMMAND_SOURCE_CAN_REMOTE,
+                              now_ms, true, control_command.sequence)) {
         (void)StartControl();
       }
     } else if (CommandManager_GetOwner() ==
@@ -263,15 +259,15 @@ void ChassisApp_Run(void)
     }
   }
 
-  StatusDisplay_Run(now_ms);
   QspiTargetTest_Run(now_ms);
   {
-    BoardHealthSnapshot health;
+    SystemStatusSnapshot status;
 
-    BoardHealth_GetSnapshot(&health);
+    SystemStatus_GetSnapshot(&status);
     OtaConfirmation_Run(
         now_ms,
-        health.qspi_id_valid && RtosApp_AreCriticalTasksHealthy() &&
+        status.board_health.qspi_id_valid &&
+            status.runtime.critical_tasks_healthy &&
             !FaultManager_HasCritical(),
         QspiTargetTest_GetStatus() != QSPI_TARGET_TEST_RUNNING &&
             !OtaSession_IsUsingQspi());
@@ -279,10 +275,10 @@ void ChassisApp_Run(void)
   if (OtaSession_HasCriticalFault() ||
       OtaConfirmation_HasCriticalFault() ||
       QspiTargetTest_HasCriticalFault()) {
-    LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+    LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
   }
   MotorTargetTest_Run(now_ms);
-  ReleaseCompletedTargetTest();
+  ReleaseFinishedTargetTestLock();
   DiagnosticReport_Run(now_ms);
 
   if (IwdgTargetTest_IsResetRequested()) {
@@ -334,28 +330,150 @@ void ChassisApp_Run(void)
     Telemetry_Run(now_ms, &snapshot);
   }
 
+}
+
+void ChassisApp_RunDiagnosticsCycle(void)
+{
+  static uint32_t last_heartbeat_ms;
+  const uint32_t now_ms = HAL_GetTick();
+
+  BspSr501_Run(now_ms);
+#if ENABLE_ICM45686
+  BspIcm45686_Run(now_ms);
+#endif
+
+  {
+    RtosAppRuntimeSnapshot runtime;
+    SystemStatusSnapshot status = {0};
+    MotorTargetTestSnapshot motor_test;
+    RTC_TimeTypeDef time = {0};
+    RTC_DateTypeDef date = {0};
+
+    BoardHealth_GetSnapshot(&status.board_health);
+    RtosApp_GetRuntimeSnapshot(&runtime);
+    status.runtime.uptime_ms = runtime.uptime_ms;
+    status.runtime.service_heartbeat_age_ms =
+        runtime.service_heartbeat_age_ms;
+    status.runtime.control_heartbeat_age_ms =
+        runtime.control_heartbeat_age_ms;
+    status.runtime.diagnostics_heartbeat_age_ms =
+        runtime.diagnostics_heartbeat_age_ms;
+    status.runtime.display_heartbeat_age_ms =
+        runtime.display_heartbeat_age_ms;
+    status.runtime.service_stack_high_water_words =
+        runtime.service_stack_high_water_words;
+    status.runtime.control_stack_high_water_words =
+        runtime.control_stack_high_water_words;
+    status.runtime.diagnostics_stack_high_water_words =
+        runtime.diagnostics_stack_high_water_words;
+    status.runtime.display_stack_high_water_words =
+        runtime.display_stack_high_water_words;
+    status.runtime.service_task_healthy = runtime.service_task_healthy;
+    status.runtime.control_task_healthy = runtime.control_task_healthy;
+    status.runtime.diagnostics_task_healthy = runtime.diagnostics_task_healthy;
+    status.runtime.display_task_healthy = runtime.display_task_healthy;
+    status.runtime.critical_tasks_healthy = runtime.critical_tasks_healthy;
+    status.runtime.service_period_ms = runtime.service_period_ms;
+    status.runtime.control_period_ms = runtime.control_period_ms;
+    status.runtime.diagnostics_period_ms = runtime.diagnostics_period_ms;
+    status.runtime.display_period_ms = runtime.display_period_ms;
+    status.runtime.service_expected_period_ms =
+        runtime.service_expected_period_ms;
+    status.runtime.control_expected_period_ms =
+        runtime.control_expected_period_ms;
+    status.runtime.diagnostics_expected_period_ms =
+        runtime.diagnostics_expected_period_ms;
+    status.runtime.display_expected_period_ms =
+        runtime.display_expected_period_ms;
+    status.runtime.service_timeout_ms = runtime.service_timeout_ms;
+    status.runtime.control_timeout_ms = runtime.control_timeout_ms;
+    status.runtime.diagnostics_timeout_ms = runtime.diagnostics_timeout_ms;
+    status.runtime.display_timeout_ms = runtime.display_timeout_ms;
+    status.runtime.service_run_count = runtime.service_run_count;
+    status.runtime.control_run_count = runtime.control_run_count;
+    status.runtime.diagnostics_run_count = runtime.diagnostics_run_count;
+    status.runtime.display_run_count = runtime.display_run_count;
+    status.runtime.service_task_state = (uint32_t)runtime.service_task_state;
+    status.runtime.control_task_state = (uint32_t)runtime.control_task_state;
+    status.runtime.diagnostics_task_state =
+        (uint32_t)runtime.diagnostics_task_state;
+    status.runtime.display_task_state = (uint32_t)runtime.display_task_state;
+    BspButton_GetSnapshot(&status.buttons);
+    BspIcm45686_GetSnapshot(&status.imu);
+    BspSr501_GetSnapshot(&status.sr501);
+    status.can_state =
+        (SystemStatusCanState)CanTransport_GetLinkStatus();
+    status.lcd_state = (SystemStatusLcdState)BspLcd_GetStatus();
+    status.supply_valid = BspPowerSample_ReadMillivolts(&status.supply_mv);
+    status.fault_flags = FaultManager_GetFlags();
+    status.qspi_test_state = (uint32_t)QspiTargetTest_GetStatus();
+    status.ota_confirmation_state = (uint32_t)OtaConfirmation_GetStatus();
+    status.ota_source = (uint32_t)OtaSession_GetSource();
+    status.ota_state = (uint32_t)OtaSession_GetState();
+    status.ota_next_offset = OtaSession_GetNextOffset();
+    status.uart_error_count = OtaUartTransport_GetErrorCount();
+    status.can_drop_count = OtaCanTransport_GetDroppedCount();
+    status.telemetry_mode = (uint32_t)Telemetry_GetMode();
+    taskENTER_CRITICAL();
+    WheelController_GetSnapshot(&status.wheels);
+    Odometry_GetSnapshot(&status.odometry);
+    MotorTargetTest_GetSnapshot(&motor_test);
+    status.motor_test.running = motor_test.running;
+    status.motor_test.left_duty = motor_test.left_duty;
+    status.motor_test.right_duty = motor_test.right_duty;
+    ParameterManager_GetActive(&status.parameters);
+    status.control_state = SafetyManager_GetState();
+    taskEXIT_CRITICAL();
+    status.rtc_valid =
+        HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN) == HAL_OK &&
+        HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN) == HAL_OK &&
+        time.Hours <= 23U && time.Minutes <= 59U && time.Seconds <= 59U &&
+        date.Month >= 1U && date.Month <= 12U && date.Date >= 1U &&
+        date.Date <= 31U;
+    status.rtc_year = date.Year;
+    status.rtc_month = date.Month;
+    status.rtc_date = date.Date;
+    status.rtc_hours = time.Hours;
+    status.rtc_minutes = time.Minutes;
+    status.rtc_seconds = time.Seconds;
+    SystemStatus_Update(&status);
+  }
+
   if (now_ms - last_heartbeat_ms >= 500U) {
     last_heartbeat_ms = now_ms;
     HAL_GPIO_TogglePin(LED_B_GPIO_Port, LED_B_Pin);
   }
   HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_SET);
-  if (can_status == CAN_TRANSPORT_LINK_PASSED) {
+  if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_PASSED) {
     HAL_GPIO_WritePin(LED_G_GPIO_Port, LED_G_Pin, GPIO_PIN_RESET);
-  } else if (can_status == CAN_TRANSPORT_LINK_FAILED) {
+  } else if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_FAILED) {
     HAL_GPIO_WritePin(LED_R_GPIO_Port, LED_R_Pin, GPIO_PIN_RESET);
   }
 
-  if (RtosApp_AreCriticalTasksHealthy() &&
-      !FaultManager_HasCritical() &&
-      CanTransport_IsOperational() &&
-      !IwdgTargetTest_IsResetRequested()) {
-    HAL_IWDG_Refresh(&hiwdg);
+  {
+    SystemStatusSnapshot status;
+
+    SystemStatus_GetSnapshot(&status);
+    if (status.runtime.critical_tasks_healthy &&
+        !FaultManager_HasCritical() &&
+        CanTransport_IsOperational() &&
+        !IwdgTargetTest_IsResetRequested()) {
+      HAL_IWDG_Refresh(&hiwdg);
+    }
   }
 }
 
-static void HandleConsoleCommand(const ConsoleCommand *command,
-                                 uint32_t now_ms)
+void ChassisApp_RunDisplayCycle(void)
+{
+  const uint32_t now_ms = HAL_GetTick();
+
+  BspButton_Run(now_ms);
+  StatusDisplay_Run(now_ms);
+}
+
+static void ProcessConsoleCommand(const ConsoleCommand *command,
+                                  uint32_t now_ms)
 {
   static const char pong[] = "PONG\r\n";
   static const char telemetry_text[] = "TELEMETRY: TEXT\r\n";
@@ -388,14 +506,14 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       (void)BspUart_WriteString(telemetry_off);
       break;
     case CONSOLE_COMMAND_CAN_STATUS:
-      WriteCanDiagnostics();
+      SendCanDiagnostics();
       break;
     case CONSOLE_COMMAND_CAN_TRANSMIT:
       CanTransport_RequestResponse();
       (void)BspUart_WriteString(can_queued);
       break;
     case CONSOLE_COMMAND_PID_SHOW:
-      WritePidReport(true);
+      SendPidParameterReport(true);
       break;
     case CONSOLE_COMMAND_PID_SET_LEFT:
     case CONSOLE_COMMAND_PID_SET_RIGHT: {
@@ -409,13 +527,13 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
           command->arguments.pid.kp, command->arguments.pid.ki,
           command->arguments.pid.kd);
       taskEXIT_CRITICAL();
-      WritePidReport(accepted);
+      SendPidParameterReport(accepted);
       break;
     }
     case CONSOLE_COMMAND_PID_TARGET:
-      if (SubmitCommand(command->arguments.target.left,
-                        command->arguments.target.right,
-                        COMMAND_SOURCE_CONSOLE, now_ms, false, 0U)) {
+      if (SubmitMotionCommand(command->arguments.target.left,
+                              command->arguments.target.right,
+                              COMMAND_SOURCE_CONSOLE, now_ms, false, 0U)) {
         (void)StartControl();
       }
       break;
@@ -427,16 +545,16 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       break;
     case CONSOLE_COMMAND_ENCODER_ZERO:
       (void)snprintf(response, sizeof(response), "ENCODER_CAL: %s\r\n",
-                     ResetOdometry()
+                     ResetWheelOdometry()
                          ? "RESET"
                          : "REJECTED, stop motor first");
       (void)BspUart_WriteString(response);
       break;
     case CONSOLE_COMMAND_ENCODER_RESULT:
-      WriteEncoderResult();
+      SendEncoderResult();
       break;
     case CONSOLE_COMMAND_OTA_UART:
-      if (PrepareOta()) {
+      if (AcquireOtaMaintenanceLock()) {
         static const char ready[] =
             "OTA_UART: READY, binary mode\r\n";
 
@@ -450,23 +568,23 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       }
       break;
     case CONSOLE_COMMAND_QSPI_TEST:
-      if (!PrepareTargetTest() ||
+      if (!AcquireTargetTestLock() ||
           !QspiTargetTest_Start()) {
         taskENTER_CRITICAL();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
         taskEXIT_CRITICAL();
-        WriteConsoleHelp();
+        SendConsoleHelp();
       } else {
         DiagnosticReport_RequestQspiTest();
       }
       break;
     case CONSOLE_COMMAND_IWDG_RESET:
-      if (!PrepareTargetTest() ||
+      if (!AcquireTargetTestLock() ||
           !IwdgTargetTest_Start()) {
         taskENTER_CRITICAL();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
         taskEXIT_CRITICAL();
-        WriteConsoleHelp();
+        SendConsoleHelp();
       } else {
         DiagnosticReport_RequestIwdgArmed();
       }
@@ -495,7 +613,7 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
         taskEXIT_CRITICAL();
         accepted = true;
       } else {
-        accepted = PrepareTargetTest() &&
+        accepted = AcquireTargetTestLock() &&
                    StartMotorTargetTest(action, now_ms);
         if (!accepted) {
           taskENTER_CRITICAL();
@@ -507,14 +625,14 @@ static void HandleConsoleCommand(const ConsoleCommand *command,
       break;
     }
     case CONSOLE_COMMAND_HELP:
-      WriteConsoleHelp();
+      SendConsoleHelp();
       break;
     default:
       break;
   }
 }
 
-static void WritePidReport(bool accepted)
+static void SendPidParameterReport(bool accepted)
 {
   char response[160];
   int length;
@@ -545,7 +663,7 @@ static void WritePidReport(bool accepted)
   }
 }
 
-static void WriteEncoderResult(void)
+static void SendEncoderResult(void)
 {
   OdometrySnapshot snapshot;
   char response[96];
@@ -563,7 +681,7 @@ static void WriteEncoderResult(void)
   }
 }
 
-static void WriteCanDiagnostics(void)
+static void SendCanDiagnostics(void)
 {
   CanTransportDiagnostics diagnostics;
   char response[320];
@@ -600,7 +718,7 @@ static void WriteCanDiagnostics(void)
   }
 }
 
-static void WriteConsoleHelp(void)
+static void SendConsoleHelp(void)
 {
   size_t length;
   const char *text = Console_GetHelpText(&length);
@@ -643,7 +761,7 @@ static void ReleaseMotionOwner(void)
   }
 }
 
-void ChassisApp_RunControlTick(uint32_t notification_count)
+void ChassisApp_RunControlCycle(uint32_t notification_count)
 {
   CommandManagerCommand command;
   int32_t left_delta;
@@ -665,7 +783,7 @@ void ChassisApp_RunControlTick(uint32_t notification_count)
     if (missed_ticks > MOTOR_CONTROL_MAX_MISSED_TICKS ||
         consecutive_control_overruns >=
             MOTOR_CONTROL_MAX_CONSECUTIVE_OVERRUNS) {
-      LatchInternalFault(CHASSIS_FAULT_CONTROL_OVERRUN);
+    LatchChassisInternalFault(CHASSIS_FAULT_CONTROL_OVERRUN);
       return;
     }
   } else {
@@ -676,7 +794,7 @@ void ChassisApp_RunControlTick(uint32_t notification_count)
   Odometry_Update(left_delta, right_delta);
   left_measurement = left_delta / (int32_t)notification_count;
   right_measurement = right_delta / (int32_t)notification_count;
-  ApplyPendingParameters();
+  ApplyPendingControlParameters();
   if (SafetyManager_IsEmergencyStopLatched()) {
     taskENTER_CRITICAL();
     CommandManager_ClearCommand();
@@ -722,7 +840,7 @@ void ChassisApp_RunControlTick(uint32_t notification_count)
 
   if (!WheelController_Update(command.left_target, command.right_target,
                               left_measurement, right_measurement)) {
-    LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+    LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
   }
 }
 
@@ -742,7 +860,7 @@ static bool StartMotorTargetTest(MotorTargetTestAction action,
   return true;
 }
 
-static bool PrepareTargetTest(void)
+static bool AcquireTargetTestLock(void)
 {
   MotorTargetTestSnapshot motor_test;
 
@@ -771,7 +889,7 @@ static bool PrepareTargetTest(void)
   return acquired;
 }
 
-static bool PrepareOta(void)
+static bool AcquireOtaMaintenanceLock(void)
 {
   MotorTargetTestSnapshot motor_test;
 
@@ -801,14 +919,14 @@ static bool PrepareOta(void)
   return acquired;
 }
 
-static void ReleaseOta(void)
+static void ReleaseOtaMaintenanceLock(void)
 {
   taskENTER_CRITICAL();
   CommandManager_Release(COMMAND_SOURCE_OTA);
   taskEXIT_CRITICAL();
 }
 
-static void RunOtaTransports(uint32_t now_ms)
+static void ProcessOtaTransportCycle(uint32_t now_ms)
 {
   OtaMessage message;
   bool begin_allowed;
@@ -821,7 +939,7 @@ static void RunOtaTransports(uint32_t now_ms)
     prepared_here = false;
     if (message.type == OTA_MESSAGE_BEGIN && !OtaSession_IsActive() &&
         CommandManager_GetOwner() != COMMAND_SOURCE_OTA) {
-      prepared_here = PrepareOta();
+      prepared_here = AcquireOtaMaintenanceLock();
     }
     begin_allowed = CommandManager_GetOwner() == COMMAND_SOURCE_OTA;
     if (message.type == OTA_MESSAGE_BEGIN &&
@@ -836,7 +954,7 @@ static void RunOtaTransports(uint32_t now_ms)
       OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
     }
     if (prepared_here && !OtaSession_IsActive()) {
-      ReleaseOta();
+      ReleaseOtaMaintenanceLock();
     }
   }
 
@@ -868,7 +986,7 @@ static void RunOtaTransports(uint32_t now_ms)
       OtaUartTransport_Disable();
       OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
     }
-    ReleaseOta();
+    ReleaseOtaMaintenanceLock();
     ota_terminal_cleaned = true;
   }
 
@@ -878,13 +996,13 @@ static void RunOtaTransports(uint32_t now_ms)
           OtaSession_IsActive(), ota_response_waiting)) {
     OtaUartTransport_Disable();
     OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
-    ReleaseOta();
+    ReleaseOtaMaintenanceLock();
     ota_terminal_cleaned = true;
     (void)BspUart_WriteString("OTA_UART: TIMEOUT, text mode\r\n");
   }
 }
 
-static void ReleaseCompletedTargetTest(void)
+static void ReleaseFinishedTargetTestLock(void)
 {
   MotorTargetTestSnapshot motor_test;
 
@@ -902,7 +1020,7 @@ static void ReleaseCompletedTargetTest(void)
   taskEXIT_CRITICAL();
 }
 
-static void LatchInternalFault(uint32_t fault)
+static void LatchChassisInternalFault(uint32_t fault)
 {
   uint32_t primask;
 
@@ -916,7 +1034,7 @@ static void LatchInternalFault(uint32_t fault)
   __set_PRIMASK(primask);
 }
 
-static void ApplyPendingParameters(void)
+static void ApplyPendingControlParameters(void)
 {
   ParameterSnapshot parameters;
 
@@ -935,7 +1053,7 @@ static void ApplyPendingParameters(void)
       parameters.right_pid.ki, parameters.right_pid.kd);
 }
 
-static bool ResetOdometry(void)
+static bool ResetWheelOdometry(void)
 {
   if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED) {
     return false;
@@ -947,9 +1065,9 @@ static bool ResetOdometry(void)
   return true;
 }
 
-static bool SubmitCommand(int32_t left_target, int32_t right_target,
-                          CommandSource source, uint32_t now_ms,
-                          bool has_sequence, uint8_t sequence)
+static bool SubmitMotionCommand(int32_t left_target, int32_t right_target,
+                                CommandSource source, uint32_t now_ms,
+                                bool has_sequence, uint8_t sequence)
 {
   bool accepted;
   uint32_t primask;
@@ -971,7 +1089,7 @@ static bool SubmitCommand(int32_t left_target, int32_t right_target,
 
 void ChassisApp_FatalError(void)
 {
-  LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+  LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
 }
 
 bool ChassisApp_ClearEmergencyStop(void)

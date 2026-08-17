@@ -33,7 +33,7 @@
 | 急停 | `HARDWARE PASS` | PD2 触发故障并清零 PWM |
 | IWDG 受控复位 | `HARDWARE PASS` | 复位后报告测试通过 |
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
-| 低速 PID 闭环 | `NOT VERIFIED` | 尚无最终稳定性验收记录 |
+| 低速 PID 闭环 | `DEFERRED` | PID/100 Hz 控制和调参入口已实现；方向、停车和稳定性实物验收后置 |
 | FreeRTOS 阶段 4 实物回归 | `NOT VERIFIED` | 代码和构建完成，未重复执行硬件回归 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
@@ -255,6 +255,59 @@ Application `.isr_vector` 位于 `0x08008000`，Bootloader 和 provisioner `.isr
 `0x08000000`。同轮 OTA Python 9 项测试全部通过。三个 BIN 均与已经生成或上板验证的基线
 逐哈希一致，因此不需要为 CMake 构建重复烧录同一字节产物。
 
+## 分阶段路线阶段 1a：FreeRTOS 运行基础（四任务迁移前，2026-08-17）
+
+在保留两任务基线和既有电机/安全路径的前提下，新增双缓冲 `SystemStatusSnapshot`，统一记录
+板级、传感器、通信、供电、RTC、OTA 基础状态，以及任务 uptime、实际/期望周期、超时、运行
+次数、运行状态、heartbeat age、栈余量和 RCC 复位原因；`status` 与 LCD 当前页读取同一快照。
+四任务目标模型已写入 `architecture.md`，该轮记录的是迁移前快照基础。该结果只证明代码构建和链接，
+不代表新增运行字段已完成目标板实物验收。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Application Debug | 196660 | 120 | 43112 | `BUILD PASS`，CMake/Ninja，GNU Arm Embedded 14.3.rel1 |
+| Application Release | 187948 | 120 | 43104 | `BUILD PASS`，CMake/Ninja，GNU Arm Embedded 14.3.rel1 |
+
+执行命令：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+git diff --check
+```
+
+本阶段未执行目标板烧录或 FreeRTOS 运行字段实物验证，保持 `NOT VERIFIED`。在该轮记录时四任务
+拆分、正式 UART `OK/ERROR`、`LOG`/`TEL` 和 LCD 四页仍未实施；不得用该轮构建结果替代后续阶段
+的验证。
+
+## 分阶段路线阶段 1b：四任务调度迁移（2026-08-17）
+
+在保留控制任务 100 Hz 通知、OTA 维护锁和电机安全路径的前提下，完成四任务实际迁移：
+`service_task` 负责 UART/CAN/Console/OTA/遥测，`diagnostics_task` 负责 RTC、ADC、电源、
+IMU、SR501 和双缓冲快照，`display_task` 负责按键和 LCD。四个任务均纳入周期、超时、运行
+状态、运行次数、栈余量和 heartbeat 诊断；关键任务健康仍是 IWDG 刷新条件。该结果只证明代码
+构建和链接，不代表目标板运行字段或显示行为已完成实物验收。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Application Debug | 198048 | 120 | 48736 | `BUILD PASS`，CMake/Ninja，GNU Arm Embedded 14.3.rel1 |
+| Application Release | 189216 | 120 | 48728 | `BUILD PASS`，CMake/Ninja，GNU Arm Embedded 14.3.rel1 |
+
+执行命令：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+git diff --check
+```
+
+本阶段未执行目标板烧录。正式 UART `OK/ERROR`、`LOG`/`TEL` emitter 和 LCD 四页仍未实施，
+ICM45686 多传感器时间轴、Kalman 以及 SR501 高电平事件验证继续按路线后置。
+
 ## CubeIDE 构建与烧录
 
 1. 以仓库 `firmware/` 为工作区，分别导入 `application/stm32g474/` 和
@@ -341,7 +394,7 @@ telemetry off
 - 先调 `kp`，再增加少量 `ki`，最后仅在确有必要时加入 `kd`。
 - `telemetry vofa` 以 10 ms 周期输出左右目标、增量、RPM x10、PWM、电压、状态和故障；
   出现异常立即执行 `pid stop`。
-- 未完成正反向、左右轮和安全停车实物验收前，低速 PID 保持 `NOT VERIFIED`。
+- 正反向、左右轮和安全停车实物验收按当前计划后置，低速 PID 标记为 `DEFERRED`。
 
 ## CAN FD 联调
 

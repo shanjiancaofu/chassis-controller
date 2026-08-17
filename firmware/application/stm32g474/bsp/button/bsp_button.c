@@ -60,7 +60,8 @@ void BspButton_Run(uint32_t now_ms)
       button->debounce_pending = false;
       if (HAL_GPIO_ReadPin(button->port, button->pin) == GPIO_PIN_RESET) {
         pressed_events |= 1UL << index;
-        ++pressed_counts[index];
+        (void)__atomic_fetch_add(&pressed_counts[index], 1U,
+                                 __ATOMIC_RELAXED);
       }
     }
   }
@@ -90,6 +91,7 @@ void BspButton_GetSnapshot(BspButtonSnapshot *snapshot)
     snapshot->pressed[index] =
         HAL_GPIO_ReadPin(buttons[index].port, buttons[index].pin) ==
         GPIO_PIN_RESET;
-    snapshot->pressed_count[index] = pressed_counts[index];
+    snapshot->pressed_count[index] =
+        __atomic_load_n(&pressed_counts[index], __ATOMIC_RELAXED);
   }
 }

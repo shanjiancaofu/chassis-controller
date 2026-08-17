@@ -128,7 +128,12 @@ void MX_FREERTOS_Init(void) {
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  if (!RtosApp_CreateControlTask()) {
+  if (defaultTaskHandle == NULL ||
+      osThreadSetPriority(defaultTaskHandle,
+                          (osPriority_t)(configMAX_PRIORITIES - 4U)) != osOK) {
+    Error_Handler();
+  }
+  if (!RtosApp_CreateTasks()) {
     Error_Handler();
   }
   /* USER CODE END RTOS_THREADS */
@@ -149,7 +154,7 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
-  RtosApp_Run();
+  RtosApp_ServiceTaskMain(argument);
   /* USER CODE END StartDefaultTask */
 }
 
@@ -157,4 +162,3 @@ void StartDefaultTask(void *argument)
 /* USER CODE BEGIN Application */
 
 /* USER CODE END Application */
-

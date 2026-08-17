@@ -12,6 +12,7 @@
 | 修改硬件、引脚或外设 | `hardware.md` | 当前 `.ioc`、`verification.md` |
 | 修改 Bootloader、OTA 或 QSPI | `bootloader_and_ota.md` | `protocol/ota_canfd_protocol.md`、`verification.md` |
 | 修改 CAN FD 线协议 | `protocol/canfd_protocol.md` | `protocol/ota_canfd_protocol.md` |
+| 修改 UART 文本消息 | `../protocol/uart_message_protocol.md` | `roadmap.md`、`verification.md` |
 | 构建、烧录或板上验收 | `verification.md` | `_output/README.md` |
 | CMake/Ninja 构建 | `cmake_build.md` | `verification.md` |
 | 规划后续工作 | `roadmap.md` | `current_status.md` |

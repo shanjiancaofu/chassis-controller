@@ -1,5 +1,7 @@
 #include "rtos/rtos_app.h"
 
+#include <stddef.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -8,55 +10,272 @@
 #include "tim.h"
 
 #define CONTROL_TASK_STACK_DEPTH 512U
+#define DIAGNOSTICS_TASK_STACK_DEPTH 768U
+#define DISPLAY_TASK_STACK_DEPTH 512U
+
 #define CONTROL_TASK_PRIORITY (configMAX_PRIORITIES - 2U)
-#define TASK_HEALTH_TIMEOUT_MS 50U
+#define SERVICE_TASK_PRIORITY (configMAX_PRIORITIES - 4U)
+#define DIAGNOSTICS_TASK_PRIORITY (configMAX_PRIORITIES - 5U)
+#define DISPLAY_TASK_PRIORITY (configMAX_PRIORITIES - 6U)
+
+#define SERVICE_TASK_EXPECTED_PERIOD_MS 1U
+#define CONTROL_TASK_EXPECTED_PERIOD_MS 10U
+#define DIAGNOSTICS_TASK_EXPECTED_PERIOD_MS 100U
+#define DISPLAY_TASK_EXPECTED_PERIOD_MS 20U
+
+#define SERVICE_TASK_HEALTH_TIMEOUT_MS 200U
+#define CONTROL_TASK_HEALTH_TIMEOUT_MS 50U
+#define DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS 500U
+#define DISPLAY_TASK_HEALTH_TIMEOUT_MS 2000U
 
 static StaticTask_t control_task_buffer;
 static StackType_t control_task_stack[CONTROL_TASK_STACK_DEPTH];
+static StaticTask_t diagnostics_task_buffer;
+static StackType_t diagnostics_task_stack[DIAGNOSTICS_TASK_STACK_DEPTH];
+static StaticTask_t display_task_buffer;
+static StackType_t display_task_stack[DISPLAY_TASK_STACK_DEPTH];
+
+static TaskHandle_t service_task_handle;
 static TaskHandle_t control_task_handle;
-static volatile TickType_t application_task_heartbeat;
+static TaskHandle_t diagnostics_task_handle;
+static TaskHandle_t display_task_handle;
+static volatile bool service_task_started;
+static volatile bool control_task_started;
+static volatile bool diagnostics_task_started;
+static volatile bool display_task_started;
+static volatile TickType_t service_task_heartbeat;
 static volatile TickType_t control_task_heartbeat;
+static volatile TickType_t diagnostics_task_heartbeat;
+static volatile TickType_t display_task_heartbeat;
+static volatile TickType_t service_period_ticks;
+static volatile TickType_t control_period_ticks;
+static volatile TickType_t diagnostics_period_ticks;
+static volatile TickType_t display_period_ticks;
+static volatile TickType_t last_service_run_tick;
+static volatile TickType_t last_control_run_tick;
+static volatile TickType_t last_diagnostics_run_tick;
+static volatile TickType_t last_display_run_tick;
+static volatile uint32_t service_run_count;
+static volatile uint32_t control_run_count;
+static volatile uint32_t diagnostics_run_count;
+static volatile uint32_t display_run_count;
 
-static void ControlTaskMain(void* argument);
+static void RtosApp_ControlTaskMain(void *argument);
+static uint32_t TicksToMilliseconds(TickType_t ticks);
+static RtosAppTaskState GetTaskHealthState(bool started, TickType_t age,
+                                           TickType_t timeout);
+static void RecordTaskActivity(volatile bool *started,
+                               volatile TickType_t *heartbeat,
+                               volatile TickType_t *last_run,
+                               volatile uint32_t *run_count,
+                               volatile TickType_t *period);
 
-bool RtosApp_CreateControlTask(void)
+bool RtosApp_CreateTasks(void)
 {
-  if (control_task_handle != NULL) {
+  const TickType_t now = xTaskGetTickCount();
+
+  if (control_task_handle != NULL && diagnostics_task_handle != NULL &&
+      display_task_handle != NULL) {
     return true;
   }
 
   control_task_handle = xTaskCreateStatic(
-      ControlTaskMain, "control", CONTROL_TASK_STACK_DEPTH, NULL,
+      RtosApp_ControlTaskMain, "control", CONTROL_TASK_STACK_DEPTH, NULL,
       CONTROL_TASK_PRIORITY, control_task_stack, &control_task_buffer);
-  application_task_heartbeat = xTaskGetTickCount();
-  control_task_heartbeat = application_task_heartbeat;
-  return control_task_handle != NULL;
+  diagnostics_task_handle = xTaskCreateStatic(
+      RtosApp_DiagnosticsTaskMain, "diagnostics", DIAGNOSTICS_TASK_STACK_DEPTH,
+      NULL,
+      DIAGNOSTICS_TASK_PRIORITY, diagnostics_task_stack,
+      &diagnostics_task_buffer);
+  display_task_handle = xTaskCreateStatic(
+      RtosApp_DisplayTaskMain, "display", DISPLAY_TASK_STACK_DEPTH, NULL,
+      DISPLAY_TASK_PRIORITY, display_task_stack, &display_task_buffer);
+
+  service_task_heartbeat = now;
+  control_task_heartbeat = now;
+  diagnostics_task_heartbeat = now;
+  display_task_heartbeat = now;
+  service_task_started = false;
+  control_task_started = false;
+  diagnostics_task_started = false;
+  display_task_started = false;
+  service_period_ticks = 0U;
+  control_period_ticks = 0U;
+  diagnostics_period_ticks = 0U;
+  display_period_ticks = 0U;
+  last_service_run_tick = 0U;
+  last_control_run_tick = 0U;
+  last_diagnostics_run_tick = 0U;
+  last_display_run_tick = 0U;
+  service_run_count = 0U;
+  control_run_count = 0U;
+  diagnostics_run_count = 0U;
+  display_run_count = 0U;
+
+  return control_task_handle != NULL && diagnostics_task_handle != NULL &&
+         display_task_handle != NULL;
 }
 
-void RtosApp_Run(void)
+void RtosApp_ServiceTaskMain(void *argument)
 {
+  (void)argument;
   TickType_t last_wake_time = xTaskGetTickCount();
 
+  service_task_handle = xTaskGetCurrentTaskHandle();
+  __atomic_store_n(&service_task_started, true, __ATOMIC_RELEASE);
   for (;;) {
-    __atomic_store_n(&application_task_heartbeat, xTaskGetTickCount(),
-                     __ATOMIC_RELAXED);
-    ChassisApp_Run();
-    vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(1));
+    RecordTaskActivity(&service_task_started, &service_task_heartbeat,
+                       &last_service_run_tick, &service_run_count,
+                       &service_period_ticks);
+    ChassisApp_RunServiceCycle();
+    vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(1U));
+  }
+}
+
+void RtosApp_DiagnosticsTaskMain(void *argument)
+{
+  (void)argument;
+  TickType_t last_wake_time = xTaskGetTickCount();
+
+  __atomic_store_n(&diagnostics_task_started, true, __ATOMIC_RELEASE);
+  for (;;) {
+    RecordTaskActivity(&diagnostics_task_started, &diagnostics_task_heartbeat,
+                       &last_diagnostics_run_tick, &diagnostics_run_count,
+                       &diagnostics_period_ticks);
+    ChassisApp_RunDiagnosticsCycle();
+    vTaskDelayUntil(&last_wake_time,
+                    pdMS_TO_TICKS(DIAGNOSTICS_TASK_EXPECTED_PERIOD_MS));
+  }
+}
+
+void RtosApp_DisplayTaskMain(void *argument)
+{
+  (void)argument;
+  TickType_t last_wake_time = xTaskGetTickCount();
+
+  __atomic_store_n(&display_task_started, true, __ATOMIC_RELEASE);
+  for (;;) {
+    RecordTaskActivity(&display_task_started, &display_task_heartbeat,
+                       &last_display_run_tick, &display_run_count,
+                       &display_period_ticks);
+    ChassisApp_RunDisplayCycle();
+    vTaskDelayUntil(&last_wake_time,
+                    pdMS_TO_TICKS(DISPLAY_TASK_EXPECTED_PERIOD_MS));
   }
 }
 
 bool RtosApp_AreCriticalTasksHealthy(void)
 {
   const TickType_t now = xTaskGetTickCount();
-  const TickType_t timeout = pdMS_TO_TICKS(TASK_HEALTH_TIMEOUT_MS);
 
-  return now - __atomic_load_n(&application_task_heartbeat,
-                               __ATOMIC_RELAXED) <= timeout &&
-         now - __atomic_load_n(&control_task_heartbeat,
-                               __ATOMIC_RELAXED) <= timeout;
+  return __atomic_load_n(&service_task_started, __ATOMIC_ACQUIRE) &&
+         __atomic_load_n(&control_task_started, __ATOMIC_ACQUIRE) &&
+         __atomic_load_n(&diagnostics_task_started, __ATOMIC_ACQUIRE) &&
+         GetTaskHealthState(
+             true,
+             now - __atomic_load_n(&service_task_heartbeat, __ATOMIC_RELAXED),
+             pdMS_TO_TICKS(SERVICE_TASK_HEALTH_TIMEOUT_MS)) ==
+             RTOS_APP_TASK_RUNNING &&
+         GetTaskHealthState(
+             true,
+             now - __atomic_load_n(&control_task_heartbeat, __ATOMIC_RELAXED),
+             pdMS_TO_TICKS(CONTROL_TASK_HEALTH_TIMEOUT_MS)) ==
+             RTOS_APP_TASK_RUNNING &&
+         GetTaskHealthState(
+             true,
+             now - __atomic_load_n(&diagnostics_task_heartbeat,
+                                   __ATOMIC_RELAXED),
+             pdMS_TO_TICKS(DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS)) ==
+             RTOS_APP_TASK_RUNNING;
 }
 
-void RtosApp_NotifyControlFromIsr(void)
+void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
+{
+  TickType_t now;
+  TickType_t service_age;
+  TickType_t control_age;
+  TickType_t diagnostics_age;
+  TickType_t display_age;
+
+  if (snapshot == NULL) {
+    return;
+  }
+
+  now = xTaskGetTickCount();
+  service_age = now - __atomic_load_n(&service_task_heartbeat, __ATOMIC_RELAXED);
+  control_age = now - __atomic_load_n(&control_task_heartbeat, __ATOMIC_RELAXED);
+  diagnostics_age =
+      now - __atomic_load_n(&diagnostics_task_heartbeat, __ATOMIC_RELAXED);
+  display_age = now - __atomic_load_n(&display_task_heartbeat, __ATOMIC_RELAXED);
+
+  snapshot->uptime_ms = TicksToMilliseconds(now);
+  snapshot->service_heartbeat_age_ms = TicksToMilliseconds(service_age);
+  snapshot->control_heartbeat_age_ms = TicksToMilliseconds(control_age);
+  snapshot->diagnostics_heartbeat_age_ms = TicksToMilliseconds(diagnostics_age);
+  snapshot->display_heartbeat_age_ms = TicksToMilliseconds(display_age);
+  snapshot->service_period_ms = TicksToMilliseconds(
+      __atomic_load_n(&service_period_ticks, __ATOMIC_RELAXED));
+  snapshot->control_period_ms = TicksToMilliseconds(
+      __atomic_load_n(&control_period_ticks, __ATOMIC_RELAXED));
+  snapshot->diagnostics_period_ms = TicksToMilliseconds(
+      __atomic_load_n(&diagnostics_period_ticks, __ATOMIC_RELAXED));
+  snapshot->display_period_ms = TicksToMilliseconds(
+      __atomic_load_n(&display_period_ticks, __ATOMIC_RELAXED));
+  snapshot->service_expected_period_ms = 1U;
+  snapshot->control_expected_period_ms = 10U;
+  snapshot->diagnostics_expected_period_ms = 100U;
+  snapshot->display_expected_period_ms = 20U;
+  snapshot->service_timeout_ms = SERVICE_TASK_HEALTH_TIMEOUT_MS;
+  snapshot->control_timeout_ms = CONTROL_TASK_HEALTH_TIMEOUT_MS;
+  snapshot->diagnostics_timeout_ms = DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS;
+  snapshot->display_timeout_ms = DISPLAY_TASK_HEALTH_TIMEOUT_MS;
+  snapshot->service_run_count = __atomic_load_n(&service_run_count, __ATOMIC_RELAXED);
+  snapshot->control_run_count = __atomic_load_n(&control_run_count, __ATOMIC_RELAXED);
+  snapshot->diagnostics_run_count =
+      __atomic_load_n(&diagnostics_run_count, __ATOMIC_RELAXED);
+  snapshot->display_run_count = __atomic_load_n(&display_run_count, __ATOMIC_RELAXED);
+  snapshot->service_stack_high_water_words =
+      service_task_handle != NULL
+          ? (uint32_t)uxTaskGetStackHighWaterMark(service_task_handle)
+          : 0U;
+  snapshot->control_stack_high_water_words =
+      control_task_handle != NULL
+          ? (uint32_t)uxTaskGetStackHighWaterMark(control_task_handle)
+          : 0U;
+  snapshot->diagnostics_stack_high_water_words =
+      diagnostics_task_handle != NULL
+          ? (uint32_t)uxTaskGetStackHighWaterMark(diagnostics_task_handle)
+          : 0U;
+  snapshot->display_stack_high_water_words =
+      display_task_handle != NULL
+          ? (uint32_t)uxTaskGetStackHighWaterMark(display_task_handle)
+          : 0U;
+  snapshot->service_task_state = GetTaskHealthState(
+      __atomic_load_n(&service_task_started, __ATOMIC_ACQUIRE), service_age,
+      pdMS_TO_TICKS(SERVICE_TASK_HEALTH_TIMEOUT_MS));
+  snapshot->control_task_state = GetTaskHealthState(
+      __atomic_load_n(&control_task_started, __ATOMIC_ACQUIRE), control_age,
+      pdMS_TO_TICKS(CONTROL_TASK_HEALTH_TIMEOUT_MS));
+  snapshot->diagnostics_task_state = GetTaskHealthState(
+      __atomic_load_n(&diagnostics_task_started, __ATOMIC_ACQUIRE),
+      diagnostics_age, pdMS_TO_TICKS(DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS));
+  snapshot->display_task_state = GetTaskHealthState(
+      __atomic_load_n(&display_task_started, __ATOMIC_ACQUIRE), display_age,
+      pdMS_TO_TICKS(DISPLAY_TASK_HEALTH_TIMEOUT_MS));
+  snapshot->service_task_healthy =
+      snapshot->service_task_state == RTOS_APP_TASK_RUNNING;
+  snapshot->control_task_healthy =
+      snapshot->control_task_state == RTOS_APP_TASK_RUNNING;
+  snapshot->diagnostics_task_healthy =
+      snapshot->diagnostics_task_state == RTOS_APP_TASK_RUNNING;
+  snapshot->display_task_healthy =
+      snapshot->display_task_state == RTOS_APP_TASK_RUNNING;
+  snapshot->critical_tasks_healthy =
+      snapshot->service_task_healthy && snapshot->control_task_healthy &&
+      snapshot->diagnostics_task_healthy;
+}
+
+void RtosApp_NotifyControlTaskFromIsr(void)
 {
   BaseType_t higher_priority_task_woken = pdFALSE;
 
@@ -68,7 +287,7 @@ void RtosApp_NotifyControlFromIsr(void)
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
-static void ControlTaskMain(void* argument)
+static void RtosApp_ControlTaskMain(void *argument)
 {
   (void)argument;
 
@@ -76,11 +295,49 @@ static void ControlTaskMain(void* argument)
     Error_Handler();
   }
 
+  __atomic_store_n(&control_task_started, true, __ATOMIC_RELEASE);
   for (;;) {
-    const uint32_t notification_count = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    const uint32_t notification_count =
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-    ChassisApp_RunControlTick(notification_count);
-    __atomic_store_n(&control_task_heartbeat, xTaskGetTickCount(),
-                     __ATOMIC_RELAXED);
+    RecordTaskActivity(&control_task_started, &control_task_heartbeat,
+                       &last_control_run_tick, &control_run_count,
+                       &control_period_ticks);
+    ChassisApp_RunControlCycle(notification_count);
   }
+}
+
+static uint32_t TicksToMilliseconds(TickType_t ticks)
+{
+  return (uint32_t)(((uint64_t)ticks * 1000ULL) /
+                    (uint64_t)configTICK_RATE_HZ);
+}
+
+static RtosAppTaskState GetTaskHealthState(bool started, TickType_t age,
+                                           TickType_t timeout)
+{
+  if (!started) {
+    return RTOS_APP_TASK_NOT_STARTED;
+  }
+  return age > timeout ? RTOS_APP_TASK_TIMEOUT : RTOS_APP_TASK_RUNNING;
+}
+
+static void RecordTaskActivity(volatile bool *started,
+                               volatile TickType_t *heartbeat,
+                               volatile TickType_t *last_run,
+                               volatile uint32_t *run_count,
+                               volatile TickType_t *period)
+{
+  const TickType_t now = xTaskGetTickCount();
+  const uint32_t previous_count =
+      __atomic_load_n(run_count, __ATOMIC_RELAXED);
+  const TickType_t previous = __atomic_load_n(last_run, __ATOMIC_RELAXED);
+
+  if (previous_count > 0U) {
+    __atomic_store_n(period, now - previous, __ATOMIC_RELAXED);
+  }
+  __atomic_store_n(last_run, now, __ATOMIC_RELAXED);
+  (void)__atomic_fetch_add(run_count, 1U, __ATOMIC_RELAXED);
+  __atomic_store_n(heartbeat, now, __ATOMIC_RELAXED);
+  __atomic_store_n(started, true, __ATOMIC_RELEASE);
 }

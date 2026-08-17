@@ -9,6 +9,7 @@ typedef struct {
   bool qspi_id_valid;
   uint8_t qspi_jedec_id[3];
   uint32_t qspi_capacity_bytes;
+  uint32_t reset_cause_flags;
   bool iwdg_reset_test_passed;
   bool button_test_passed;
   uint32_t control_overrun_count;

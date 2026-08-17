@@ -11,7 +11,9 @@
   已上板冻结 factory 基线，历史 b13 和当前产物不得覆盖该基线。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
-  均未观察到高电平，剩余实物排查已 `DEFERRED`。当前主线进入 PID，ICM45686 继续后置。
+  均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
+  调参已后置；当前代码主线已完成分阶段功能实施第 1 阶段：FreeRTOS 四任务和运行状态基础，
+  进入正式 UART 消息与 LCD 四页阶段。目标加减速限制、ICM45686、SR501 高电平闭环按路线后续实施。
 
 ## 当前实现
 
@@ -48,11 +50,18 @@
 - factory 工具默认必须同时生成内部组合 BIN 和 QSPI confirmed raw；只生成内部镜像必须显式
   使用 `--internal-only`，且不构成生产回滚基线。
 - Application 正常使用约 10 秒 IWDG，OTA 复位前切换约 30 秒；Bootloader 只刷新继承实例。
+- 当前代码已运行 `control_task`、`service_task`、`diagnostics_task`、`display_task` 四任务；
+  `SystemStatusSnapshot` 记录四个任务的周期、期望周期、超时、运行状态、运行次数、栈余量、
+  heartbeat age、uptime、RCC 复位原因，以及板级/传感器/通信/供电/RTC 状态。UART `status`
+  和 LCD 当前页读取同一快照；正式 `OK/ERROR/LOG/TEL` emitter 和 LCD 四页仍未实施。
 
 ## 已验证
 
-- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前 SR501 工作树构建通过：Application
-  Debug `text=194364 data=120 bss=42272`，Release `text=185948 data=120 bss=42264`。
+- 2026-08-17 分阶段路线阶段 1 已完成四任务迁移和 Application Debug/Release 的 CMake/Ninja
+  构建；统一快照和四任务诊断字段通过 GNU Arm Embedded 14.3.rel1 编译链接。最新构建结果和
+  运行字段实物验证状态见 `verification.md`；尚未烧录本轮产物。
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前四任务工作树构建通过：Application
+  Debug `text=198048 data=120 bss=48736`，Release `text=189216 data=120 bss=48728`。
   b16 Release BIN 为 186076 字节、payload CRC32 `0x995BF0B5`，OTA 包为 186140 字节；
   OTA Python 9 项通过。b16 已完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`。
   上板发现新增 SR501 行使 `status` 达到 1251 字节，超过原 UART 1200 字节消息限制；b16
@@ -110,15 +119,16 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 进入 PID 实物闭环主线，先确认速度单位、方向、心跳超时和停车语义。
-2. SR501 高电平/事件计数、CAN FD OTA、断电恢复、回滚和电气验收保留为后置回归，
-   不阻塞当前开发。
+1. 将本轮 Debug/Release 产物按既有流程烧录，确认四任务周期、栈余量、运行状态和复位原因
+   字段可读；不据此推断硬件通过。
+2. 实现正式 UART 消息格式和四页 LCD；ICM45686 时间轴/Kalman、SR501 收尾随后推进。
 
 当前路线：
 
 ```text
-OTA 实物验证 -> OTA V1 冻结 -> SR501 -> PID -> 左右轮标定/加减速
--> 里程计 -> 安全保护 -> Fault/Health/Reset 诊断 -> 正式 CAN FD 协议
+OTA 实物验证 -> OTA V1 冻结 -> FreeRTOS 快照 -> 四任务调度
+-> 正式 UART 消息 -> LCD 四页 -> ICM45686/Kalman -> SR501 UI/后置实物验证
+-> 里程计/安全保护 -> 目标加减速 -> 正式 CAN FD 协议
 ```
 
 ## 对话交接要求
