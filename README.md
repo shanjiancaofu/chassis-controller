@@ -8,13 +8,14 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 当前处于 OTA V1 主线收尾和 ICM45686 后置阶段。独立 Bootloader、Application 重定位、
 UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建。2026-08-13
-已写入并读回匹配的 b12/build22 factory 与 QSPI confirmed 基线，并确认 build22 启动 b12；
-当前工作树未来新 Application 产物应升到 b13，不得继续冒充 b12。普通按键/断电复位、零 PWM、
-UART/CAN FD OTA、断电恢复和回滚故障注入仍需分别验证。
+已写入并读回匹配的 b12/build22 factory 与 QSPI confirmed 基线。2026-08-17 已通过 UART OTA
+将 b13 安装、TRIAL 验证并提交为 confirmed；b13 在未连接 ICM45686 时正常启动，普通复位后
+保持稳定。OTA V1 代码基线据此冻结；断电启动、零 PWM、安装/回滚故障注入和 CAN FD OTA 均后置，不阻塞当前功能主线。
 最新摘要见
 [`docs/current_status.md`](docs/current_status.md)，完整证据见 `docs/verification.md`。
-当前不再扩展 OTA recovery；完成 b12/build22 主链和三个关键故障测试后冻结 OTA V1，随后
-进入 PID、轮组标定与加减速、里程计、安全保护、诊断和正式 CAN FD 底盘协议。
+当前不再扩展 OTA recovery；OTA V1 代码基线已冻结，当前加入 SR501 模块，随后进入 PID、
+轮组标定与加减速、里程计、安全保护、诊断和正式 CAN FD 底盘协议。后置 OTA 回归不阻塞
+功能开发。
 
 ## 目录
 

@@ -36,7 +36,7 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 
 ## 当前阶段：Bootloader 与 OTA
 
-状态：`IN PROGRESS`
+状态：`FROZEN`（2026-08-17，build22 + b13 UART/安装/TRIAL/CONFIRMED 主链；剩余硬件回归后置）
 
 已完成：
 
@@ -72,8 +72,8 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - 已提供 UART 和 SocketCAN CAN FD stop-and-wait 主机发送工具
 - 已生成并校验 Bootloader + relocated Application 首次组合烧录产物
 - 已使用 DFU 烧录正式组合镜像，验证 Bootloader 普通启动可跳转到 relocated Application
-- 已使用 UART 完成 build6 镜像的真实传输、QSPI 暂存、候选安装、TRIAL 启动和
-  CONFIRMED 提交，UART OTA 主链达到 `HARDWARE PASS`
+- 已使用 UART 完成 build6 历史镜像以及 2026-08-17 b12 -> b13 的真实传输、QSPI 暂存、
+  候选安装、TRIAL 启动和 CONFIRMED 提交；build22 UART OTA 主链达到 `HARDWARE PASS`
 - Bootloader 固定使用 16 MHz HSI；不主动启动或重配置 IWDG，只刷新 Application 继承的实例；
   Application 正常周期约 10 秒，OTA 复位前约 30 秒，Recovery 停止刷新
 - 运动命令与维护 owner 已拆分；`pid stop` 不能释放 OTA 锁，Console 目标持续到明确停止，
@@ -105,20 +105,15 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，
   从而保留 CubeMX 工程结构但不在 Bootloader 主动启动或重配置 IWDG
 
-OTA V1 最终验收按以下顺序执行，不再继续扩展 recovery 边角：
+OTA V1 代码基线已冻结，不再继续扩展 recovery 边角。冻结依据是 build22 + b13 已完成
+UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下项目保留为后置回归，
+不阻塞当前功能主线，也不得在未实测时标记为通过：
 
-1. 使用 b12/build22 验证普通启动和上电 PWM 为零。
-2. 完成 UART OTA 和 Jetson SocketCAN CAN FD OTA 闭环。
-3. 只做三个关键故障测试：Application 安装过程中断电、TRIAL 不确认自动回滚、rollback
-   安装过程中断电。
-4. 全部通过后冻结 OTA V1。之后只修实测发现的 P0/P1，不主动增加 OTA 功能。
-
-OTA V1 冻结门槛：
-
-```text
-普通启动 + 零 PWM + UART OTA + CAN FD OTA
-+ 安装断电恢复 + TRIAL 未确认回滚 + rollback 断电恢复
-```
+- confirmed b16 断电启动和四路 PWM 电气零输出
+- Application 安装过程中断电恢复
+- TRIAL 不确认自动回滚
+- rollback 安装过程中断电恢复
+- Jetson SocketCAN CAN FD OTA（启用 Jetson OTA 前必须完成）
 
 ## 后续阶段
 
@@ -126,12 +121,14 @@ OTA V1 冻结门槛：
 
 OTA V1 冻结后立即进入底盘功能，顺序如下：
 
-1. PID 实物闭环调通；先固定速度单位、正负方向、心跳超时和停车语义。
-2. 左右轮标定和加减速限制。
-3. 里程计累计、速度和转角验证。
-4. 堵转、编码器异常和电压保护。
-5. Fault、Health 和 Reset 诊断闭环。
-6. 在已验证行为基础上完善并冻结正式 CAN FD 底盘协议。
+1. SR501 接线、GPIO/BSP 和诊断已 `IMPLEMENTED`；b16 已完成 UART OTA/确认、60 秒预热和
+   低电平零误计数。模块指示灯和 OUT 均未观察到高电平，剩余实物验证 `DEFERRED`。
+2. 当前进入 PID 实物闭环调通；先固定速度单位、正负方向、心跳超时和停车语义。
+3. 左右轮标定和加减速限制。
+4. 里程计累计、速度和转角验证。
+5. 堵转、编码器异常和电压保护。
+6. Fault、Health 和 Reset 诊断闭环。
+7. 在已验证行为基础上完善并冻结正式 CAN FD 底盘协议。
 
 ### 发布安全
 

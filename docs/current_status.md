@@ -5,15 +5,23 @@
 
 ## 代码基线
 
-- Application：`0.1.0-b13`。
+- Application：`0.1.0-b16`。
 - Bootloader：`0.1.0 build22`。
-- 当前工作树已升到 Application `0.1.0-b13`；b12/build22 仍是已上板冻结产物，不得覆盖。
-- 当前阶段：ICM45686 已后置为 `DEFERRED`，不再阻塞 OTA V1 主线；当前默认不启动或轮询 ICM45686，IMU 代码保持现状，后续仅在硬件可接入时再单独验证。
+- 当前 SR501 工作树和板上 confirmed 镜像均为 Application `0.1.0-b16`；b12/build22 仍是
+  已上板冻结 factory 基线，历史 b13 和当前产物不得覆盖该基线。
+- 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
+  `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
+  均未观察到高电平，剩余实物排查已 `DEFERRED`。当前主线进入 PID，ICM45686 继续后置。
 
 ## 当前实现
 
-- Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）和两个预留按钮（PD3/PD4）配置；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()`、SPI3 DMA1 CH5/CH6 以及 EXTI1/3/4。
+- Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）、两个预留按钮（PD3/PD4）
+  和 SR501 输入（PD5）；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()`、SPI3 DMA1 CH5/CH6、
+  EXTI1/3/4，以及 PD5 普通输入和内部下拉初始化。
 - 已加入 `bsp/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
+- 已加入 `bsp/sr501` 轮询驱动。PD5 由 CubeMX 生成代码配置为内部下拉普通输入；驱动忽略 60 秒预热期，
+  使用 50 ms 稳定滤波，只统计 READY 后的稳定低到高事件，并通过 `status` 输出原始电平、
+  稳定运动状态、事件计数、最近事件时间和剩余预热时间。当前不绑定电机、安全、LCD 或业务。
 - ICM45686 已拆分为 HAL 无关的 `components/icm45686` 寄存器/FIFO 驱动、HAL 无关的
   `components/imu_fusion` 六轴融合组件，以及 `bsp/imu` STM32 HAL SPI3/DMA 适配层。
   当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、ODR/4 内部低通、FIFO watermark、
@@ -43,10 +51,16 @@
 
 ## 已验证
 
-- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前 Release clean build 通过：Application
-  `text=198060 data=120 bss=35232`，Bootloader `text=13480 data=48 bss=1656`，QSPI
-  provisioner `text=9272 data=12 bss=1644`。ICM45686 FIFO/MREG 和 IMU fusion 纯组件测试
-  均使用 MSVC `/W4 /WX` 编译并执行通过。
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前 SR501 工作树构建通过：Application
+  Debug `text=194364 data=120 bss=42272`，Release `text=185948 data=120 bss=42264`。
+  b16 Release BIN 为 186076 字节、payload CRC32 `0x995BF0B5`，OTA 包为 186140 字节；
+  OTA Python 9 项通过。b16 已完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`。
+  上板发现新增 SR501 行使 `status` 达到 1251 字节，超过原 UART 1200 字节消息限制；b16
+  将诊断缓冲和 UART 消息上限统一为 2048 字节并增加编译期约束，完整报告已实测恢复。
+  已完成实物闭环的较早 b13 Release 为 `text=185388 data=120 bss=34944`，对应 OTA payload
+  185516 字节、CRC32 `0x6FD23D35`；不得把当前新增 SR501 的构建视为同一上板产物。
+  Bootloader build22 和 QSPI provisioner 的既有构建结果保持有效。ICM45686 FIFO/MREG 和
+  IMU fusion 纯组件测试均使用 MSVC `/W4 /WX` 编译并执行通过。
 
 - 已写入目标板的 b12/build22 factory 产物尺寸仍为 Application `text=183492 data=96 bss=34224`、
   Bootloader `text=13400 data=48 bss=1656`；这是冻结产物证据，不等于当前工作树构建。
@@ -61,7 +75,13 @@
   已由 ARM GCC 验证共享结构体的逐字段 `offsetof` 静态断言。既有 factory、
   UART arm guard、Application metadata 和 Bootloader core 主机测试记录保持有效；本轮新增的
   rollback attempts=0/fatal 分类断言已通过目标 GCC `-Werror` 编译，尚未在宿主机执行。
-- 最近完成实物 UART OTA 闭环的是 Application b6 + Bootloader build15。
+- 2026-08-17 已使用 build22 从 confirmed b12 通过 UART OTA 安装 b13：发送工具完成
+  185580 字节传输并收到 `STAGED`，Bootloader 依次报告 `INSTALL VERIFIED`、
+  `TRIAL COMMITTED`、`TRIAL VERIFIED`，b13 健康窗口后报告 `OTA_CONFIRM: CONFIRMED`。
+- b13 在没有 ICM45686 的情况下正常启动，串口报告 `ICM45686: NOT_INITIALIZED`、
+  `LCD: READY`、`MOTOR: DISABLED`、`CONTROL_OVERRUN: count=0 missed=0`；confirmed 普通
+  复位后 metadata state 为 `0x5`，随后报告 `OTA_CONFIRM: NOT_REQUIRED`，未出现 critical
+  fault 或 IWDG 复位循环。
 - factory 普通启动和 UART `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` 已实物通过。
 - 已从冻结 Release ELF 生成匹配的 b12/build22 Application BIN、OTA、内部 factory BIN 和
   8 MiB QSPI confirmed raw；OTA Python 9 项重新通过。产物生成不代表已烧录或实物通过。
@@ -77,28 +97,28 @@
 
 - ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及FIFO恢复计数，但任何软件状态均不得据此标记硬件PASS。
 
-- b12/build22 普通按键/断电复位启动和上电四路 PWM 电气零输出。
-- b12/build22 UART OTA 与 CAN FD OTA。
-- Application 安装过程中断电恢复。
-- TRIAL 不确认后的自动回滚。
-- rollback 安装过程中断电恢复。
+- SR501 已按 5 V、共地、OUT 接 PD5 完成接线。b16 实测 `warmup_ms` 递减并在 60 秒后进入
+  `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
+  OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
+
+- confirmed b16 普通按键/断电复位启动和上电四路 PWM 电气零输出：`DEFERRED`。
+- CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
+- Application 安装过程中断电恢复、TRIAL 不确认自动回滚和 rollback 安装中断电：`DEFERRED`。
 
 confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不属于当前冻结门槛；仅在
 上述实测暴露 P0/P1 时处理。
 
 ## 下一步
 
-1. 先确认无 ICM45686 时 Application 仍能正常启动，不触发 critical fault / IWDG 复位。
-2. 完成普通按键/断电复位启动和四路 PWM 上电电气零输出验收。
-3. 完成 UART OTA 和 CAN FD OTA 实物验收。
-4. 只执行三个故障测试：Application 安装中断电、TRIAL 不确认自动回滚、rollback 安装中断电。
-5. 上述 OTA 项目通过后冻结 OTA V1；签名、防回滚和 Bootloader CAN Recovery 延后到 OTA V2。
+1. 进入 PID 实物闭环主线，先确认速度单位、方向、心跳超时和停车语义。
+2. SR501 高电平/事件计数、CAN FD OTA、断电恢复、回滚和电气验收保留为后置回归，
+   不阻塞当前开发。
 
 当前路线：
 
 ```text
-OTA 实物验证 -> OTA V1 冻结 -> PID -> 左右轮标定/加减速 -> 里程计
--> 安全保护 -> Fault/Health/Reset 诊断 -> 正式 CAN FD 协议
+OTA 实物验证 -> OTA V1 冻结 -> SR501 -> PID -> 左右轮标定/加减速
+-> 里程计 -> 安全保护 -> Fault/Health/Reset 诊断 -> 正式 CAN FD 协议
 ```
 
 ## 对话交接要求

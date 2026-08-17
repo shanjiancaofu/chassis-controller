@@ -67,6 +67,7 @@ set(APP_SOURCES
   bsp/power_monitor/bsp_power_sample.c
   bsp/qspi/bsp_qspi_flash.c
   bsp/reset/bsp_reset.c
+  bsp/sr501/bsp_sr501.c
   bsp/uart/uart_bsp.c
   communication/can_transport/can_transport.c
   communication/ota_transport/ota_can_transport.c

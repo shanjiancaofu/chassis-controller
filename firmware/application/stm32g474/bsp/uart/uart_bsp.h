@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define BSP_UART_MAX_WRITE_SIZE 2048U
+
 typedef struct {
   uint32_t rx_overflow_count;
   uint32_t rx_error_count;

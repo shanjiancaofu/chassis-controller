@@ -7,13 +7,12 @@
 #define UART_DMA_RX_BUFFER_SIZE 128U
 #define UART_RX_RING_SIZE 1024U
 #define UART_TX_QUEUE_DEPTH 8U
-#define UART_TX_MESSAGE_SIZE 1200U
 
 typedef struct {
   uint16_t length;
   uint32_t token;
   bool tracked;
-  uint8_t data[UART_TX_MESSAGE_SIZE];
+  uint8_t data[BSP_UART_MAX_WRITE_SIZE];
 } UartTxMessage;
 
 static uint8_t dma_rx_buffer[UART_DMA_RX_BUFFER_SIZE];
@@ -132,7 +131,7 @@ static bool QueueTransmit(const void *data, size_t length, bool tracked,
   uint8_t slot;
   uint32_t primask;
 
-  if (data == NULL || length == 0U || length > UART_TX_MESSAGE_SIZE) {
+  if (data == NULL || length == 0U || length > BSP_UART_MAX_WRITE_SIZE) {
     return false;
   }
 

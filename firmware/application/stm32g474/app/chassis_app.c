@@ -11,6 +11,7 @@
 #include "bsp/lcd/bsp_lcd.h"
 #include "bsp/motor/bsp_motor.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
+#include "bsp/sr501/bsp_sr501.h"
 #include "bsp/uart/uart_bsp.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
@@ -107,6 +108,7 @@ void ChassisApp_Init(void)
     Error_Handler();
   }
   BspButton_Init();
+  BspSr501_Init(HAL_GetTick());
 #if ENABLE_ICM45686
   BspIcm45686_Init(HAL_GetTick());
 #endif
@@ -150,6 +152,7 @@ void ChassisApp_Run(void)
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
 
   BspButton_Run(now_ms);
+  BspSr501_Run(now_ms);
 #if ENABLE_ICM45686
   BspIcm45686_Run(now_ms);
 #endif

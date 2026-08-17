@@ -113,6 +113,8 @@ void Error_Handler(void);
 #define BUTTON_2_Pin GPIO_PIN_4
 #define BUTTON_2_GPIO_Port GPIOD
 #define BUTTON_2_EXTI_IRQn EXTI4_IRQn
+#define SR501_OUT_Pin GPIO_PIN_5
+#define SR501_OUT_GPIO_Port GPIOD
 #define KEY_Pin GPIO_PIN_8
 #define KEY_GPIO_Port GPIOB
 #define KEY_EXTI_IRQn EXTI9_5_IRQn

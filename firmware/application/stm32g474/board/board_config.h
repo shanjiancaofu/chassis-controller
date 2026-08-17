@@ -29,6 +29,9 @@
 
 #define BOARD_IMU_SPI hspi3
 
+#define BOARD_SR501_GPIO_PORT SR501_OUT_GPIO_Port
+#define BOARD_SR501_GPIO_PIN SR501_OUT_Pin
+
 #define BOARD_QSPI hqspi1
 
 #endif

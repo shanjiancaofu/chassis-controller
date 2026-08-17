@@ -34,9 +34,8 @@ bootloader/boot-v0.1.0-b15.bin
 factory/factory-a6-b15.bin
 ```
 
-这些文件保留最近一次完整 factory/UART OTA 历史闭环，不代表当前源码。当前 b12/build22
-的匹配 factory 和 QSPI confirmed 基线已经上板，但普通复位、零 PWM、UART/CAN FD OTA
-及故障注入仍是独立验收项。
+这些文件保留较早的 factory/UART OTA 历史闭环，不代表当前源码。当前 b12/build22
+factory 和 QSPI confirmed 基线已经上板；2026-08-17 已从该基线通过 UART OTA 安装并确认 b13。
 
 当前冻结的 b12/build22 factory 产物：
 
@@ -51,8 +50,29 @@ factory/qspi-a12-confirmed.bin
 这些产物与当前含 ICM45686 和调试配置的工作树构建不同；重新发布前必须分配新 build 号，
 不得直接覆盖。2026-08-13 已通过 STM32 ROM DFU 和仓库
 `tools/qspi_factory_provisioner/` 维护目标写入并读回匹配的内部 factory 镜像和 QSPI
-`CONFIRMED/SLOT_A` 基线；随后已确认 build22 启动 b12。普通按键/断电复位、电气零 PWM、
-UART OTA、CAN FD OTA 和故障注入仍需分别验证。
+`CONFIRMED/SLOT_A` 基线；随后已确认 build22 启动 b12。
+
+2026-08-17 从该 confirmed b12 基线通过 UART OTA 安装并确认 b13。当前本地产物为：
+
+```text
+application/app-v0.1.0-b13.bin
+application/app-v0.1.0-b13.ota
+```
+
+b13 payload 为 185516 字节，CRC32 `0x6FD23D35`；该包已完成
+`STAGED -> INSTALLING -> TRIAL -> CONFIRMED` 实物闭环。b12 文件继续保留为 factory 历史输入，
+不得被 b13 产物覆盖。断电启动、电气零 PWM 和故障注入仍需验证，CAN FD OTA 按当前计划后置。
+
+包含 SR501 和诊断长度修复的当前 b16 产物为：
+
+```text
+application/app-v0.1.0-b16.bin
+application/app-v0.1.0-b16.ota
+```
+
+b16 payload 为 186076 字节，CRC32 `0x995BF0B5`；该包已通过打包校验和 OTA Python 9 项，
+并已完成 UART `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`。b14/b15 是诊断消息长度问题的
+中间定位版本，不作为当前发布输入。SR501 高电平和事件计数验证按当前计划后置。
 
 烧录地址：
 

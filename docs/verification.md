@@ -12,6 +12,7 @@
 | `READY` | 初始化或测试入口存在，尚未完成实物验收 |
 | `HARDWARE PASS` | 已按明确步骤完成实物验收 |
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
+| `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
 ## 已有基线
 
@@ -34,8 +35,9 @@
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
 | 低速 PID 闭环 | `NOT VERIFIED` | 尚无最终稳定性验收记录 |
 | FreeRTOS 阶段 4 实物回归 | `NOT VERIFIED` | 代码和构建完成，未重复执行硬件回归 |
+| HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| UART OTA 主升级链路 | `HARDWARE PASS` | build6 完成真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-17，build22 从 confirmed b12 升级到 b13，完成真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
@@ -65,7 +67,7 @@ Bootloader 链接脚本只提供 `0x08000000` 起始的 32 KiB Flash。该结果
 链接通过，不证明 QSPI 安装、掉电恢复、Application 跳转或回滚已通过实物验证。
 本次 build22 已于 2026-08-13 从当时的 Release ELF 生成正式配套产物。本段记录的是烧录前
 状态；后续同日已完成匹配 factory/QSPI 基线写入并确认 build22 启动 b12，详见下一节。
-build15 仍是最近一次完成 UART OTA 全闭环验证的 Bootloader。
+build22 已于 2026-08-17 完成 b12 到 b13 的 UART OTA 全闭环验证。
 
 ### b12/build22 上板准备（2026-08-13）
 
@@ -204,6 +206,38 @@ _output/factory/factory-a6-b15.bin 215560 bytes
 
 UART OTA 主链已达到 `HARDWARE PASS`。CAN FD OTA、安装中断电、TRIAL 失败回滚和无有效
 Application 的 Recovery 行为仍为 `NOT VERIFIED`。
+
+### b13 无 IMU启动与 UART OTA 闭环（2026-08-17）
+
+使用 CMake 3.22、Ninja 和 GNU Arm Embedded 14.3.rel1 构建 b13 Release。Application 结果为
+`text=185388 data=120 bss=34944`，生成 payload 185516 字节、CRC32 `0x6FD23D35` 的
+`app-v0.1.0-b13.ota`；OTA Python 9 项通过。
+
+目标板起点为 build22 + confirmed b12。`send_uart.py` 通过 `/dev/ttyUSB0`、115200 8N1
+完成 185580 字节 package 传输并收到：
+
+```text
+OTA staged over UART: session=193 next_offset=185580; device reset expected
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: STATE=0x00000004
+BOOT: TRIAL VERIFIED
+```
+
+b13 在未连接 ICM45686 时完成启动和 5 秒健康确认：
+
+```text
+ICM45686: NOT_INITIALIZED whoami=0x00 samples=0
+LCD: READY
+MOTOR: DISABLED
+CONTROL_OVERRUN: count=0 missed=0
+OTA_CONFIRM: CONFIRMED
+```
+
+随后通过 ST-Link 执行普通复位，Bootloader 报告 `STATE=0x00000005`，Application 再次正常
+启动；等待健康窗口后 `status` 报告 `OTA_CONFIRM: NOT_REQUIRED`，屏幕保持点亮，未观察到
+critical fault 或 IWDG 复位循环。因此 b13 无 ICM45686 启动和 build22 UART OTA 主链均为
+`HARDWARE PASS`。该结果不包含四路 PWM 电气测量、断电启动、CAN FD OTA 或三个故障注入测试。
 
 ## CMake/Ninja 等价构建（2026-08-13）
 
@@ -384,28 +418,30 @@ cansend can0 720##15041535301000000
 6. 执行 `status`，记录 `OTA_CONFIRM` 和 `OTA_TRANSFER`；首次无 TRIAL 元数据时不得
    将 READY 当成 OTA 硬件通过。
 
-本轮 b12/build22 只按以下冻结清单验收：
+当前 OTA V1 按以下清单验收：
 
 匹配的内部 factory 镜像和 QSPI `CONFIRMED/SLOT_A` 基线已通过 DFU provisioner 写入、
-完整读回和启动校验；该 factory provisioning 前置项不替代以下七项各自的验收。
+完整读回和启动校验；该 factory provisioning 前置项不替代下列项目各自的验收。
 
 | 顺序 | 项目 | 当前状态 | 通过条件 |
 | ---: | --- | --- | --- |
-| 1 | 普通启动 | `NOT VERIFIED` | 版本输出正确，Application 正常运行 |
-| 2 | 上电零 PWM | `NOT VERIFIED` | 四路 PWM 在进入控制前保持为零 |
-| 3 | UART OTA | `NOT VERIFIED` | 完整 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` |
-| 4 | CAN FD OTA | `NOT VERIFIED` | Jetson SocketCAN 完成同一闭环 |
-| 5 | Application 安装中断电 | `NOT VERIFIED` | 重启后继续或安全恢复，不跳入半写镜像 |
-| 6 | TRIAL 不确认 | `NOT VERIFIED` | 超过试运行限制后自动恢复 confirmed |
-| 7 | rollback 安装中断电 | `NOT VERIFIED` | 重启后继续恢复 confirmed，不无限破坏性重装 |
+| 1 | 普通启动 | `HARDWARE PASS` | 2026-08-17，confirmed b13 经 ST-Link 普通复位后正常运行；断电启动仍需单独验收 |
+| 2 | 上电零 PWM | `DEFERRED` | 四路 PWM 在进入控制前保持为零 |
+| 3 | UART OTA | `HARDWARE PASS` | 2026-08-17，b12 -> b13 完整 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` |
+| 4 | CAN FD OTA | `DEFERRED` | 当前后置；启用 Jetson OTA 前再用 SocketCAN 完成同一闭环 |
+| 5 | Application 安装中断电 | `DEFERRED` | 重启后继续或安全恢复，不跳入半写镜像 |
+| 6 | TRIAL 不确认 | `DEFERRED` | 超过试运行限制后自动恢复 confirmed |
+| 7 | rollback 安装中断电 | `DEFERRED` | 重启后继续恢复 confirmed，不无限破坏性重装 |
 
-这七项全部通过后，将 OTA V1 标记为冻结。冻结后除实测发现的 P0/P1 外不再增加 recovery
-细节；固件签名、防回滚和 Bootloader CAN Recovery 作为 OTA V2 工作，不阻塞底盘功能。
+2026-08-17 决定冻结 OTA V1 代码基线并推进功能主线。CAN FD OTA、断电启动、四路 PWM
+电气零输出和三个故障注入项目统一后置为 `DEFERRED`；它们不构成已通过证据，在启用对应
+发布能力或收尾验收前仍需执行。除实测发现的 P0/P1 外不再增加 recovery 细节；固件签名、
+防回滚和 Bootloader CAN Recovery 作为 OTA V2 工作。
 
 每次传输都应保存发送工具输出和复位后的 `status`。只有看到完整
 `STAGED -> TRIAL -> CONFIRMED` 且新 Application 正常启动，才可记录
 `HARDWARE PASS`。当前 factory 普通启动和 UART OTA 的传输、安装、TRIAL、确认已通过；
-CAN FD OTA、回滚和断电恢复仍为 `NOT VERIFIED`。
+CAN FD OTA 为 `DEFERRED`，回滚和断电恢复仍为 `NOT VERIFIED`。
 
 ## Bootloader 单元测试
 
@@ -443,3 +479,69 @@ Flash、IWDG、复位和跳转的目标板行为。
   配置和 CH5/CH6 IRQ handler，原临时 BSP DMA glue 已移除。
 - 本轮仅有源码、宿主测试和编译/链接证据；ICM45686、FIFO/DMA、零偏、姿态和 PD3/PD4
   按钮尚未进行实物验收。
+
+## 2026-08-17 SR501 代码接入构建
+
+SR501 使用 `.ioc` 中的 PD5 普通输入、内部下拉配置。已使用 CubeMX 6.18.1 和
+STM32Cube FW_G4 V1.6.3 生成 `SR501_OUT` 引脚定义及 GPIO 初始化；`bsp/sr501` 负责 60 秒
+预热、50 ms 稳定滤波、READY 后稳定低到高单次计数，以及 `status` 诊断输出。当前未绑定
+电机、安全、LCD 或业务。
+
+执行：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+```
+
+结果：
+
+| 配置 | text | data | bss | 状态 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 194364 | 120 | 35104 | `BUILD PASS` |
+| Release | 185948 | 120 | 35096 | `BUILD PASS` |
+
+本轮只证明源码编译和链接通过。SR501 的 5 V 供电、OUT 高低电平、60 秒预热、50 ms 滤波、
+持续高电平不重复计数和断开模块时 PD5 下拉行为均为 `NOT VERIFIED`。
+
+同日将包含 SR501 的 Application 提升为 b14，重新执行上述 Debug/Release 构建并生成：
+
+| 产物 | 字节数 | CRC32 / SHA-256 |
+| --- | ---: | --- |
+| `app-v0.1.0-b14.bin` | 186076 | CRC32 `0x1E5B771D`；SHA-256 `85755554e0e2f0234c7071fcbd7867309048933247d8e317260930f268028ec4` |
+| `app-v0.1.0-b14.ota` | 186140 | SHA-256 `20548218f4db0ba3b5721c8d8f9c6c7b97b17d2d6fcb18c85a2c9214f397de66` |
+
+打包器确认目标地址为 `0x08008000`，OTA Python 9 项执行通过。随后 CH340 和 ST-Link 已透传
+到 Ubuntu，b13 在线状态为 `MOTOR: DISABLED`，因此通过 UART 发送 b14。Bootloader 报告
+`INSTALL VERIFIED`、`TRIAL COMMITTED`、`TRIAL VERIFIED`，Application 正常响应 `PONG`，
+但 `status` 无输出。源码检查确认完整报告加 SR501 行后超过 UART 单条消息 1200 字节上限。
+
+b15 将诊断格式缓冲从 1664 增至 2048，但 UART 上限未同步，复测仍无 `status`。b16 将
+`BSP_UART_MAX_WRITE_SIZE` 同步为 2048，并用 `_Static_assert` 约束诊断缓冲不得超过该上限。
+b16 重新构建结果和正式待测产物为：
+
+| 配置/产物 | text/字节数 | data | bss | CRC32 / SHA-256 |
+| --- | ---: | ---: | ---: | --- |
+| Debug ELF | 194364 | 120 | 42272 | `BUILD PASS` |
+| Release ELF | 185948 | 120 | 42264 | `BUILD PASS` |
+| `app-v0.1.0-b16.bin` | 186076 | - | - | CRC32 `0x995BF0B5`；SHA-256 `ca963794d3dc912b32c671061ea68c07acbc54b68975e80985b884b0ea1ca563` |
+| `app-v0.1.0-b16.ota` | 186140 | - | - | SHA-256 `4999ec00755b372482ea2ea370db20389f43ee0271f1fd479d3e85c268e9c2ba` |
+
+b16 经 UART 收到 `STAGED` 后，Bootloader 再次报告 `INSTALL VERIFIED`、`TRIAL COMMITTED`、
+`TRIAL VERIFIED`；随后 `status` 返回 1251 字节完整报告并显示 `OTA_CONFIRM: CONFIRMED`、
+`MOTOR: DISABLED`、`CONTROL_OVERRUN: count=0 missed=0`。这同时实证旧 1200 字节限制不足。
+
+SR501 首次状态为：
+
+```text
+SR501: WARMING_UP motion=0 raw=0 count=0 last_ms=0 warmup_ms=24831
+SR501: WARMING_UP motion=0 raw=0 count=0 last_ms=0 warmup_ms=3328
+SR501: READY motion=0 raw=0 count=0 last_ms=0 warmup_ms=0
+```
+
+随后连续监听 60 秒，始终为 `READY motion=0 raw=0 count=0`。因此 60 秒预热、预热期间不计数、
+READY 后低电平零误计数已有实物证据；模块指示灯未亮，传感器 OUT 未观察到高电平。
+2026-08-17 决定将模块供电/设置排查、50 ms 稳定滤波、稳定低到高单次计数和持续高电平
+不重复计数统一标记为 `DEFERRED`，不阻塞 PID 主线。

@@ -5,6 +5,7 @@
 #include "bsp/button/bsp_button.h"
 #include "bsp/lcd/bsp_lcd.h"
 #include "bsp/imu/bsp_icm45686.h"
+#include "bsp/sr501/bsp_sr501.h"
 #include "bsp/uart/uart_bsp.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
@@ -29,7 +30,10 @@ static bool qspi_report_requested;
 static bool iwdg_report_requested;
 static bool motor_report_requested;
 static char motor_report[96];
-static char report_buffer[1536];
+static char report_buffer[2048];
+
+_Static_assert(sizeof(report_buffer) <= BSP_UART_MAX_WRITE_SIZE,
+               "diagnostic report exceeds the UART write limit");
 
 static bool WriteSelfTestReport(void);
 static bool WriteQspiTestReport(void);
@@ -131,6 +135,7 @@ static bool WriteSelfTestReport(void)
   BoardHealthSnapshot health;
   BspButtonSnapshot buttons;
   BspIcm45686Snapshot imu;
+  BspSr501Snapshot sr501;
   RTC_TimeTypeDef time;
   RTC_DateTypeDef date;
   const CanTransportLinkStatus can_status = CanTransport_GetLinkStatus();
@@ -159,6 +164,7 @@ static bool WriteSelfTestReport(void)
   BoardHealth_GetSnapshot(&health);
   BspButton_GetSnapshot(&buttons);
   BspIcm45686_GetSnapshot(&imu);
+  BspSr501_GetSnapshot(&sr501);
   if (can_status == CAN_TRANSPORT_LINK_PASSED) {
     fdcan_text = "PASS";
   } else if (can_status == CAN_TRANSPORT_LINK_FAILED) {
@@ -251,6 +257,7 @@ static bool WriteSelfTestReport(void)
       "KEY: %s\r\n"
       "BUTTON_1: READY pressed=%u count=%lu\r\n"
       "BUTTON_2: READY pressed=%u count=%lu\r\n"
+      "SR501: %s motion=%u raw=%u count=%lu last_ms=%lu warmup_ms=%lu\r\n"
       "ICM45686: %s whoami=0x%02X samples=%lu fifo=%lu irq=%lu errors=%lu parse=%lu full=%lu flush=%lu/%lu timestamp_errors=%lu dt_us=%lu dma_timeout=%lu raw_a=%d,%d,%d raw_g=%d,%d,%d\r\n"
       "IMU_FUSION: %s calibration=%u/%u bias_urad=%ld,%ld,%ld rpy_mrad=%ld,%ld,%ld yaw_unbounded=1\r\n"
       "ENCODER: READY\r\n"
@@ -270,6 +277,11 @@ static bool WriteSelfTestReport(void)
       (unsigned long)buttons.pressed_count[BOARD_BUTTON_1],
       buttons.pressed[BOARD_BUTTON_2] ? 1U : 0U,
       (unsigned long)buttons.pressed_count[BOARD_BUTTON_2],
+      sr501.status == BSP_SR501_READY ? "READY" : "WARMING_UP",
+      sr501.motion_detected ? 1U : 0U, sr501.raw_high ? 1U : 0U,
+      (unsigned long)sr501.event_count,
+      (unsigned long)sr501.last_motion_ms,
+      (unsigned long)sr501.warmup_remaining_ms,
       imu_text, imu.who_am_i, (unsigned long)imu.sample_count,
       (unsigned long)imu.fifo_frame_count,
       (unsigned long)imu.interrupt_count,
