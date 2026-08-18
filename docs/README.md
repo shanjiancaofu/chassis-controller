@@ -27,6 +27,7 @@
 | `bootloader_and_ota.md` | Bootloader、Flash/QSPI 布局、OTA 状态机和恢复设计 |
 | `roadmap.md` | 已完成阶段、后续阶段和明确不实施的范围 |
 | `verification.md` | 构建尺寸、命令、实物证据和历史验收记录 |
+| `change_log.md` | 按批次记录变更内容、设计决定和验证摘要 |
 | `../protocol/*.md` | 跨设备线协议和兼容规则 |
 | `../_output/README.md` | 固件产物目录、命名和烧录地址 |
 | `../AGENTS.md` | Codex/AI 修改、验证和文档维护规则 |

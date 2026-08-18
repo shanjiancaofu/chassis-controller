@@ -34,10 +34,11 @@
 | IWDG 受控复位 | `HARDWARE PASS` | 复位后报告测试通过 |
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
 | 低速 PID 闭环 | `DEFERRED` | PID/100 Hz 控制和调参入口已实现；方向、停车和稳定性实物验收后置 |
-| FreeRTOS 阶段 4 实物回归 | `NOT VERIFIED` | 代码和构建完成，未重复执行硬件回归 |
+| FreeRTOS 四任务运行字段 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 四任务均为 `RUNNING`，周期、栈余量、heartbeat 和运行次数可读 |
+| 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-17，build22 从 confirmed b12 升级到 b13，完成真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-18，build22 从 confirmed Application 0.2.0 build1 升级到 0.3.0 build1，完成真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
@@ -599,22 +600,29 @@ READY 后低电平零误计数已有实物证据；模块指示灯未亮，传�
 2026-08-17 决定将模块供电/设置排查、50 ms 稳定滤波、稳定低到高单次计数和持续高电平
 不重复计数统一标记为 `DEFERRED`，不阻塞 PID 主线。
 
-## 2026-08-18 正式 UART 消息构建
+## 2026-08-18 正式 UART 消息构建与实物验证
 
 Application 文本输出已迁移到统一 emitter：命令响应使用 `[RSP]`，异步事件使用 `[LOG]`，
 周期状态使用 `[TEL]`。`status` 现在以同一 `seq` 输出 `system`、`motor`、`sensors`、
 `communication` 四个分区；VOFA 数字流保留为显式兼容模式。UART OTA 进入二进制模式后，
 Application 跳过所有文本诊断和遥测输出；`send_uart.py` 已同步等待 `[RSP] command=ota_uart`。
-`test_uart_message.py` 的 3 项主机测试覆盖正式 OTA ready 响应、错误响应和重复/混合字段拒绝；
+`test_uart_message.py` 的 4 项主机测试覆盖正式/旧版 OTA ready 响应、错误响应和重复/混合字段拒绝；
+旧版准备行只用于主机工具从旧固件单向升级，不放宽新 Application 的输出格式。
 `test_command_manager.c` 重新通过宿主机 `-Werror` 回归，覆盖明确的 `ACCEPTED`、`NOT_OWNER` 和
-`INVALID_ARGUMENT` 提交结果。
+`INVALID_ARGUMENT` 提交结果。目标板首次验证发现 nano printf 不正确支持 `%lld`，导致编码器
+显示为 `ld` 并让后续变参错位；现已用 `UartProtocol_FormatSigned64()` 替代 Application 内全部
+`%lld`。新增 C 测试覆盖 `0`、`INT64_MAX`、`INT64_MIN` 和容量不足。
 
 执行：
 
 ```text
+cmake --preset arm-debug
 cmake --build --preset arm-debug --clean-first --parallel
+cmake --preset arm-release
 cmake --build --preset arm-release --clean-first --parallel
-PYTHONDONTWRITEBYTECODE=1 python3 tools/ota/test_uart_message.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/ota -p 'test_*.py' -v
+gcc -std=c11 -Wall -Wextra -Werror -DUART_PROTOCOL_HOST_TEST ...
+gcc -std=c11 -Wall -Wextra -Werror -DCOMMAND_MANAGER_HOST_TEST ...
 git diff --check
 ```
 
@@ -622,11 +630,116 @@ git diff --check
 
 | 配置 | Application text | data | bss | 状态 |
 | --- | ---: | ---: | ---: | --- |
-| Debug | 199528 | 120 | 52864 | `BUILD PASS` |
-| Release | 190192 | 120 | 52856 | `BUILD PASS` |
+| Debug | 199868 | 120 | 52864 | `BUILD PASS` |
+| Release | 190404 | 120 | 52856 | `BUILD PASS` |
 
 同一 preset 的 Bootloader 和 QSPI provisioner 也完成构建：Debug Bootloader `text=15596 data=48
 bss=1656`、Debug provisioner `text=10556 data=12 bss=1644`；Release Bootloader
 `text=13480 data=48 bss=1656`、Release provisioner `text=9272 data=12 bss=1644`。
-本轮只证明代码编译、链接和格式检查通过，尚未烧录本轮 UART emitter 产物；目标板上的
-`[RSP]`、`[LOG]`、`[TEL]` 行、四分区 `status` 和 OTA 文本隔离仍为 `NOT VERIFIED`。
+Python OTA 测试共 13 项通过；UART 64 位格式化和 CommandManager 两个 C 宿主测试均以
+`-Wall -Wextra -Werror` 编译并执行通过。最终 b17 产物为：
+
+| 产物 | 字节数 | CRC32 / SHA-256 |
+| --- | ---: | --- |
+| b17 Release BIN | 190532 | CRC32 `0xA68BC9CE`；SHA-256 `c007a8b794ef3dfdf868f8a6fbfec09a181fc79e9b836491f3343245bdc04a04` |
+| b17 OTA package | 190596 | SHA-256 `b4747c5df5268565a8eb2aae30f837ca1c53f926f1270795e90a060353217341` |
+
+通过 `/dev/ttyUSB0`、115200 8N1 将 b17 OTA 包发送到 confirmed b16，发送工具收到：
+
+```text
+OTA staged over UART: session=120 next_offset=190596; device reset expected
+```
+
+b17 进入试运行并完成确认后，`ping`、`status` 和 `encoder result` 实测确认：
+
+```text
+[RSP] v=1 ts_ms=59862 result=OK command=ping
+[TEL] v=1 ts_ms=60064 seq=1 section=system fw=0.1.0-b17 ... critical_tasks=1 ...
+[TEL] v=1 ts_ms=60064 seq=1 section=motor ... left_encoder=0 right_encoder=0 ... overrun=0 missed=0
+[TEL] v=1 ts_ms=60064 seq=1 section=communication ... ota_confirmation=CONFIRMED ...
+[RSP] v=1 ts_ms=60266 result=OK command=encoder_result left_total=0 right_total=0
+```
+
+同轮已验证未知命令返回 `INVALID_ARGUMENT`、`pid show` 字段正确、`telemetry text` 以 100 ms
+周期发送、采集的 30 行全部以 CRLF 结束，随后用 `telemetry off` 恢复。未执行电机命令。
+
+最后通过 ST-Link/OpenOCD 执行普通软件复位，Bootloader 和 Application 报告：
+
+```text
+BOOT: VERSION=0.1.0 BUILD=22
+BOOT: STATE=0x00000005
+[LOG] v=1 ts_ms=47 level=INFO module=boot event=STARTED fw=0.1.0-b17
+[LOG] v=1 ts_ms=310 level=INFO module=application event=READY tasks=4
+[TEL] v=1 ts_ms=11219 seq=1 section=communication ... ota_confirmation=NOT_REQUIRED ...
+```
+
+稳定状态下四任务均为 `RUNNING`，`critical_tasks=1`、`control=STOPPED`、`fault=0`、
+`overrun=0`、`missed=0`，QSPI 为 `EF4017`，LCD 为 `READY`。该证据不覆盖按键/断电启动、
+四路 PWM 电气测量、SR501 高电平、事件计数、CAN FD OTA、断电恢复或回滚；这些项目继续保持
+`DEFERRED` 或 `NOT VERIFIED`。
+
+## 2026-08-18 Application 版本语义拆分过渡产物（0.2.0 build18）
+
+本轮将 Application 产品版本从混合字符串 `0.1.0-b17` 拆为独立字段，曾暂用
+`0.2.0 build18` 验证格式。随后按历史版本序列重新编号为当前的 `0.3.0 build1`；本节产物
+保留为真实过渡证据，不作为当前版本基线。版本用于表示功能、协议或兼容行为变化；build 只
+标识同一版本下的具体产物，普通本地重编译不递增。
+
+执行：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --clean-first --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --clean-first --parallel
+python3 tools/ota/package_firmware.py build/arm-release/application.bin \
+  /tmp/chassis-controller-app-v0.2.0-b18.ota --version 0.2.0 --build 18
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/ota -p 'test_*.py'
+git diff --check
+```
+
+结果：
+
+| 配置/产物 | text/字节数 | data | bss | CRC32 / SHA-256 |
+| --- | ---: | ---: | ---: | --- |
+| Debug ELF | 199896 | 120 | 52864 | `BUILD PASS` |
+| Release ELF | 190444 | 120 | 52856 | `BUILD PASS` |
+| build18 Release BIN | 190572 | - | - | CRC32 `0x6FCF40CC`；SHA-256 `1e14c0dd4076d228d737b5de58bc58ee9473fe29a08a68a7b816015b08b8c907` |
+| build18 OTA package | 190636 | - | - | SHA-256 `cfcf7ff038d661a0278551667827f81cfb077daf77a27d43be53eb8bc4f519bb` |
+
+OTA 工具完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`。目标板状态实测为：
+
+```text
+[TEL] v=1 ts_ms=17001 seq=1 section=system fw=0.2.0 build=18 ... critical_tasks=1 ...
+[TEL] v=1 ts_ms=17001 seq=1 section=motor ... left_encoder=0 right_encoder=0 ... overrun=0 missed=0
+[TEL] v=1 ts_ms=17001 seq=1 section=communication ... ota_confirmation=CONFIRMED ... lcd=READY
+[RSP] v=1 ts_ms=17203 result=OK command=encoder_result left_total=0 right_total=0
+```
+
+四任务均为 `RUNNING`，控制保持 `STOPPED`、故障为零，未执行任何电机命令。SR501 高电平、
+按键/断电启动、四路 PWM 电气测量、CAN FD OTA、断电恢复和回滚仍按计划保持 `DEFERRED`
+或 `NOT VERIFIED`。
+
+## 2026-08-18 Application 版本序列最终基线（0.3.0 build1）
+
+按路线文档中的历史映射，b17 的 FreeRTOS、统一快照和正式 UART 协议变化进入 `0.3.0`，
+版本切换后 build 从 1 开始。重新生成并发送的最终包为：
+
+| 配置/产物 | text/字节数 | data | bss | CRC32 / SHA-256 |
+| --- | ---: | ---: | ---: | --- |
+| Debug ELF | 199892 | 120 | 52864 | `BUILD PASS` |
+| Release ELF | 190444 | 120 | 52856 | `BUILD PASS` |
+| `app-v0.3.0-b1.bin` | 190572 | - | - | CRC32 `0x5866D20E`；SHA-256 `117c4a9cf45276f2c3722c9a67cf0de739cfe960a31e609de2970537383d5e1c` |
+| `app-v0.3.0-b1.ota` | 190636 | - | - | SHA-256 `d5560e6710706f1560c2f28d00ab8b117ae71f8405acd1ca7cf515f3709f29df` |
+
+目标板通过 UART OTA 完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`，实测：
+
+```text
+[TEL] v=1 ts_ms=14349 seq=1 section=system fw=0.3.0 build=1 ... critical_tasks=1 ...
+[TEL] v=1 ts_ms=14349 seq=1 section=motor ... left_encoder=0 right_encoder=0 ... overrun=0 missed=0
+[TEL] v=1 ts_ms=14349 seq=1 section=communication ... ota_confirmation=CONFIRMED ... lcd=READY
+[RSP] v=1 ts_ms=14552 result=OK command=encoder_result left_total=0 right_total=0
+```
+
+四任务均为 `RUNNING`，控制保持 `STOPPED`，未执行电机命令。后续同一 `0.3.0` 源码的重复
+可部署产物才使用 build2、build3；功能或协议变化时进入下一个语义版本并将 build 重置为 1。

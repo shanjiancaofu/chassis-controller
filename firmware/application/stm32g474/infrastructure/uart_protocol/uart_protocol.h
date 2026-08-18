@@ -29,5 +29,7 @@ bool UartProtocol_SendTelemetry(uint32_t now_ms, uint32_t sequence,
 bool UartProtocol_SendTelemetryBlock(
     uint32_t now_ms, uint32_t sequence,
     const UartProtocolTelemetryLine *lines, size_t line_count);
+bool UartProtocol_FormatSigned64(char *buffer, size_t capacity,
+                                 int64_t value);
 
 #endif

@@ -95,7 +95,8 @@ void ChassisApp_Init(void)
   Console_Init();
   Telemetry_Init();
   (void)UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_INFO, "boot",
-                             "STARTED", "fw=" CHASSIS_FIRMWARE_VERSION);
+                             "STARTED", "fw=" CHASSIS_FIRMWARE_VERSION
+                             " build=" CHASSIS_FIRMWARE_BUILD_STRING);
   if (CanTransport_Init() != HAL_OK) {
     (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_ERROR, "board",
                                "FDCAN_INIT_FAILED", "code=UNAVAILABLE");
@@ -731,13 +732,18 @@ static void SendEncoderResult(uint32_t now_ms)
 {
   OdometrySnapshot snapshot;
   char fields[96];
+  char left_total[24];
+  char right_total[24];
 
   taskENTER_CRITICAL();
   Odometry_GetSnapshot(&snapshot);
   taskEXIT_CRITICAL();
-  (void)snprintf(fields, sizeof(fields), "left_total=%lld right_total=%lld",
-                 (long long)snapshot.left_total,
-                 (long long)snapshot.right_total);
+  (void)UartProtocol_FormatSigned64(left_total, sizeof(left_total),
+                                    snapshot.left_total);
+  (void)UartProtocol_FormatSigned64(right_total, sizeof(right_total),
+                                    snapshot.right_total);
+  (void)snprintf(fields, sizeof(fields), "left_total=%s right_total=%s",
+                 left_total, right_total);
   (void)UartProtocol_SendResponse(now_ms, "encoder_result", true, fields);
 }
 

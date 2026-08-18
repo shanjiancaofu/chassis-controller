@@ -28,6 +28,7 @@ static char communication_fields[768];
 
 static bool WriteSelfTestReport(uint32_t now_ms);
 static bool WriteQspiTestReport(uint32_t now_ms);
+static void FormatEncoderCount(char *buffer, size_t capacity, int64_t value);
 static const char *TaskStateText(uint32_t state);
 static const char *ResetCauseText(uint32_t flags);
 static const char *ControlStateText(ChassisControlState state);
@@ -92,12 +93,18 @@ static bool WriteSelfTestReport(uint32_t now_ms)
   SystemStatusSnapshot status;
   UartProtocolTelemetryLine lines[4];
   const uint32_t sequence = UartProtocol_NextTelemetrySequence();
+  char left_encoder[24];
+  char right_encoder[24];
 
   SystemStatus_GetSnapshot(&status);
+  FormatEncoderCount(left_encoder, sizeof(left_encoder),
+                     status.odometry.left_total);
+  FormatEncoderCount(right_encoder, sizeof(right_encoder),
+                     status.odometry.right_total);
 
   (void)snprintf(
       system_fields, sizeof(system_fields),
-      "fw=%s uptime_ms=%lu supply_valid=%u supply_mv=%lu control=%s "
+      "fw=%s build=%u uptime_ms=%lu supply_valid=%u supply_mv=%lu control=%s "
       "fault=0x%08lx reset=%s reset_flags=0x%08lx critical_tasks=%u "
       "service_task=%s control_task=%s diagnostics_task=%s display_task=%s "
       "service_period_ms=%lu service_expected_ms=%lu service_timeout_ms=%lu "
@@ -109,7 +116,8 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       "diagnostics_stack_free_words=%lu display_period_ms=%lu "
       "display_expected_ms=%lu display_timeout_ms=%lu display_age_ms=%lu "
       "display_runs=%lu display_stack_free_words=%lu",
-      CHASSIS_FIRMWARE_VERSION, (unsigned long)status.runtime.uptime_ms,
+      CHASSIS_FIRMWARE_VERSION, (unsigned int)CHASSIS_FIRMWARE_BUILD,
+      (unsigned long)status.runtime.uptime_ms,
       status.supply_valid ? 1U : 0U, (unsigned long)status.supply_mv,
       ControlStateText(status.control_state),
       (unsigned long)status.fault_flags,
@@ -148,8 +156,8 @@ static bool WriteSelfTestReport(uint32_t now_ms)
   (void)snprintf(
       motor_fields, sizeof(motor_fields),
       "control=%s left_target=%ld left_speed=%ld left_pwm=%d "
-      "right_target=%ld right_speed=%ld right_pwm=%d left_encoder=%lld "
-      "right_encoder=%lld left_kp=%u left_ki=%u left_kd=%u right_kp=%u "
+      "right_target=%ld right_speed=%ld right_pwm=%d left_encoder=%s "
+      "right_encoder=%s left_kp=%u left_ki=%u left_kd=%u right_kp=%u "
       "right_ki=%u right_kd=%u motor_test=%u overrun=%lu missed=%lu",
       ControlStateText(status.control_state),
       (long)status.wheels.left_target,
@@ -158,8 +166,8 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       (long)status.wheels.right_target,
       (long)status.wheels.right_measurement,
       (int)status.wheels.right_output,
-      (long long)status.odometry.left_total,
-      (long long)status.odometry.right_total,
+      left_encoder,
+      right_encoder,
       (unsigned int)status.parameters.left_pid.kp,
       (unsigned int)status.parameters.left_pid.ki,
       (unsigned int)status.parameters.left_pid.kd,
@@ -247,6 +255,16 @@ static bool WriteQspiTestReport(uint32_t now_ms)
       now_ms, status == QSPI_TARGET_TEST_PASSED ? UART_PROTOCOL_LOG_INFO
                                                  : UART_PROTOCOL_LOG_ERROR,
       "qspi", "RW_TEST", fields);
+}
+
+static void FormatEncoderCount(char *buffer, size_t capacity, int64_t value)
+{
+  if (!UartProtocol_FormatSigned64(buffer, capacity, value)) {
+    if (buffer != NULL && capacity > 1U) {
+      buffer[0] = '0';
+      buffer[1] = '\0';
+    }
+  }
 }
 
 static const char *TaskStateText(uint32_t state)

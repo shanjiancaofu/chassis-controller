@@ -9,6 +9,38 @@
 static uint32_t next_telemetry_sequence;
 static char message_buffer[BSP_UART_MAX_WRITE_SIZE];
 
+bool UartProtocol_FormatSigned64(char *buffer, size_t capacity,
+                                int64_t value)
+{
+  char reversed[20];
+  uint64_t magnitude;
+  size_t digit_count = 0U;
+  size_t output_index = 0U;
+
+  if (buffer == NULL || capacity < 2U) {
+    return false;
+  }
+  if (value < 0) {
+    magnitude = (uint64_t)(-(value + 1)) + 1U;
+    buffer[output_index++] = '-';
+  } else {
+    magnitude = (uint64_t)value;
+  }
+  do {
+    reversed[digit_count++] = (char)('0' + (magnitude % 10U));
+    magnitude /= 10U;
+  } while (magnitude != 0U);
+
+  if (output_index + digit_count + 1U > capacity) {
+    return false;
+  }
+  while (digit_count > 0U) {
+    buffer[output_index++] = reversed[--digit_count];
+  }
+  buffer[output_index] = '\0';
+  return true;
+}
+
 static bool SendFormattedMessage(const char *format, ...)
 {
   va_list arguments;

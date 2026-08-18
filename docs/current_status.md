@@ -5,9 +5,9 @@
 
 ## 代码基线
 
-- Application：`0.1.0-b16`。
+- Application：`0.3.0`，build `1`。
 - Bootloader：`0.1.0 build22`。
-- 当前 SR501 工作树和板上 confirmed 镜像均为 Application `0.1.0-b16`；b12/build22 仍是
+- 当前工作树和板上 confirmed 镜像均为 Application `0.3.0` build `1`；b12/build22 仍是
   已上板冻结 factory 基线，历史 b13 和当前产物不得覆盖该基线。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
@@ -58,14 +58,20 @@
 
 ## 已验证
 
-- 2026-08-17 分阶段路线阶段 1 已完成四任务迁移和 Application Debug/Release 的 CMake/Ninja
-  构建；统一快照和四任务诊断字段通过 GNU Arm Embedded 14.3.rel1 编译链接。最新构建结果和
-  运行字段实物验证状态见 `verification.md`；尚未烧录本轮产物。
+- 2026-08-18 Application `0.3.0` build `1` 已在目标板确认四任务均为 `RUNNING`，周期、栈余量、heartbeat age、运行次数
+  和复位原因可通过同一 `SystemStatusSnapshot` 读取；`critical_tasks=1`、`control=STOPPED`、
+  `fault=0`、`overrun=0`、`missed=0`。
 - CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前正式 UART 工作树构建通过：Application
-  Debug `text=199528 data=120 bss=52864`，Release `text=190192 data=120 bss=52856`。
-  b16 Release BIN 为 186076 字节、payload CRC32 `0x995BF0B5`，OTA 包为 186140 字节；
-  OTA Python 9 项通过。b16 已完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`。
-  上板发现新增 SR501 行使 `status` 达到 1251 字节，超过原 UART 1200 字节消息限制；b16
+  Debug `text=199892 data=120 bss=52864`，Release `text=190444 data=120 bss=52856`。
+  build1 Release BIN 为 190572 字节、payload CRC32 `0x5866D20E`，OTA 包为 190636 字节；
+  OTA Python 13 项、新增 UART 64 位格式化测试和 CommandManager 回归均通过。build1 已完成
+  UART `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`，Application 报告
+  `fw=0.3.0 build=1` 和 `ota_confirmation=CONFIRMED`。
+- build1 已实测结构化启动 `[LOG]`、命令 `[RSP]`、同序号四分区 `[TEL]`、错误响应、PID 参数读取、
+  100 ms 文本遥测、CRLF 换行和 `encoder_result`。nano printf 不支持 `%lld` 导致的编码器及后续
+  变参错位已改为独立 64 位十进制格式化，并在目标板确认编码器、PID、overrun/missed 字段正确。
+  未执行任何电机命令。
+  上板曾发现新增 SR501 行使 `status` 达到 1251 字节，超过原 UART 1200 字节消息限制；b16
   将诊断缓冲和 UART 消息上限统一为 2048 字节并增加编译期约束，完整报告已实测恢复。
   已完成实物闭环的较早 b13 Release 为 `text=185388 data=120 bss=34944`，对应 OTA payload
   185516 字节、CRC32 `0x6FD23D35`；不得把当前新增 SR501 的构建视为同一上板产物。
@@ -111,7 +117,7 @@
   `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
   OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
 
-- confirmed b16 普通按键/断电复位启动和上电四路 PWM 电气零输出：`DEFERRED`。
+- confirmed build1 按键/断电复位启动和上电四路 PWM 电气零输出：`DEFERRED`。
 - CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
 - Application 安装过程中断电恢复、TRIAL 不确认自动回滚和 rollback 安装中断电：`DEFERRED`。
 
@@ -120,10 +126,10 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 将本轮 Debug/Release 产物按既有流程烧录，确认四任务周期、栈余量、运行状态和复位原因
-   字段可读；不据此推断硬件通过。
-2. 烧录并实测正式 UART 消息和四分区 `status`；代码主线继续实现 LCD 四页。ICM45686
-   时间轴/Kalman、SR501 实物收尾按路线推进。
+1. 实现 LCD `OVERVIEW`、`MOTOR`、`SENSORS`、`SYSTEM` 四页，全部读取现有
+   `SystemStatusSnapshot`，并由按键循环切页。
+2. 电量先显示已校验电压；电池类型、串数和放电曲线确定前不显示百分比。ICM45686
+   时间轴/Kalman、SR501 实物收尾和目标加减速限制继续按路线后置。
 
 当前路线：
 

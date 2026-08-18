@@ -6,6 +6,11 @@ from send_uart import is_ota_ready_response
 
 
 class UartMessageTest(unittest.TestCase):
+    def test_accepts_legacy_ready_response_for_upgrade(self):
+        self.assertTrue(is_ota_ready_response(
+            b"OTA_UART: READY, binary mode\r"
+        ))
+
     def test_accepts_formal_ota_ready_response(self):
         self.assertTrue(is_ota_ready_response(
             b"[RSP] v=1 ts_ms=42 result=OK command=ota_uart mode=BINARY\r"

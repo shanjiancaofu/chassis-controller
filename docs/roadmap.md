@@ -109,7 +109,7 @@ OTA V1 代码基线已冻结，不再继续扩展 recovery 边角。冻结依据
 UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下项目保留为后置回归，
 不阻塞当前功能主线，也不得在未实测时标记为通过：
 
-- confirmed b16 断电启动和四路 PWM 电气零输出
+- confirmed 0.3.0 build1 断电启动和四路 PWM 电气零输出
 - Application 安装过程中断电恢复
 - TRIAL 不确认自动回滚
 - rollback 安装过程中断电恢复
@@ -123,7 +123,7 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 ### 阶段 1：FreeRTOS 运行基础
 
-状态：`IMPLEMENTED`（代码与 Debug/Release 构建完成；目标板运行字段待验证）
+状态：`HARDWARE PASS`（0.3.0 build1 已确认四任务运行字段和统一快照可读）
 
 - 已完成 `control_task`、`service_task`、`diagnostics_task`、`display_task` 四任务迁移；
   `control_task` 保持 100 Hz 控制，`service_task` 承担 UART/CAN/OTA，`diagnostics_task` 承担
@@ -134,7 +134,7 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 ### 阶段 2：正式 UART 消息
 
-状态：`IMPLEMENTED`（代码和 Debug/Release 构建完成；目标板实测待验证）
+状态：`HARDWARE PASS`（0.3.0 build1 已完成协议、四分区状态和 UART OTA 实物闭环）
 
 正式格式和字段注册表见 [`protocol/uart_message_protocol.md`](../protocol/uart_message_protocol.md)。
 
@@ -150,10 +150,30 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
   逐行观察，但每行字段仍保持稳定。
 - OTA 二进制会话与文本输出保持隔离，不能混发。
 - VOFA 数字流保留为显式兼容模式，不属于正式 `[TEL]` 字段协议。
+- 0.3.0 build1 已实测启动 `[LOG]`、命令 `[RSP]`、同序号四分区 `[TEL]`、错误响应、文本遥测和
+  CRLF 换行；UART OTA 完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`，普通复位后回到
+  `NOT_REQUIRED`。目标板 nano printf 的 64 位整数兼容问题已修复并回归。
+- 产品版本与 build 号分开维护：功能、协议或兼容行为变化更新语义版本；build 号只标识具体
+  产物，不因普通本地重编译递增。
+
+### Application 版本序列
+
+旧产物文件名中的 `bN` 是当时的开发产物编号，历史文件和原始验证记录保持不变。下面记录
+源码功能变化对应的语义版本映射；版本切换后 build 从 1 开始，同一版本的重复产物才递增。
+
+| 历史产物 | 源码阶段 | 语义版本映射 | 主要变化 |
+| --- | --- | --- | --- |
+| b6、b12 | 初始底盘/OTA 基线 | `0.1.0` | 初始 Application 和 factory confirmed 基线 |
+| b13 | 无 ICM45686 也可启动 | `0.1.1` | 延后 IMU 启动依赖，保持底盘可启动 |
+| b14 | SR501 接入 | `0.2.0` | PD5 BSP、60 秒预热、诊断字段接入 |
+| b15 | 诊断缓冲扩大 | `0.2.1` | 增大报告缓冲，定位长 status 输出问题 |
+| b16 | UART 消息容量修复 | `0.2.2` | UART 上限与诊断缓冲统一为 2048 字节 |
+| b17 | FreeRTOS 与正式 UART | `0.3.0` | 四任务快照、`[RSP]`/`[LOG]`/`[TEL]` 和 64 位格式化修复 |
+| 当前 | 同一 `0.3.0` 首个正式产物 | `0.3.0 build1` | 当前代码和目标板最终版本 |
 
 ### 阶段 3：LCD 硬件总览
 
-状态：`PLANNED`
+状态：`PLANNED`（当前直接下一阶段）
 
 - 多页显示硬件子系统状态：电机/编码器、CAN、QSPI、RTC、IMU、SR501、FreeRTOS 和故障。
 - 按键循环四页：`OVERVIEW`（电压、控制、CAN、Fault、版本）、`MOTOR`（目标、速度、PWM、

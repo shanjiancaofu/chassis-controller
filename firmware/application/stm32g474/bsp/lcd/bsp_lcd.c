@@ -217,7 +217,8 @@ static void LcdPrepareStatusPage(void)
                  "FAULT 0X%08lX",
                  (unsigned long)lcd_status_data.fault_flags);
   (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH,
-                 "FW V%s  KEY:COVER", CHASSIS_FIRMWARE_VERSION);
+                 "FW V%s B%s KEY:COVER", CHASSIS_FIRMWARE_VERSION,
+                 CHASSIS_FIRMWARE_BUILD_STRING);
 
   lcd_text_colors[0] = LCD_COLOR_HEADER;
   lcd_text_colors[1] = LcdValueColor(lcd_status_data.rtc_state);

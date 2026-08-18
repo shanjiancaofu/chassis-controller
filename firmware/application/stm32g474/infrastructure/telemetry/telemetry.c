@@ -45,6 +45,8 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
   int32_t right_rpm_x10;
   uint32_t sequence;
   int length;
+  char left_total[24];
+  char right_total[24];
 
   if (snapshot == NULL || !Telemetry_IsDue(now_ms)) {
     return;
@@ -68,17 +70,21 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
         (long)snapshot->supply_mv, (unsigned long)snapshot->control_state,
         (unsigned long)snapshot->fault_flags);
   } else {
+    (void)UartProtocol_FormatSigned64(left_total, sizeof(left_total),
+                                      snapshot->left_total);
+    (void)UartProtocol_FormatSigned64(right_total, sizeof(right_total),
+                                      snapshot->right_total);
     length = snprintf(
         transmit_buffer, sizeof(transmit_buffer),
         "supply_mv=%ld left_target=%ld left_delta=%ld left_rpm_x10=%ld "
-        "left_total=%lld left_pwm=%d right_target=%ld right_delta=%ld "
-        "right_rpm_x10=%ld right_total=%lld right_pwm=%d control=%lu "
+        "left_total=%s left_pwm=%d right_target=%ld right_delta=%ld "
+        "right_rpm_x10=%ld right_total=%s right_pwm=%d control=%lu "
         "fault=0x%08lx",
         (long)snapshot->supply_mv, (long)snapshot->left_target,
         (long)snapshot->left_delta, (long)left_rpm_x10,
-        (long long)snapshot->left_total, (int)snapshot->left_output,
+        left_total, (int)snapshot->left_output,
         (long)snapshot->right_target, (long)snapshot->right_delta,
-        (long)right_rpm_x10, (long long)snapshot->right_total,
+        (long)right_rpm_x10, right_total,
         (int)snapshot->right_output,
         (unsigned long)snapshot->control_state,
         (unsigned long)snapshot->fault_flags);

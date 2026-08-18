@@ -19,6 +19,9 @@ from ota_transfer import (
 
 
 def is_ota_ready_response(line):
+    if line.strip() == b"OTA_UART: READY, binary mode":
+        return True
+
     tokens = line.strip().split()
     fields = {}
 

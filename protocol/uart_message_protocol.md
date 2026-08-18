@@ -10,7 +10,7 @@ OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文�
 - 每行以固定方括号标签开头，方括号属于线协议的一部分。正式文本标签只有 `[RSP]`、`[LOG]`
   和 `[TEL]`；标签后依次为 `v=1`、`ts_ms=...`，再跟随该类消息的专用字段。
 - 时间戳统一为 `ts_ms`，取 Application 启动后的毫秒 uptime，使用无符号十进制。
-- 协议版本统一为 `v=1`；固件产品版本单独使用 `fw=`，不替代协议版本。
+- 协议版本统一为 `v=1`；固件产品版本使用 `fw=`，构建号单独使用 `build=`，两者都不替代协议版本。
 - 字段名称使用小写 ASCII；枚举和错误码使用大写下划线命名。
 - 接收端必须按整行处理，未知字段可忽略，未知命令或缺少必需字段返回 `[RSP] result=ERROR`。
 
@@ -99,7 +99,7 @@ OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文�
 遥测以固定周期发送，序号从 0 开始递增并在溢出时回绕：
 
 ```text
-[TEL] v=1 ts_ms=1000 seq=42 section=motor fw=0.1.0-b16 control=RUNNING left_target=0 right_target=0 fault=0
+[TEL] v=1 ts_ms=1000 seq=42 section=system fw=0.3.0 build=1 control=RUNNING left_target=0 right_target=0 fault=0
 ```
 
 同一遥测流的字段顺序固定；没有有效值时使用 `valid=0` 和约定的零值，不使用 `UNKNOWN` 混合
@@ -112,7 +112,7 @@ OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文�
 四分区 `status` 的版本 1 字段和顺序固定如下：
 
 ```text
-system: fw uptime_ms supply_valid supply_mv control fault reset reset_flags critical_tasks
+system: fw build uptime_ms supply_valid supply_mv control fault reset reset_flags critical_tasks
         service_task service_period_ms service_expected_ms service_timeout_ms service_age_ms
         service_runs service_stack_free_words control_task control_period_ms control_expected_ms
         control_timeout_ms control_age_ms control_runs control_stack_free_words diagnostics_task
@@ -139,3 +139,7 @@ communication: can can_drops uart_errors qspi_read qspi_id qspi_jedec qspi_capac
 `[TEL]` 文本。
 等待 BEGIN 超时、传输完成和失败状态通过 OTA 二进制响应表达；退出并
 确认 DMA 空闲后，才恢复文本模式。
+
+主机升级工具为从旧文本固件迁移到协议版本 1，可额外接受旧固件的精确准备行
+`OTA_UART: READY, binary mode`；这只属于发送工具的单向升级兼容，不允许新 Application
+继续发送旧格式，也不放宽其他响应字段解析。
