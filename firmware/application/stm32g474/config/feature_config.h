@@ -1,7 +1,7 @@
 #ifndef FEATURE_CONFIG_H
 #define FEATURE_CONFIG_H
 
-#define ENABLE_ICM45686 0
+#define ENABLE_ICM45686 1
 #define ENABLE_MOTOR_DEMO 0
 
 #endif

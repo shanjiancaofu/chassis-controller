@@ -29,6 +29,7 @@
 | LCD 四页状态显示 | `NOT VERIFIED` | 0.7.1 build1 已 OTA confirmed；中性配色、大号电量显示和新版布局尚待人工验收 |
 | KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；0.7.1 PB8 四页循环需重新验收 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
+| ICM45686 SPI/FIFO | `NOT VERIFIED` | 0.8.0 已启用完整路径；目标板读取 WHO_AM_I=0xFF，需检查供电和 SPI 接线 |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
 | 双电机开环 | `HARDWARE PASS` | 左右轮正反转和自动停止 |
 | 急停 | `HARDWARE PASS` | PD2 触发故障并清零 PWM |
@@ -39,7 +40,7 @@
 | 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-18，build22 已完成到 0.3.0、0.6.0、0.7.0 和 0.7.1 build1 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-18，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1 和 0.8.0 build1 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
@@ -990,3 +991,42 @@ BOOT: TRIAL VERIFIED
 读取状态：四任务均为 `RUNNING`，`control=STOPPED`，左右 PWM 为零，`lcd=READY`，
 `ota_confirmation=NOT_REQUIRED`。串口证据不等于配色人工验收，中性背景和短标题强调线的
 实际观感仍保持 `NOT VERIFIED`。
+
+用户随后确认当前可见页面的中性配色“看着还行”。该反馈只覆盖配色观感，不自动覆盖四页
+内容、Logo、文字重叠和 PB8 循环，因此 LCD 四页整体仍保持 `NOT VERIFIED`。
+
+## 2026-08-18 ICM45686 正式启用与首次识别（0.8.0 build1）
+
+打开 `ENABLE_ICM45686` 后，Application 正式执行 WHO_AM_I、寄存器配置、FIFO/DMA、静止零偏
+和 Mahony 融合路径。启动日志根据快照输出真实状态，不再固定报告 `INITIALIZED`。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 103160 | 120 | 53384 | `BUILD PASS` |
+| Release | 92076 | 120 | 53376 | `BUILD PASS` |
+
+Release 产物：
+
+```text
+payload=92204 bytes
+payload_crc32=0x1484C456
+bin_sha256=80f6c6732bf342c40112ded6d3a35e2148bbd968ad4be9b1ecc21970960b48b1
+ota_sha256=2c680954a4e431aa576f94729ce83f353f8e54f3e7053f99c9742e2afb298ed2
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: TRIAL VERIFIED
+```
+
+首次启动日志：
+
+```text
+[LOG] ... module=imu event=NOT_FOUND device=ICM45686 who_am_i=0xFF
+[TEL] ... fw=0.8.0 build=1 ... control=STOPPED ... left_pwm=0 right_pwm=0
+[TEL] ... imu=NOT_FOUND imu_whoami=0xFF imu_samples=0 imu_fifo_frames=0
+```
+
+健康窗口后 `ota_confirmation=CONFIRMED`。ST-Link 普通复位后仍报告 `fw=0.8.0 build=1`、
+`ota_confirmation=NOT_REQUIRED`、四任务 `RUNNING`、控制停止和左右 PWM 为零。ADC 同时报告
+约 12.22 V。`WHO_AM_I=0xFF` 通常表示 MISO 保持高电平，应优先检查模块 3.3 V、共地、PD0 CS、
+PC10 SCK、PC11 MISO 和 PC12 MOSI；在读到规定值 `0xE9` 前不得记录硬件通过，也不进入
+FIFO 连续性、零偏和安装方向结论。

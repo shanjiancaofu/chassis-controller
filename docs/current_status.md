@@ -5,17 +5,18 @@
 
 ## 代码基线
 
-- Application 工作树：`0.7.1`，build `1`。
+- Application 工作树：`0.8.0`，build `1`。
 - Bootloader：`0.1.0 build22`。
-- 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.7.1 build1`；Bootloader 仍为
-  build22，b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.7.1`
-  已完成普通复位回归，新的 UI 尚待人工目视验证。
+- 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.8.0 build1`；Bootloader 仍为
+  build22，b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.8.0`
+  已完成普通复位回归；当前页面配色已确认可接受，四页整体和 PB8 循环仍待验收。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
   调参已后置；当前代码主线已完成 FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
-  LCD 四页代码与 DMA 调度修复已完成，下一步为目标板页面和 PB8 循环验证。目标加减速限制、
-  ICM45686、SR501 高电平闭环按路线后续实施。
+  LCD 四页代码与 DMA 调度修复已完成，中性配色已人工确认可接受；当前已启用 ICM45686
+  完整启动路径，目标板读取 `WHO_AM_I=0xFF`，下一步为模块供电和 SPI 接线排查。目标加减速
+  限制、SR501 高电平闭环按路线后续实施。
 
 ## 当前实现
 
@@ -39,7 +40,8 @@
   当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、ODR/4 内部低通、FIFO watermark、
   16 字节帧、DMA批量读取、FIFO full/非法帧/传输失败flush恢复、16位timestamp动态采样周期、
   静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。当前不启用20-bit、压缩FIFO
-  或自检；零偏仅保存在RAM，安装方向和轴映射等待实物确认。
+  或自检；零偏仅保存在RAM，安装方向和轴映射等待实物确认。`0.8.0` 已启用该路径，启动日志
+  根据真实结果输出 `READY / NOT_FOUND / INIT_FAILED`，模块缺失或通信失败不阻塞 Application。
 
 - 内部 Flash 使用 32 KiB Bootloader + 480 KiB 单 Application。
 - QSPI 使用双 metadata 和 Slot A/B，confirmed/candidate 由 metadata 分配。
@@ -69,11 +71,12 @@
 
 ## 已验证
 
-- 2026-08-18 Application `0.7.1 build1` 的 LCD 中性配色修正完成 CMake 构建：Debug
-  `text=89216 data=120 bss=53088`，Release `text=79272 data=120 bss=53080`。Release 已通过
+- 2026-08-18 Application `0.8.0 build1` 启用 ICM45686 完整路径后完成 CMake 构建：Debug
+  `text=103160 data=120 bss=53384`，Release `text=92076 data=120 bss=53376`。Release 已通过
   UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED ->
-  CONFIRMED`。普通复位后报告 `fw=0.7.1 build=1`、`ota_confirmation=NOT_REQUIRED`、四任务
-  `RUNNING`、`lcd=READY`、`control=STOPPED` 且左右 PWM 为零；具体视觉效果尚待人工确认。
+  CONFIRMED`。普通复位后报告 `fw=0.8.0 build=1`、`ota_confirmation=NOT_REQUIRED`、四任务
+  `RUNNING`、`control=STOPPED` 且左右 PWM 为零。ICM45686 返回 `who_am_i=0xFF` 和
+  `imu=NOT_FOUND`，证明软件路径已运行，但不构成硬件通过。
 - 同日已将 Release `0.6.0 build1` 通过 UART OTA 写入 QSPI 并完成 `STAGED -> INSTALL VERIFIED
   -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。普通复位后仍报告 `fw=0.6.0 build=1`、
   `ota_confirmation=NOT_REQUIRED`、四任务 `RUNNING`、`lcd=READY` 且左右 PWM 为零；真实断电
@@ -137,14 +140,15 @@
 
 - ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及FIFO恢复计数，但任何软件状态均不得据此标记硬件PASS。
 
-- LCD `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 页面内容、透明 Logo 显示以及 PB8
-  单键循环尚未目标板验证；PD3/PD4 仍未接线且不参与本轮操作。
+- `0.7.1` 当前可见页面的中性配色已由用户确认可接受；LCD
+  `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 四页完整内容、透明 Logo 和 PB8
+  单键循环尚未整体验收。PD3/PD4 仍未接线且不参与本轮操作。
 
 - SR501 已按 5 V、共地、OUT 接 PD5 完成接线。b16 实测 `warmup_ms` 递减并在 60 秒后进入
   `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
   OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
 
-- confirmed `0.7.1 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；普通复位启动已通过。
+- confirmed `0.8.0 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；普通复位启动已通过。
 - CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
 - Application 安装过程中断电恢复、TRIAL 不确认自动回滚和 rollback 安装中断电：`DEFERRED`。
 
@@ -153,10 +157,10 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 目视确认 `0.7.1 build1` 的中性深灰背景、短标题下划线、大号电量显示、透明 Logo 和
-   `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 的 PB8 单键循环。
-2. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口；完成 LCD 回归后进入
-   ICM45686 实物识别、FIFO/DMA 连续性、零偏和安装方向验证。
+1. 检查 ICM45686 的 3.3 V、共地、PD0 CS、PC10 SCK、PC11 MISO 和 PC12 MOSI；目标是将
+   `who_am_i` 从 `0xFF` 恢复为 `0xE9`，随后继续 FIFO/DMA 连续性、零偏和安装方向验证。
+2. 完成 LCD 四页和 PB8 循环整体验收；确认电池化学体系、串数和放电曲线后校准
+   9.0--12.6 V 百分比窗口。
 
 当前路线：
 

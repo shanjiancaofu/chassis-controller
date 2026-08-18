@@ -130,9 +130,26 @@ void ChassisApp_Init(void)
   (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
 #if ENABLE_ICM45686
-  BspIcm45686_Init(HAL_GetTick());
-  (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "imu",
-                             "INITIALIZED", "device=ICM45686");
+  {
+    BspIcm45686Snapshot imu;
+    char fields[48];
+
+    BspIcm45686_Init(HAL_GetTick());
+    BspIcm45686_GetSnapshot(&imu);
+    (void)snprintf(fields, sizeof(fields),
+                   "device=ICM45686 who_am_i=0x%02X",
+                   (unsigned int)imu.who_am_i);
+    if (imu.status == BSP_ICM45686_READY) {
+      (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "imu",
+                                 "READY", fields);
+    } else if (imu.status == BSP_ICM45686_NOT_FOUND) {
+      (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_WARN, "imu",
+                                 "NOT_FOUND", fields);
+    } else {
+      (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_ERROR, "imu",
+                                 "INIT_FAILED", fields);
+    }
+  }
 #endif
   (void)StatusDisplay_Init();
 

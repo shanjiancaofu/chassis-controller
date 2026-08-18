@@ -2,6 +2,30 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-18 - ICM45686 正式启用（0.8.0 build1）
+
+### 变更内容
+
+- 打开 `ENABLE_ICM45686`，使 WHO_AM_I、寄存器配置、FIFO/DMA、静止零偏和 Mahony 融合路径
+  正式进入 Application 运行镜像。
+- 将启动日志从固定 `INITIALIZED` 改为真实的 `READY / NOT_FOUND / INIT_FAILED`，同时输出
+  `device=ICM45686 who_am_i=0xNN`。
+
+### 设计决定
+
+- 模块未连接或通信失败时保持 Application 启动和零 PWM，通过每秒非阻塞重试等待恢复。
+- 先取得 `WHO_AM_I=0xE9` 和连续 FIFO 数据，再进行安装方向、Kalman 和轮式里程计融合。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=103160 data=120 bss=53384`，Release
+  `text=92076 data=120 bss=53376`。
+- Release BIN 为 92204 字节，payload CRC32 `0x1484C456`；UART OTA 完成 `STAGED ->
+  INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。
+- 目标板启动日志和遥测稳定报告 `imu=NOT_FOUND`、`who_am_i=0xFF`；普通复位后仍为
+  `0.8.0 build1 / ota_confirmation=NOT_REQUIRED`，四任务运行、控制停止且左右 PWM 为零。
+  该结果是明确的通信排查证据，不是 ICM45686 硬件通过。
+
 ## 2026-08-18 - LCD 中性配色修正（0.7.1 build1）
 
 ### 变更内容
@@ -306,14 +330,15 @@
 | b15 | `0.2.1` | 诊断报告缓冲扩大 |
 | b16 | `0.2.2` | UART 与诊断容量统一为 2048 字节 |
 | b17 | `0.3.0` | FreeRTOS 四任务、统一快照和正式 UART 协议 |
-| 当前板上 | `0.7.1 build1` | UART OTA confirmed，普通复位回归通过 |
+| 当前板上 | `0.8.0 build1` | UART OTA confirmed，普通复位回归通过 |
 | 上一工作树 | `0.4.0 build1` | LCD 小 Logo 与页面结构调整，尚未上板 |
 | 上一修复树 | `0.5.0 build1` | LCD 四页状态显示，调试启动观察到 DMA 调度过慢 |
 | 上一修复树 | `0.5.1 build1` | LCD DMA 调度修复，调试启动已进入 `lcd=READY` |
 | 上一工作树 | `0.5.2 build1` | LCD 任务诊断周期统一，调试启动并确认 LCD 正常显示 |
 | 上一工作树 | `0.6.0 build1` | LCD UI 美化、透明 Logo 和电量估算，已 OTA confirmed |
 | 上一工作树 | `0.7.0 build1` | LCD 信息层级、大号电量显示和双栏布局，蓝色横带待修正 |
-| 当前工作树 | `0.7.1 build1` | LCD 中性深灰背景和短标题强调线，待人工观察 |
+| 上一工作树 | `0.7.1 build1` | LCD 中性深灰背景和短标题强调线，当前页面配色可接受 |
+| 当前工作树 | `0.8.0 build1` | ICM45686 正式启用，目标板 WHO_AM_I 返回 0xFF |
 
 ## 后置工作
 

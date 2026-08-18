@@ -109,7 +109,7 @@ OTA V1 代码基线已冻结，不再继续扩展 recovery 边角。冻结依据
 UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下项目保留为后置回归，
 不阻塞当前功能主线，也不得在未实测时标记为通过：
 
-- confirmed 0.7.1 build1 真实断电启动和四路 PWM 电气零输出（普通复位已回归通过）
+- confirmed 0.8.0 build1 真实断电启动和四路 PWM 电气零输出（普通复位已回归通过）
 - Application 安装过程中断电恢复
 - TRIAL 不确认自动回滚
 - rollback 安装过程中断电恢复
@@ -169,18 +169,19 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 | b15 | 诊断缓冲扩大 | `0.2.1` | 增大报告缓冲，定位长 status 输出问题 |
 | b16 | UART 消息容量修复 | `0.2.2` | UART 上限与诊断缓冲统一为 2048 字节 |
 | b17 | FreeRTOS 与正式 UART | `0.3.0` | 四任务快照、`[RSP]`/`[LOG]`/`[TEL]` 和 64 位格式化修复 |
-| 当前板上 | LCD UI confirmed 基线 | `0.7.1 build1` | UART OTA 确认并通过普通复位回归 |
+| 当前板上 | ICM45686 启用基线 | `0.8.0 build1` | UART OTA 确认并通过普通复位回归 |
 | 上一工作树 | LCD 小 Logo 与页面结构调整 | `0.4.0 build1` | 已构建，尚未上板 |
 | 上一修复树 | LCD 四页状态显示 | `0.5.0 build1` | 调试启动观察到 LCD DMA 调度过慢 |
 | 上一修复树 | LCD 四页 DMA 调度修复 | `0.5.1 build1` | 调试启动已进入 `lcd=READY` |
 | 上一工作树 | LCD 任务诊断周期统一 | `0.5.2 build1` | 调试启动通过，LCD 已人工确认正常显示 |
 | 上一工作树 | LCD UI 美化与电量估算 | `0.6.0 build1` | 已 OTA confirmed，首轮视觉调整基线 |
 | 上一工作树 | LCD 信息层级与大号电量显示 | `0.7.0 build1` | 已 OTA confirmed，蓝色横带反馈待修正 |
-| 当前工作树 | LCD 中性配色修正 | `0.7.1 build1` | 已 OTA confirmed，普通复位通过，待人工观察 |
+| 上一工作树 | LCD 中性配色修正 | `0.7.1 build1` | 已 OTA confirmed，当前页面配色人工确认可接受 |
+| 当前工作树 | ICM45686 正式启用 | `0.8.0 build1` | 软件路径已运行，目标板返回 WHO_AM_I 0xFF |
 
 ### 阶段 3：LCD 硬件总览
 
-状态：`IMPLEMENTED / NOT VERIFIED`（0.7.1 已 OTA 上板并通过普通复位；视觉效果尚待人工确认）
+状态：`IMPLEMENTED / NOT VERIFIED`（0.7.1 当前页面配色已人工确认；四页与 PB8 尚未整体验收）
 
 - 已保留原始 taifei 全屏资源，并生成带透明掩码的 40x40 RGB565 小 Logo；独立封面页已移除，
   Logo 固定显示在功能页右上角，释放一个页面位置。
@@ -198,14 +199,17 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
   传感器页和系统页按状态重要性重新排版，四页统一标题栏、内容面板、分隔线和底部状态栏。
 - 0.7.1 将蓝色标题/分隔横带改为中性深灰背景和内容面板，移除贯穿全屏的青色线；标题仅
   保留短青色下划线，页脚和电机双栏分隔使用低对比灰色。
-- 目标板仍需确认 0.7.1 的中性配色、透明 Logo、大号电量显示、四页无重叠和 PB8 循环，完成前不得标记
-  本轮 UI 硬件通过。
+- 目标板仍需确认透明 Logo、大号电量显示在四页中均无重叠，并完成 PB8 循环验收；完成前
+  不得标记 LCD 四页硬件通过。
 
 ### 阶段 4：ICM45686 与估计器
 
-状态：`DEFERRED`
+状态：`IMPLEMENTED / NOT VERIFIED`（0.8.0 已启用并上板，当前 `WHO_AM_I=0xFF / NOT_FOUND`）
 
-- 先完成 WHO_AM_I、FIFO/DMA、采样连续性、静止零偏和安装方向的实物确认。
+- `0.8.0` 已打开 `ENABLE_ICM45686`，完整执行 WHO_AM_I、寄存器配置、FIFO/DMA、零偏标定和
+  Mahony 融合路径；启动日志按真实结果输出 `READY / NOT_FOUND / INIT_FAILED`。
+- 首次目标板读取为 `WHO_AM_I=0xFF`，Application 保持正常启动且 PWM 为零。优先检查 3.3 V、
+  共地、PD0 CS、PC10 SCK、PC11 MISO 和 PC12 MOSI；读到 `0xE9` 后再继续 FIFO/DMA 验证。
 - 在 Kalman 或轮式里程计融合前，建立统一单调时间戳：保留 IMU FIFO 时间戳，给编码器和 ADC
   记录采样/触发时刻，给 SR501 记录稳定事件时刻；RTC 只用于日历显示和日志，不参与融合校时。
 - 验证传感器时间戳到控制时间轴的映射和延迟，100 Hz 控制下目标对齐误差约 1 ms；未完成前不
