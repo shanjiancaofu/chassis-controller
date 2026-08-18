@@ -598,3 +598,35 @@ SR501: READY motion=0 raw=0 count=0 last_ms=0 warmup_ms=0
 READY 后低电平零误计数已有实物证据；模块指示灯未亮，传感器 OUT 未观察到高电平。
 2026-08-17 决定将模块供电/设置排查、50 ms 稳定滤波、稳定低到高单次计数和持续高电平
 不重复计数统一标记为 `DEFERRED`，不阻塞 PID 主线。
+
+## 2026-08-18 正式 UART 消息构建
+
+Application 文本输出已迁移到统一 emitter：命令响应使用 `[RSP]`，异步事件使用 `[LOG]`，
+周期状态使用 `[TEL]`。`status` 现在以同一 `seq` 输出 `system`、`motor`、`sensors`、
+`communication` 四个分区；VOFA 数字流保留为显式兼容模式。UART OTA 进入二进制模式后，
+Application 跳过所有文本诊断和遥测输出；`send_uart.py` 已同步等待 `[RSP] command=ota_uart`。
+`test_uart_message.py` 的 3 项主机测试覆盖正式 OTA ready 响应、错误响应和重复/混合字段拒绝；
+`test_command_manager.c` 重新通过宿主机 `-Werror` 回归，覆盖明确的 `ACCEPTED`、`NOT_OWNER` 和
+`INVALID_ARGUMENT` 提交结果。
+
+执行：
+
+```text
+cmake --build --preset arm-debug --clean-first --parallel
+cmake --build --preset arm-release --clean-first --parallel
+PYTHONDONTWRITEBYTECODE=1 python3 tools/ota/test_uart_message.py
+git diff --check
+```
+
+结果：
+
+| 配置 | Application text | data | bss | 状态 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 199528 | 120 | 52864 | `BUILD PASS` |
+| Release | 190192 | 120 | 52856 | `BUILD PASS` |
+
+同一 preset 的 Bootloader 和 QSPI provisioner 也完成构建：Debug Bootloader `text=15596 data=48
+bss=1656`、Debug provisioner `text=10556 data=12 bss=1644`；Release Bootloader
+`text=13480 data=48 bss=1656`、Release provisioner `text=9272 data=12 bss=1644`。
+本轮只证明代码编译、链接和格式检查通过，尚未烧录本轮 UART emitter 产物；目标板上的
+`[RSP]`、`[LOG]`、`[TEL]` 行、四分区 `status` 和 OTA 文本隔离仍为 `NOT VERIFIED`。

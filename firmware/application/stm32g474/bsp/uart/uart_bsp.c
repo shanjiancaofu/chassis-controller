@@ -179,6 +179,17 @@ bool BspUart_IsTxIdle(void)
   return idle;
 }
 
+uint8_t BspUart_GetTxSlotsAvailable(void)
+{
+  uint32_t primask = __get_PRIMASK();
+  uint8_t available;
+
+  __disable_irq();
+  available = (uint8_t)(UART_TX_QUEUE_DEPTH - tx_count);
+  __set_PRIMASK(primask);
+  return available;
+}
+
 void BspUart_GetDiagnostics(BspUartDiagnostics *diagnostics)
 {
   uint16_t head;

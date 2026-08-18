@@ -18,13 +18,34 @@ from ota_transfer import (
 )
 
 
+def is_ota_ready_response(line):
+    tokens = line.strip().split()
+    fields = {}
+
+    if not tokens or tokens[0] != b"[RSP]":
+        return False
+    for token in tokens[1:]:
+        if b"=" not in token:
+            continue
+        key, value = token.split(b"=", 1)
+        if key in fields:
+            return False
+        fields[key] = value
+    return (fields.get(b"result") == b"OK" and
+            fields.get(b"command") == b"ota_uart")
+
+
 def read_ready(serial_port, timeout):
     deadline = time.monotonic() + timeout
     received = bytearray()
     while time.monotonic() < deadline:
         received.extend(serial_port.read(serial_port.in_waiting or 1))
-        if b"OTA_UART: READY" in received:
-            return
+        while b"\n" in received:
+            newline = received.index(b"\n")
+            line = bytes(received[:newline])
+            del received[:newline + 1]
+            if is_ota_ready_response(line):
+                return
     raise OtaError("device did not enter UART OTA mode")
 
 

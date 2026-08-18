@@ -83,6 +83,7 @@ set(APP_SOURCES
   infrastructure/console/diagnostic_report.c
   infrastructure/status_display/status_display.c
   infrastructure/telemetry/telemetry.c
+  infrastructure/uart_protocol/uart_protocol.c
   modules/chassis/command_manager.c
   modules/chassis/differential_drive.c
   modules/chassis/odometry.c

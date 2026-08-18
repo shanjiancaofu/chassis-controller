@@ -134,20 +134,22 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 ### 阶段 2：正式 UART 消息
 
-状态：`PLANNED`
+状态：`IMPLEMENTED`（代码和 Debug/Release 构建完成；目标板实测待验证）
 
-格式草案见 [`protocol/uart_message_protocol.md`](../protocol/uart_message_protocol.md)。
+正式格式和字段注册表见 [`protocol/uart_message_protocol.md`](../protocol/uart_message_protocol.md)。
 
-- 将命令响应统一为 `OK` / `ERROR`，并给出稳定的命令、错误码和字段名。
-- 将异步日志统一为 `LOG ts_ms=... level=... module=... event=... v=1`。
-- 将遥测统一为版本化 `TEL v=1 seq=... ts_ms=... field=value...`。
-- 所有文本消息使用 ASCII、单行、CRLF 换行；版本、时间戳、错误码和字段名称固定，不再输出
+- 已将命令响应统一为 `[RSP] v=1 ts_ms=... result=OK|ERROR`，并给出稳定的命令、错误码和字段名。
+- 已将异步日志统一为 `[LOG] v=1 ts_ms=... level=... module=... event=...`。
+- 已将遥测统一为版本化 `[TEL] v=1 ts_ms=... seq=... section=... field=value...`，方括号标签属于
+  固定线协议。
+- 所有正式文本消息使用 ASCII、单行、CRLF 换行；版本、时间戳、错误码和字段名称固定，不再输出
   无版本的 demo 文本。
-- 启动阶段按 `boot -> board -> 外设 -> application` 顺序输出结构化 `LOG` 行，风格类似 Linux
-  启动日志；初始化失败使用 `WARN`/`ERROR` 和稳定 `code=`，不使用不可解析的长句。
-- `status` 拆为 `SYSTEM`、`MOTOR`、`SENSORS`、`COMMUNICATION` 分区，允许像启动日志一样
+- 启动阶段按 `boot -> board -> 外设 -> application` 顺序输出结构化 `[LOG]` 行，风格类似 Linux
+  启动日志；初始化失败使用 `level=WARN|ERROR` 和稳定 `code=`，不使用不可解析的长句。
+- `status` 已拆为 `SYSTEM`、`MOTOR`、`SENSORS`、`COMMUNICATION` 分区，允许像启动日志一样
   逐行观察，但每行字段仍保持稳定。
 - OTA 二进制会话与文本输出保持隔离，不能混发。
+- VOFA 数字流保留为显式兼容模式，不属于正式 `[TEL]` 字段协议。
 
 ### 阶段 3：LCD 硬件总览
 
@@ -177,7 +179,8 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 状态：`DEFERRED`
 
-- 将现有 SR501 快照接入统一 `SystemStatusSnapshot`、LCD 和正式 UART 字段，不绑定电机或安全逻辑。
+- SR501 已接入统一 `SystemStatusSnapshot` 和正式 UART `sensors` 字段；剩余 LCD 展示随阶段 3
+  实现，不绑定电机或安全逻辑。
 - 继续保留 60 秒预热、50 ms 滤波和单次上升沿语义。
 - 完成模块供电、指示灯、OUT 高电平和事件计数实物排查后，才更新硬件验证结论。
 

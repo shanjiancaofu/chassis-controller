@@ -21,11 +21,18 @@ typedef struct {
   bool has_sequence;
 } CommandManagerCommand;
 
+typedef enum {
+  COMMAND_SUBMIT_ACCEPTED = 0,
+  COMMAND_SUBMIT_INVALID_ARGUMENT,
+  COMMAND_SUBMIT_NOT_OWNER
+} CommandManagerSubmitResult;
+
 void CommandManager_Init(void);
 bool CommandManager_Acquire(CommandSource source);
 void CommandManager_Release(CommandSource source);
 CommandSource CommandManager_GetOwner(void);
-bool CommandManager_Submit(const CommandManagerCommand *command);
+CommandManagerSubmitResult CommandManager_Submit(
+    const CommandManagerCommand *command);
 bool CommandManager_Refresh(CommandSource source, uint32_t now_ms);
 void CommandManager_ClearCommand(void);
 bool CommandManager_Get(CommandManagerCommand *command);

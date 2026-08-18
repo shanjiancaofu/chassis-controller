@@ -28,6 +28,7 @@ bool BspUart_GetTrackedCompletion(uint32_t token, bool *completed,
                                   bool *success);
 bool BspUart_WriteString(const char *text);
 bool BspUart_IsTxIdle(void);
+uint8_t BspUart_GetTxSlotsAvailable(void);
 void BspUart_GetDiagnostics(BspUartDiagnostics *diagnostics);
 
 #endif

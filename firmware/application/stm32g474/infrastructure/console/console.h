@@ -2,7 +2,6 @@
 #define CONSOLE_H
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
 typedef enum {
@@ -29,7 +28,8 @@ typedef enum {
   CONSOLE_COMMAND_MOTOR_LEFT_REVERSE,
   CONSOLE_COMMAND_MOTOR_RIGHT_FORWARD,
   CONSOLE_COMMAND_MOTOR_RIGHT_REVERSE,
-  CONSOLE_COMMAND_HELP
+  CONSOLE_COMMAND_HELP,
+  CONSOLE_COMMAND_INVALID
 } ConsoleCommandType;
 
 typedef struct {
@@ -50,7 +50,6 @@ typedef struct {
 void Console_Init(void);
 void Console_Run(void);
 bool Console_TakeCommand(ConsoleCommand *command);
-const char *Console_GetHelpText(size_t *length);
 uint32_t Console_GetDroppedCommandCount(void);
 
 #endif

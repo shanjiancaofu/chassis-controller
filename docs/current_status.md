@@ -12,8 +12,8 @@
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
-  调参已后置；当前代码主线已完成分阶段功能实施第 1 阶段：FreeRTOS 四任务和运行状态基础，
-  进入正式 UART 消息与 LCD 四页阶段。目标加减速限制、ICM45686、SR501 高电平闭环按路线后续实施。
+  调参已后置；当前代码主线已完成 FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
+  下一阶段为 LCD 四页。目标加减速限制、ICM45686、SR501 高电平闭环按路线后续实施。
 
 ## 当前实现
 
@@ -53,15 +53,16 @@
 - 当前代码已运行 `control_task`、`service_task`、`diagnostics_task`、`display_task` 四任务；
   `SystemStatusSnapshot` 记录四个任务的周期、期望周期、超时、运行状态、运行次数、栈余量、
   heartbeat age、uptime、RCC 复位原因，以及板级/传感器/通信/供电/RTC 状态。UART `status`
-  和 LCD 当前页读取同一快照；正式 `OK/ERROR/LOG/TEL` emitter 和 LCD 四页仍未实施。
+  和 LCD 当前页读取同一快照；正式 `[RSP]`、`[LOG]`、`[TEL]` UART emitter 已实现，LCD 四页
+  仍未实施。VOFA 数字流保留为显式兼容模式。
 
 ## 已验证
 
 - 2026-08-17 分阶段路线阶段 1 已完成四任务迁移和 Application Debug/Release 的 CMake/Ninja
   构建；统一快照和四任务诊断字段通过 GNU Arm Embedded 14.3.rel1 编译链接。最新构建结果和
   运行字段实物验证状态见 `verification.md`；尚未烧录本轮产物。
-- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前四任务工作树构建通过：Application
-  Debug `text=198048 data=120 bss=48736`，Release `text=189216 data=120 bss=48728`。
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前正式 UART 工作树构建通过：Application
+  Debug `text=199528 data=120 bss=52864`，Release `text=190192 data=120 bss=52856`。
   b16 Release BIN 为 186076 字节、payload CRC32 `0x995BF0B5`，OTA 包为 186140 字节；
   OTA Python 9 项通过。b16 已完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`。
   上板发现新增 SR501 行使 `status` 达到 1251 字节，超过原 UART 1200 字节消息限制；b16
@@ -121,7 +122,8 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 1. 将本轮 Debug/Release 产物按既有流程烧录，确认四任务周期、栈余量、运行状态和复位原因
    字段可读；不据此推断硬件通过。
-2. 实现正式 UART 消息格式和四页 LCD；ICM45686 时间轴/Kalman、SR501 收尾随后推进。
+2. 烧录并实测正式 UART 消息和四分区 `status`；代码主线继续实现 LCD 四页。ICM45686
+   时间轴/Kalman、SR501 实物收尾按路线推进。
 
 当前路线：
 

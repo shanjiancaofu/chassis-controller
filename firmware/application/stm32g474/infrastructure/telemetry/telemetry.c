@@ -6,10 +6,11 @@
 #include "bsp/uart/uart_bsp.h"
 #include "config/control_config.h"
 #include "config/protocol_config.h"
+#include "infrastructure/uart_protocol/uart_protocol.h"
 
 static TelemetryMode telemetry_mode;
 static uint32_t last_transmit_ms;
-static char transmit_buffer[256];
+static char transmit_buffer[512];
 
 void Telemetry_Init(void)
 {
@@ -42,6 +43,7 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
 {
   int32_t left_rpm_x10;
   int32_t right_rpm_x10;
+  uint32_t sequence;
   int length;
 
   if (snapshot == NULL || !Telemetry_IsDue(now_ms)) {
@@ -68,7 +70,10 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
   } else {
     length = snprintf(
         transmit_buffer, sizeof(transmit_buffer),
-        "vin_mv=%ld lt=%ld ld=%ld lrpm_x10=%ld lc=%lld lo=%d rt=%ld rd=%ld rrpm_x10=%ld rc=%lld ro=%d state=%lu fault=0x%08lx\r\n",
+        "supply_mv=%ld left_target=%ld left_delta=%ld left_rpm_x10=%ld "
+        "left_total=%lld left_pwm=%d right_target=%ld right_delta=%ld "
+        "right_rpm_x10=%ld right_total=%lld right_pwm=%d control=%lu "
+        "fault=0x%08lx",
         (long)snapshot->supply_mv, (long)snapshot->left_target,
         (long)snapshot->left_delta, (long)left_rpm_x10,
         (long long)snapshot->left_total, (int)snapshot->left_output,
@@ -79,8 +84,16 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
         (unsigned long)snapshot->fault_flags);
   }
 
-  if (length > 0 && (size_t)length < sizeof(transmit_buffer) &&
-      BspUart_Write(transmit_buffer, (size_t)length)) {
-    last_transmit_ms = now_ms;
+  if (telemetry_mode == TELEMETRY_MODE_VOFA) {
+    if (length > 0 && (size_t)length < sizeof(transmit_buffer) &&
+        BspUart_Write(transmit_buffer, (size_t)length)) {
+      last_transmit_ms = now_ms;
+    }
+  } else if (length > 0 && (size_t)length < sizeof(transmit_buffer)) {
+    sequence = UartProtocol_NextTelemetrySequence();
+    if (UartProtocol_SendTelemetry(now_ms, sequence, "motor",
+                                   transmit_buffer)) {
+      last_transmit_ms = now_ms;
+    }
   }
 }

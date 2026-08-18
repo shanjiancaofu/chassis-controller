@@ -20,12 +20,14 @@
 #include "communication/ota_transport/ota_uart_arm_guard.h"
 #include "communication/ota_transport/ota_uart_transport.h"
 #include "config/app_config.h"
+#include "config/build_info.h"
 #include "config/control_config.h"
 #include "config/feature_config.h"
 #include "iwdg.h"
 #include "infrastructure/console/console.h"
 #include "infrastructure/console/diagnostic_report.h"
 #include "infrastructure/telemetry/telemetry.h"
+#include "infrastructure/uart_protocol/uart_protocol.h"
 #include "main.h"
 #include "modules/chassis/command_manager.h"
 #include "modules/chassis/odometry.h"
@@ -53,10 +55,11 @@ static OtaResponse ota_response;
 
 static void ProcessConsoleCommand(const ConsoleCommand *command,
                                   uint32_t now_ms);
-static void SendPidParameterReport(bool accepted);
-static void SendEncoderResult(void);
-static void SendCanDiagnostics(void);
-static void SendConsoleHelp(void);
+static void SendPidParameterReport(uint32_t now_ms, const char *command_name,
+                                   bool accepted);
+static void SendEncoderResult(uint32_t now_ms);
+static void SendCanDiagnostics(uint32_t now_ms);
+static void SendConsoleHelp(uint32_t now_ms);
 static bool StartControl(void);
 static void StopControl(void);
 static void ReleaseMotionOwner(void);
@@ -70,9 +73,11 @@ static void ReleaseFinishedTargetTestLock(void);
 static void LatchChassisInternalFault(uint32_t fault);
 static void ApplyPendingControlParameters(void);
 static bool ResetWheelOdometry(void);
-static bool SubmitMotionCommand(int32_t left_target, int32_t right_target,
-                                CommandSource source, uint32_t now_ms,
-                                bool has_sequence, uint8_t sequence);
+static CommandManagerSubmitResult SubmitMotionCommand(
+    int32_t left_target, int32_t right_target, CommandSource source,
+    uint32_t now_ms, bool has_sequence, uint8_t sequence);
+static const char *GetMotionCommandErrorCode(
+    CommandManagerSubmitResult submit_result);
 
 #if ENABLE_MOTOR_DEMO
 static uint8_t demo_stage;
@@ -81,19 +86,23 @@ static uint32_t demo_stage_started_ms;
 
 void ChassisApp_Init(void)
 {
-  static const char startup_message[] = "chassis-controller started\r\n";
+  const uint32_t now_ms = HAL_GetTick();
 
   if (!BspUart_Start()) {
     Error_Handler();
   }
+  UartProtocol_Init();
   Console_Init();
   Telemetry_Init();
-  if (!BspUart_Write(startup_message, sizeof(startup_message) - 1U)) {
-    Error_Handler();
-  }
+  (void)UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_INFO, "boot",
+                             "STARTED", "fw=" CHASSIS_FIRMWARE_VERSION);
   if (CanTransport_Init() != HAL_OK) {
+    (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_ERROR, "board",
+                               "FDCAN_INIT_FAILED", "code=UNAVAILABLE");
     Error_Handler();
   }
+  (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "board",
+                             "FDCAN_READY", NULL);
   OtaCanTransport_Init();
   OtaUartTransport_Init();
   OtaSession_Init();
@@ -103,16 +112,26 @@ void ChassisApp_Init(void)
 
   BspMotor_Init();
   if (!BspMotor_Start()) {
+    (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_ERROR, "motor",
+                               "INIT_FAILED", "code=UNAVAILABLE");
     Error_Handler();
   }
   BspEncoder_Init();
   if (!BspEncoder_Start() || !BspPowerSample_Init()) {
+    (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_ERROR, "board",
+                               "MOTION_IO_INIT_FAILED", "code=UNAVAILABLE");
     Error_Handler();
   }
+  (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "board",
+                             "MOTION_IO_READY", NULL);
   BspButton_Init();
   BspSr501_Init(HAL_GetTick());
+  (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "sr501",
+                             "WARMING_UP", "warmup_ms=60000");
 #if ENABLE_ICM45686
   BspIcm45686_Init(HAL_GetTick());
+  (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "imu",
+                             "INITIALIZED", "device=ICM45686");
 #endif
   (void)StatusDisplay_Init();
 
@@ -130,6 +149,8 @@ void ChassisApp_Init(void)
   IwdgTargetTest_Init();
   MotorTargetTest_Init();
   DiagnosticReport_Init(HAL_GetTick());
+  (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_INFO,
+                             "application", "READY", "tasks=4");
   consecutive_control_overruns = 0U;
   if (SafetyManager_IsEmergencyStopLatched()) {
     WheelController_EmergencyStop();
@@ -137,9 +158,9 @@ void ChassisApp_Init(void)
 #if ENABLE_MOTOR_DEMO
   demo_stage = 0U;
   demo_stage_started_ms = HAL_GetTick();
-  if (!SubmitMotionCommand(0, 0, COMMAND_SOURCE_TARGET_TEST,
-                           demo_stage_started_ms,
-                           false, 0U) ||
+  if (SubmitMotionCommand(0, 0, COMMAND_SOURCE_TARGET_TEST,
+                          demo_stage_started_ms, false, 0U) !=
+          COMMAND_SUBMIT_ACCEPTED ||
       !StartControl()) {
     Error_Handler();
   }
@@ -246,8 +267,9 @@ void ChassisApp_RunServiceCycle(void)
     if (control_command.enabled) {
       if (SubmitMotionCommand(control_command.left_target,
                               control_command.right_target,
-                              COMMAND_SOURCE_CAN_REMOTE,
-                              now_ms, true, control_command.sequence)) {
+                              COMMAND_SOURCE_CAN_REMOTE, now_ms, true,
+                              control_command.sequence) ==
+          COMMAND_SUBMIT_ACCEPTED) {
         (void)StartControl();
       }
     } else if (CommandManager_GetOwner() ==
@@ -279,7 +301,9 @@ void ChassisApp_RunServiceCycle(void)
   }
   MotorTargetTest_Run(now_ms);
   ReleaseFinishedTargetTestLock();
-  DiagnosticReport_Run(now_ms);
+  if (!OtaUartTransport_IsEnabled()) {
+    DiagnosticReport_Run(now_ms);
+  }
 
   if (IwdgTargetTest_IsResetRequested()) {
     StopControl();
@@ -298,7 +322,7 @@ void ChassisApp_RunServiceCycle(void)
     }
   }
 
-  if (Telemetry_IsDue(now_ms)) {
+  if (!OtaUartTransport_IsEnabled() && Telemetry_IsDue(now_ms)) {
     WheelControllerSnapshot wheel_snapshot;
     MotorTargetTestSnapshot motor_test_snapshot;
     OdometrySnapshot odometry_snapshot;
@@ -475,45 +499,44 @@ void ChassisApp_RunDisplayCycle(void)
 static void ProcessConsoleCommand(const ConsoleCommand *command,
                                   uint32_t now_ms)
 {
-  static const char pong[] = "PONG\r\n";
-  static const char telemetry_text[] = "TELEMETRY: TEXT\r\n";
-  static const char telemetry_vofa[] = "TELEMETRY: VOFA\r\n";
-  static const char telemetry_off[] = "TELEMETRY: OFF\r\n";
-  static const char can_queued[] = "FDCAN_DIAG: TX_721_QUEUED\r\n";
-  char response[96];
-
   if (command == NULL) {
     return;
   }
 
   switch (command->type) {
     case CONSOLE_COMMAND_PING:
-      (void)BspUart_WriteString(pong);
+      (void)UartProtocol_SendResponse(now_ms, "ping", true, NULL);
       break;
     case CONSOLE_COMMAND_STATUS:
+      (void)UartProtocol_SendResponse(now_ms, "status", true,
+                                      "stream=diagnostics");
       DiagnosticReport_RequestSelfTest();
       break;
     case CONSOLE_COMMAND_TELEMETRY_TEXT:
       Telemetry_SetMode(TELEMETRY_MODE_TEXT);
-      (void)BspUart_WriteString(telemetry_text);
+      (void)UartProtocol_SendResponse(now_ms, "telemetry", true,
+                                      "mode=TEXT");
       break;
     case CONSOLE_COMMAND_TELEMETRY_VOFA:
       Telemetry_SetMode(TELEMETRY_MODE_VOFA);
-      (void)BspUart_WriteString(telemetry_vofa);
+      (void)UartProtocol_SendResponse(now_ms, "telemetry", true,
+                                      "mode=VOFA compatibility=LEGACY");
       break;
     case CONSOLE_COMMAND_TELEMETRY_OFF:
       Telemetry_SetMode(TELEMETRY_MODE_OFF);
-      (void)BspUart_WriteString(telemetry_off);
+      (void)UartProtocol_SendResponse(now_ms, "telemetry", true,
+                                      "mode=OFF");
       break;
     case CONSOLE_COMMAND_CAN_STATUS:
-      SendCanDiagnostics();
+      SendCanDiagnostics(now_ms);
       break;
     case CONSOLE_COMMAND_CAN_TRANSMIT:
       CanTransport_RequestResponse();
-      (void)BspUart_WriteString(can_queued);
+      (void)UartProtocol_SendResponse(now_ms, "can_tx", true,
+                                      "frame=0x721 state=QUEUED");
       break;
     case CONSOLE_COMMAND_PID_SHOW:
-      SendPidParameterReport(true);
+      SendPidParameterReport(now_ms, "pid_show", true);
       break;
     case CONSOLE_COMMAND_PID_SET_LEFT:
     case CONSOLE_COMMAND_PID_SET_RIGHT: {
@@ -527,44 +550,62 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
           command->arguments.pid.kp, command->arguments.pid.ki,
           command->arguments.pid.kd);
       taskEXIT_CRITICAL();
-      SendPidParameterReport(accepted);
+      SendPidParameterReport(now_ms, "pid_set", accepted);
       break;
     }
-    case CONSOLE_COMMAND_PID_TARGET:
-      if (SubmitMotionCommand(command->arguments.target.left,
-                              command->arguments.target.right,
-                              COMMAND_SOURCE_CONSOLE, now_ms, false, 0U)) {
-        (void)StartControl();
+    case CONSOLE_COMMAND_PID_TARGET: {
+      char fields[32];
+      const CommandManagerSubmitResult submit_result = SubmitMotionCommand(
+          command->arguments.target.left, command->arguments.target.right,
+          COMMAND_SOURCE_CONSOLE, now_ms, false, 0U);
+
+      if (submit_result == COMMAND_SUBMIT_ACCEPTED && StartControl()) {
+        (void)UartProtocol_SendResponse(now_ms, "pid_target", true,
+                                        "state=RUNNING");
+      } else {
+        if (submit_result == COMMAND_SUBMIT_ACCEPTED) {
+          taskENTER_CRITICAL();
+          CommandManager_Release(COMMAND_SOURCE_CONSOLE);
+          taskEXIT_CRITICAL();
+        }
+        (void)snprintf(fields, sizeof(fields), "code=%s",
+                       GetMotionCommandErrorCode(submit_result));
+        (void)UartProtocol_SendResponse(now_ms, "pid_target", false,
+                                        fields);
       }
       break;
+    }
     case CONSOLE_COMMAND_PID_STOP:
       StopControl();
       taskENTER_CRITICAL();
       CommandManager_Release(COMMAND_SOURCE_CONSOLE);
       taskEXIT_CRITICAL();
+      (void)UartProtocol_SendResponse(now_ms, "pid_stop", true,
+                                      "state=STOPPED");
       break;
     case CONSOLE_COMMAND_ENCODER_ZERO:
-      (void)snprintf(response, sizeof(response), "ENCODER_CAL: %s\r\n",
-                     ResetWheelOdometry()
-                         ? "RESET"
-                         : "REJECTED, stop motor first");
-      (void)BspUart_WriteString(response);
+      if (ResetWheelOdometry()) {
+        (void)UartProtocol_SendResponse(now_ms, "encoder_zero", true,
+                                        "state=RESET");
+      } else {
+        (void)UartProtocol_SendResponse(now_ms, "encoder_zero", false,
+                                        "code=SAFETY_STOP");
+      }
       break;
     case CONSOLE_COMMAND_ENCODER_RESULT:
-      SendEncoderResult();
+      SendEncoderResult(now_ms);
       break;
     case CONSOLE_COMMAND_OTA_UART:
       if (AcquireOtaMaintenanceLock()) {
-        static const char ready[] =
-            "OTA_UART: READY, binary mode\r\n";
-
         Telemetry_SetMode(TELEMETRY_MODE_OFF);
-        (void)BspUart_WriteString(ready);
+        (void)UartProtocol_SendResponse(now_ms, "ota_uart", true,
+                                        "mode=BINARY");
         OtaUartTransport_Enable();
         OtaUartArmGuard_Arm(&ota_uart_arm_guard, now_ms);
         ota_terminal_cleaned = false;
       } else {
-        (void)BspUart_WriteString("OTA_UART: REJECTED\r\n");
+        (void)UartProtocol_SendResponse(now_ms, "ota_uart", false,
+                                        "code=BUSY");
       }
       break;
     case CONSOLE_COMMAND_QSPI_TEST:
@@ -573,8 +614,11 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
         taskENTER_CRITICAL();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
         taskEXIT_CRITICAL();
-        SendConsoleHelp();
+        (void)UartProtocol_SendResponse(now_ms, "qspi_test", false,
+                                        "code=BUSY");
       } else {
+        (void)UartProtocol_SendResponse(now_ms, "qspi_test", true,
+                                        "state=STARTED");
         DiagnosticReport_RequestQspiTest();
       }
       break;
@@ -584,8 +628,11 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
         taskENTER_CRITICAL();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
         taskEXIT_CRITICAL();
-        SendConsoleHelp();
+        (void)UartProtocol_SendResponse(now_ms, "iwdg_reset_test", false,
+                                        "code=BUSY");
       } else {
+        (void)UartProtocol_SendResponse(now_ms, "iwdg_reset_test", true,
+                                        "state=ARMED");
         DiagnosticReport_RequestIwdgArmed();
       }
       break;
@@ -621,79 +668,92 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
           taskEXIT_CRITICAL();
         }
       }
-      DiagnosticReport_MotorTestResult(action, accepted);
+      (void)UartProtocol_SendResponse(
+          now_ms,
+          action == MOTOR_TARGET_TEST_STOP
+              ? "motor_stop"
+              : action == MOTOR_TARGET_TEST_LEFT_FORWARD
+                    ? "motor_left_forward"
+              : action == MOTOR_TARGET_TEST_LEFT_REVERSE
+                          ? "motor_left_reverse"
+                          : action == MOTOR_TARGET_TEST_RIGHT_FORWARD
+                                ? "motor_right_forward"
+                                : "motor_right_reverse",
+          accepted,
+          accepted ? (action == MOTOR_TARGET_TEST_STOP ? "state=STOPPED"
+                                                       : "state=STARTED")
+                   : "code=BUSY");
       break;
     }
     case CONSOLE_COMMAND_HELP:
-      SendConsoleHelp();
+      SendConsoleHelp(now_ms);
+      break;
+    case CONSOLE_COMMAND_INVALID:
+      (void)UartProtocol_SendResponse(now_ms, "unknown", false,
+                                      "code=INVALID_ARGUMENT");
       break;
     default:
       break;
   }
 }
 
-static void SendPidParameterReport(bool accepted)
+static void SendPidParameterReport(uint32_t now_ms, const char *command_name,
+                                   bool accepted)
 {
-  char response[160];
-  int length;
+  char fields[192];
   ParameterSnapshot parameters;
 
   taskENTER_CRITICAL();
   ParameterManager_GetRequested(&parameters);
   taskEXIT_CRITICAL();
   if (accepted) {
-    length = snprintf(
-        response, sizeof(response),
-        "PID: left kp=%u ki=%u kd=%u right kp=%u ki=%u kd=%u\r\n",
+    (void)snprintf(
+        fields, sizeof(fields),
+        "left_kp=%u left_ki=%u left_kd=%u right_kp=%u right_ki=%u right_kd=%u",
         (unsigned int)parameters.left_pid.kp,
         (unsigned int)parameters.left_pid.ki,
         (unsigned int)parameters.left_pid.kd,
         (unsigned int)parameters.right_pid.kp,
         (unsigned int)parameters.right_pid.ki,
         (unsigned int)parameters.right_pid.kd);
+    (void)UartProtocol_SendResponse(now_ms, command_name, true, fields);
   } else {
-    length = snprintf(
-        response, sizeof(response),
-        "PID: REJECTED limits kp<=%u ki<=%u kd<=%u\r\n",
-        (unsigned int)MOTOR_PID_KP_MAX, (unsigned int)MOTOR_PID_KI_MAX,
-        (unsigned int)MOTOR_PID_KD_MAX);
-  }
-  if (length > 0 && (size_t)length < sizeof(response)) {
-    (void)BspUart_Write(response, (size_t)length);
+    (void)snprintf(fields, sizeof(fields),
+                   "code=INVALID_ARGUMENT kp_max=%u ki_max=%u kd_max=%u",
+                   (unsigned int)MOTOR_PID_KP_MAX,
+                   (unsigned int)MOTOR_PID_KI_MAX,
+                   (unsigned int)MOTOR_PID_KD_MAX);
+    (void)UartProtocol_SendResponse(now_ms, "pid_set", false, fields);
   }
 }
 
-static void SendEncoderResult(void)
+static void SendEncoderResult(uint32_t now_ms)
 {
   OdometrySnapshot snapshot;
-  char response[96];
-  int length;
+  char fields[96];
 
   taskENTER_CRITICAL();
   Odometry_GetSnapshot(&snapshot);
   taskEXIT_CRITICAL();
-  length = snprintf(response, sizeof(response),
-                    "ENCODER_CAL: left=%lld right=%lld counts\r\n",
-                    (long long)snapshot.left_total,
-                    (long long)snapshot.right_total);
-  if (length > 0 && (size_t)length < sizeof(response)) {
-    (void)BspUart_Write(response, (size_t)length);
-  }
+  (void)snprintf(fields, sizeof(fields), "left_total=%lld right_total=%lld",
+                 (long long)snapshot.left_total,
+                 (long long)snapshot.right_total);
+  (void)UartProtocol_SendResponse(now_ms, "encoder_result", true, fields);
 }
 
-static void SendCanDiagnostics(void)
+static void SendCanDiagnostics(uint32_t now_ms)
 {
   CanTransportDiagnostics diagnostics;
-  char response[320];
-  int length;
+  char fields[640];
 
   if (!CanTransport_GetDiagnostics(&diagnostics)) {
-    (void)BspUart_WriteString("FDCAN_DIAG: READ_FAILED\r\n");
+    (void)UartProtocol_SendResponse(now_ms, "can_status", false,
+                                    "code=UNAVAILABLE");
     return;
   }
-  length = snprintf(
-      response, sizeof(response),
-      "FDCAN_DIAG: activity=%lu lec=%lu dlec=%lu tec=%lu rec=%lu passive=%lu warning=%lu busoff=%lu restricted=%lu rxfill=%lu txfree=%lu counts[w=%lu p=%lu bo=%lu pe=%lu full=%lu lost=%lu recover=%lu fail=%lu]\r\n",
+  (void)snprintf(
+      fields, sizeof(fields),
+      "activity=%lu lec=%lu dlec=%lu tec=%lu rec=%lu passive=%lu warning=%lu busoff=%lu restricted=%lu rxfill=%lu txfree=%lu warning_count=%lu passive_count=%lu busoff_count=%lu protocol_error_count=%lu rx_fifo_full_count=%lu rx_fifo_lost_count=%lu recovery_count=%lu recovery_failure_count=%lu",
       (unsigned long)diagnostics.activity,
       (unsigned long)diagnostics.last_error_code,
       (unsigned long)diagnostics.data_last_error_code,
@@ -713,17 +773,18 @@ static void SendCanDiagnostics(void)
       (unsigned long)diagnostics.rx_fifo_lost_count,
       (unsigned long)diagnostics.recovery_count,
       (unsigned long)diagnostics.recovery_failure_count);
-  if (length > 0 && (size_t)length < sizeof(response)) {
-    (void)BspUart_Write(response, (size_t)length);
-  }
+  (void)UartProtocol_SendResponse(now_ms, "can_status", true, fields);
 }
 
-static void SendConsoleHelp(void)
+static void SendConsoleHelp(uint32_t now_ms)
 {
-  size_t length;
-  const char *text = Console_GetHelpText(&length);
+  const char *commands =
+      "commands=help,ping,status,telemetry,can_status,can_tx,pid_show,pid_set," \
+      "pid_target,pid_stop,encoder_zero,encoder_result,ota_uart,qspi_test," \
+      "iwdg_reset_test,motor_stop,motor_left_forward,motor_left_reverse," \
+      "motor_right_forward,motor_right_reverse";
 
-  (void)BspUart_Write(text, length);
+  (void)UartProtocol_SendResponse(now_ms, "help", true, commands);
 }
 
 static bool StartControl(void)
@@ -998,7 +1059,8 @@ static void ProcessOtaTransportCycle(uint32_t now_ms)
     OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
     ReleaseOtaMaintenanceLock();
     ota_terminal_cleaned = true;
-    (void)BspUart_WriteString("OTA_UART: TIMEOUT, text mode\r\n");
+    (void)UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_WARN, "ota",
+                               "UART_ARM_TIMEOUT", "code=TIMEOUT");
   }
 }
 
@@ -1065,11 +1127,11 @@ static bool ResetWheelOdometry(void)
   return true;
 }
 
-static bool SubmitMotionCommand(int32_t left_target, int32_t right_target,
-                                CommandSource source, uint32_t now_ms,
-                                bool has_sequence, uint8_t sequence)
+static CommandManagerSubmitResult SubmitMotionCommand(
+    int32_t left_target, int32_t right_target, CommandSource source,
+    uint32_t now_ms, bool has_sequence, uint8_t sequence)
 {
-  bool accepted;
+  CommandManagerSubmitResult result;
   uint32_t primask;
   const CommandManagerCommand command = {
       .left_target = left_target,
@@ -1082,9 +1144,24 @@ static bool SubmitMotionCommand(int32_t left_target, int32_t right_target,
 
   primask = __get_PRIMASK();
   __disable_irq();
-  accepted = CommandManager_Submit(&command);
+  result = CommandManager_Submit(&command);
   __set_PRIMASK(primask);
-  return accepted;
+  return result;
+}
+
+static const char *GetMotionCommandErrorCode(
+    CommandManagerSubmitResult submit_result)
+{
+  if (submit_result == COMMAND_SUBMIT_INVALID_ARGUMENT) {
+    return "INVALID_ARGUMENT";
+  }
+  if (submit_result == COMMAND_SUBMIT_NOT_OWNER) {
+    return "NOT_OWNER";
+  }
+  if (SafetyManager_GetState() == CHASSIS_CONTROL_OPEN_LOOP_TEST) {
+    return "BUSY";
+  }
+  return "SAFETY_STOP";
 }
 
 void ChassisApp_FatalError(void)

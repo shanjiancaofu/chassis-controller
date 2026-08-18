@@ -2,20 +2,16 @@
 
 #include <stdio.h>
 
-#include "bsp/uart/uart_bsp.h"
+#include "bsp/imu/bsp_icm45686.h"
+#include "bsp/sr501/bsp_sr501.h"
 #include "bsp/reset/bsp_reset.h"
-#include "communication/can_transport/can_transport.h"
-#include "communication/ota_transport/ota_can_transport.h"
-#include "communication/ota_transport/ota_confirmation.h"
-#include "communication/ota_transport/ota_session.h"
-#include "communication/ota_transport/ota_uart_transport.h"
-#include "components/imu_fusion/imu_fusion.h"
+#include "config/build_info.h"
 #include "config/storage_layout.h"
-#include "infrastructure/console/console.h"
+#include "communication/ota_transport/ota_confirmation.h"
 #include "infrastructure/telemetry/telemetry.h"
+#include "infrastructure/uart_protocol/uart_protocol.h"
 #include "modules/diagnostics/system_status.h"
 #include "rtos/rtos_app.h"
-#include "tests/target/iwdg_target_test.h"
 #include "tests/target/qspi_target_test.h"
 
 #define SELF_TEST_REPORT_DELAY_MS 100U
@@ -25,17 +21,21 @@ static bool initial_report_sent;
 static bool self_test_report_requested;
 static bool qspi_report_requested;
 static bool iwdg_report_requested;
-static bool motor_report_requested;
-static char motor_report[96];
-static char report_buffer[2048];
+static char system_fields[1400];
+static char motor_fields[768];
+static char sensor_fields[1024];
+static char communication_fields[768];
 
-_Static_assert(sizeof(report_buffer) <= BSP_UART_MAX_WRITE_SIZE,
-               "diagnostic report exceeds the UART write limit");
-
-static bool WriteSelfTestReport(void);
-static bool WriteQspiTestReport(void);
+static bool WriteSelfTestReport(uint32_t now_ms);
+static bool WriteQspiTestReport(uint32_t now_ms);
 static const char *TaskStateText(uint32_t state);
 static const char *ResetCauseText(uint32_t flags);
+static const char *ControlStateText(ChassisControlState state);
+static const char *CanStateText(SystemStatusCanState state);
+static const char *LcdStateText(SystemStatusLcdState state);
+static const char *ImuStateText(const BspIcm45686Snapshot *snapshot);
+static const char *OtaConfirmationText(uint32_t state);
+static const char *TelemetryModeText(uint32_t mode);
 
 void DiagnosticReport_Init(uint32_t now_ms)
 {
@@ -44,37 +44,31 @@ void DiagnosticReport_Init(uint32_t now_ms)
   self_test_report_requested = false;
   qspi_report_requested = false;
   iwdg_report_requested = false;
-  motor_report_requested = false;
 }
 
 void DiagnosticReport_Run(uint32_t now_ms)
 {
-  static const char iwdg_armed[] =
-      "IWDG_RESET_TEST: ARMED, reset expected within 10 seconds\r\n";
-
   if (QspiTargetTest_TakeCompletion()) {
     qspi_report_requested = true;
   }
   if ((!initial_report_sent &&
-       (CanTransport_GetLinkStatus() != CAN_TRANSPORT_LINK_READY ||
-        now_ms - initialized_ms >= SELF_TEST_REPORT_DELAY_MS)) ||
+       (now_ms - initialized_ms >= SELF_TEST_REPORT_DELAY_MS)) ||
       self_test_report_requested) {
-    if (WriteSelfTestReport()) {
+    if (WriteSelfTestReport(now_ms)) {
       initial_report_sent = true;
       self_test_report_requested = false;
     }
     return;
   }
-  if (qspi_report_requested && WriteQspiTestReport()) {
+  if (qspi_report_requested && WriteQspiTestReport(now_ms)) {
     qspi_report_requested = false;
     return;
   }
-  if (iwdg_report_requested && BspUart_WriteString(iwdg_armed)) {
+  if (iwdg_report_requested &&
+      UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_WARN, "iwdg",
+                           "RESET_TEST_ARMED",
+                           "state=ARMED timeout_ms=10000")) {
     iwdg_report_requested = false;
-    return;
-  }
-  if (motor_report_requested && BspUart_WriteString(motor_report)) {
-    motor_report_requested = false;
   }
 }
 
@@ -93,286 +87,166 @@ void DiagnosticReport_RequestIwdgArmed(void)
   iwdg_report_requested = true;
 }
 
-void DiagnosticReport_MotorTestResult(MotorTargetTestAction action,
-                                      bool accepted)
+static bool WriteSelfTestReport(uint32_t now_ms)
 {
-  const char *action_text = "UNKNOWN";
+  SystemStatusSnapshot status;
+  UartProtocolTelemetryLine lines[4];
+  const uint32_t sequence = UartProtocol_NextTelemetrySequence();
 
-  switch (action) {
-    case MOTOR_TARGET_TEST_STOP:
-      action_text = "STOP";
-      break;
-    case MOTOR_TARGET_TEST_LEFT_FORWARD:
-      action_text = "LEFT FORWARD";
-      break;
-    case MOTOR_TARGET_TEST_LEFT_REVERSE:
-      action_text = "LEFT REVERSE";
-      break;
-    case MOTOR_TARGET_TEST_RIGHT_FORWARD:
-      action_text = "RIGHT FORWARD";
-      break;
-    case MOTOR_TARGET_TEST_RIGHT_REVERSE:
-      action_text = "RIGHT REVERSE";
-      break;
-    default:
-      return;
-  }
+  SystemStatus_GetSnapshot(&status);
 
-  if (action == MOTOR_TARGET_TEST_STOP && accepted) {
-    (void)snprintf(motor_report, sizeof(motor_report),
-                   "MOTOR_TEST: STOPPED\r\n");
-  } else {
-    (void)snprintf(motor_report, sizeof(motor_report),
-                   "MOTOR_TEST: %s %s\r\n",
-                   accepted ? "STARTED" : "REJECTED", action_text);
-  }
-  motor_report_requested = true;
+  (void)snprintf(
+      system_fields, sizeof(system_fields),
+      "fw=%s uptime_ms=%lu supply_valid=%u supply_mv=%lu control=%s "
+      "fault=0x%08lx reset=%s reset_flags=0x%08lx critical_tasks=%u "
+      "service_task=%s control_task=%s diagnostics_task=%s display_task=%s "
+      "service_period_ms=%lu service_expected_ms=%lu service_timeout_ms=%lu "
+      "service_age_ms=%lu service_runs=%lu service_stack_free_words=%lu "
+      "control_period_ms=%lu control_expected_ms=%lu control_timeout_ms=%lu "
+      "control_age_ms=%lu control_runs=%lu control_stack_free_words=%lu "
+      "diagnostics_period_ms=%lu diagnostics_expected_ms=%lu "
+      "diagnostics_timeout_ms=%lu diagnostics_age_ms=%lu diagnostics_runs=%lu "
+      "diagnostics_stack_free_words=%lu display_period_ms=%lu "
+      "display_expected_ms=%lu display_timeout_ms=%lu display_age_ms=%lu "
+      "display_runs=%lu display_stack_free_words=%lu",
+      CHASSIS_FIRMWARE_VERSION, (unsigned long)status.runtime.uptime_ms,
+      status.supply_valid ? 1U : 0U, (unsigned long)status.supply_mv,
+      ControlStateText(status.control_state),
+      (unsigned long)status.fault_flags,
+      ResetCauseText(status.board_health.reset_cause_flags),
+      (unsigned long)status.board_health.reset_cause_flags,
+      status.runtime.critical_tasks_healthy ? 1U : 0U,
+      TaskStateText(status.runtime.service_task_state),
+      TaskStateText(status.runtime.control_task_state),
+      TaskStateText(status.runtime.diagnostics_task_state),
+      TaskStateText(status.runtime.display_task_state),
+      (unsigned long)status.runtime.service_period_ms,
+      (unsigned long)status.runtime.service_expected_period_ms,
+      (unsigned long)status.runtime.service_timeout_ms,
+      (unsigned long)status.runtime.service_heartbeat_age_ms,
+      (unsigned long)status.runtime.service_run_count,
+      (unsigned long)status.runtime.service_stack_high_water_words,
+      (unsigned long)status.runtime.control_period_ms,
+      (unsigned long)status.runtime.control_expected_period_ms,
+      (unsigned long)status.runtime.control_timeout_ms,
+      (unsigned long)status.runtime.control_heartbeat_age_ms,
+      (unsigned long)status.runtime.control_run_count,
+      (unsigned long)status.runtime.control_stack_high_water_words,
+      (unsigned long)status.runtime.diagnostics_period_ms,
+      (unsigned long)status.runtime.diagnostics_expected_period_ms,
+      (unsigned long)status.runtime.diagnostics_timeout_ms,
+      (unsigned long)status.runtime.diagnostics_heartbeat_age_ms,
+      (unsigned long)status.runtime.diagnostics_run_count,
+      (unsigned long)status.runtime.diagnostics_stack_high_water_words,
+      (unsigned long)status.runtime.display_period_ms,
+      (unsigned long)status.runtime.display_expected_period_ms,
+      (unsigned long)status.runtime.display_timeout_ms,
+      (unsigned long)status.runtime.display_heartbeat_age_ms,
+      (unsigned long)status.runtime.display_run_count,
+      (unsigned long)status.runtime.display_stack_high_water_words);
+
+  (void)snprintf(
+      motor_fields, sizeof(motor_fields),
+      "control=%s left_target=%ld left_speed=%ld left_pwm=%d "
+      "right_target=%ld right_speed=%ld right_pwm=%d left_encoder=%lld "
+      "right_encoder=%lld left_kp=%u left_ki=%u left_kd=%u right_kp=%u "
+      "right_ki=%u right_kd=%u motor_test=%u overrun=%lu missed=%lu",
+      ControlStateText(status.control_state),
+      (long)status.wheels.left_target,
+      (long)status.wheels.left_measurement,
+      (int)status.wheels.left_output,
+      (long)status.wheels.right_target,
+      (long)status.wheels.right_measurement,
+      (int)status.wheels.right_output,
+      (long long)status.odometry.left_total,
+      (long long)status.odometry.right_total,
+      (unsigned int)status.parameters.left_pid.kp,
+      (unsigned int)status.parameters.left_pid.ki,
+      (unsigned int)status.parameters.left_pid.kd,
+      (unsigned int)status.parameters.right_pid.kp,
+      (unsigned int)status.parameters.right_pid.ki,
+      (unsigned int)status.parameters.right_pid.kd,
+      status.motor_test.running ? 1U : 0U,
+      (unsigned long)status.board_health.control_overrun_count,
+      (unsigned long)status.board_health.control_missed_tick_count);
+
+  (void)snprintf(
+      sensor_fields, sizeof(sensor_fields),
+      "rtc_valid=%u rtc=20%02u-%02u-%02uT%02u:%02u:%02u "
+      "adc_valid=%u adc_mv=%lu imu=%s imu_whoami=0x%02X imu_samples=%lu "
+      "imu_fifo_frames=%lu imu_fifo_errors=%lu imu_timestamp_errors=%lu "
+      "sr501=%s sr501_raw=%u sr501_motion=%u sr501_count=%lu "
+      "sr501_last_ms=%lu sr501_warmup_ms=%lu button1_pressed=%u "
+      "button1_count=%lu button2_pressed=%u button2_count=%lu",
+      status.rtc_valid ? 1U : 0U, (unsigned int)status.rtc_year,
+      (unsigned int)status.rtc_month, (unsigned int)status.rtc_date,
+      (unsigned int)status.rtc_hours, (unsigned int)status.rtc_minutes,
+      (unsigned int)status.rtc_seconds, status.supply_valid ? 1U : 0U,
+      (unsigned long)status.supply_mv, ImuStateText(&status.imu),
+      status.imu.who_am_i, (unsigned long)status.imu.sample_count,
+      (unsigned long)status.imu.fifo_frame_count,
+      (unsigned long)status.imu.fifo_parse_error_count,
+      (unsigned long)status.imu.timestamp_error_count,
+      status.sr501.status == BSP_SR501_READY ? "READY" : "WARMING_UP",
+      status.sr501.raw_high ? 1U : 0U,
+      status.sr501.motion_detected ? 1U : 0U,
+      (unsigned long)status.sr501.event_count,
+      (unsigned long)status.sr501.last_motion_ms,
+      (unsigned long)status.sr501.warmup_remaining_ms,
+      status.buttons.pressed[BOARD_BUTTON_1] ? 1U : 0U,
+      (unsigned long)status.buttons.pressed_count[BOARD_BUTTON_1],
+      status.buttons.pressed[BOARD_BUTTON_2] ? 1U : 0U,
+      (unsigned long)status.buttons.pressed_count[BOARD_BUTTON_2]);
+
+  (void)snprintf(
+      communication_fields, sizeof(communication_fields),
+      "can=%s can_drops=%lu uart_errors=%lu qspi_read=%u qspi_id=%u "
+      "qspi_jedec=%02X%02X%02X qspi_capacity_bytes=%lu qspi_test=%lu "
+      "ota_confirmation=%s ota_source=%u ota_state=%u ota_offset=%lu "
+      "lcd=%s telemetry=%s iwdg_test=%u",
+      CanStateText(status.can_state),
+      (unsigned long)status.can_drop_count,
+      (unsigned long)status.uart_error_count,
+      status.board_health.qspi_read_ok ? 1U : 0U,
+      status.board_health.qspi_id_valid ? 1U : 0U,
+      status.board_health.qspi_jedec_id[0],
+      status.board_health.qspi_jedec_id[1],
+      status.board_health.qspi_jedec_id[2],
+      (unsigned long)status.board_health.qspi_capacity_bytes,
+      (unsigned long)status.qspi_test_state,
+      OtaConfirmationText(status.ota_confirmation_state),
+      (unsigned int)status.ota_source, (unsigned int)status.ota_state,
+      (unsigned long)status.ota_next_offset, LcdStateText(status.lcd_state),
+      TelemetryModeText(status.telemetry_mode),
+      status.board_health.iwdg_reset_test_passed ? 1U : 0U);
+
+  lines[0] = (UartProtocolTelemetryLine){.section = "system",
+                                        .fields = system_fields};
+  lines[1] = (UartProtocolTelemetryLine){.section = "motor",
+                                        .fields = motor_fields};
+  lines[2] = (UartProtocolTelemetryLine){.section = "sensors",
+                                        .fields = sensor_fields};
+  lines[3] = (UartProtocolTelemetryLine){.section = "communication",
+                                        .fields = communication_fields};
+  return UartProtocol_SendTelemetryBlock(now_ms, sequence, lines, 4U);
 }
 
-static bool WriteSelfTestReport(void)
+static bool WriteQspiTestReport(uint32_t now_ms)
 {
-  SystemStatusSnapshot system_status;
-  QspiTargetTestStatus qspi_status;
-  OtaConfirmationStatus ota_status;
-  TelemetryMode telemetry_mode;
-  bool rtc_ok;
-  const char *fdcan_text = "READY";
-  const char *lcd_text = "DISABLED";
-  const char *qspi_rw_text = "DISABLED";
-  const char *iwdg_text = "DISABLED";
-  const char *imu_text = "NOT_INITIALIZED";
-  const char *ota_text = "WAITING";
-  char rtc_text[48];
-  char qspi_text[96];
-  size_t help_length;
-  const char *help = Console_GetHelpText(&help_length);
-  int length;
-  (void)help_length;
-  SystemStatus_GetSnapshot(&system_status);
-  qspi_status = (QspiTargetTestStatus)system_status.qspi_test_state;
-  ota_status =
-      (OtaConfirmationStatus)system_status.ota_confirmation_state;
-  telemetry_mode = (TelemetryMode)system_status.telemetry_mode;
-  rtc_ok = system_status.rtc_valid;
-  if (system_status.can_state == SYSTEM_STATUS_CAN_PASSED) {
-    fdcan_text = "PASS";
-  } else if (system_status.can_state == SYSTEM_STATUS_CAN_FAILED) {
-    fdcan_text = "FAIL";
-  }
-  if (system_status.lcd_state == SYSTEM_STATUS_LCD_DRAWING) {
-    lcd_text = "DRAWING";
-  } else if (system_status.lcd_state == SYSTEM_STATUS_LCD_READY) {
-    lcd_text = "READY";
-  } else if (system_status.lcd_state == SYSTEM_STATUS_LCD_FAILED) {
-    lcd_text = "FAIL";
-  }
-  if (qspi_status == QSPI_TARGET_TEST_RUNNING) {
-    qspi_rw_text = "RUNNING";
-  } else if (qspi_status == QSPI_TARGET_TEST_PASSED) {
-    qspi_rw_text = "PASS";
-  } else if (qspi_status == QSPI_TARGET_TEST_FAILED) {
-    qspi_rw_text = "FAIL";
-  }
-  if (IwdgTargetTest_IsResetRequested()) {
-    iwdg_text = "ARMED";
-  } else if (system_status.board_health.iwdg_reset_test_passed) {
-    iwdg_text = "PASS";
-  }
-  if (ota_status == OTA_CONFIRMATION_NOT_REQUIRED) {
-    ota_text = "NOT_REQUIRED";
-  } else if (ota_status == OTA_CONFIRMATION_RUNNING) {
-    ota_text = "RUNNING";
-  } else if (ota_status == OTA_CONFIRMATION_CONFIRMED) {
-    ota_text = "CONFIRMED";
-  } else if (ota_status == OTA_CONFIRMATION_FAILED) {
-    ota_text = "FAIL";
-  }
-  if (system_status.imu.status == BSP_ICM45686_NOT_FOUND) {
-    imu_text = "NOT_FOUND";
-  } else if (system_status.imu.status == BSP_ICM45686_READY) {
-    imu_text = system_status.imu.sample_valid ? "READY" : "STARTING";
-  } else if (system_status.imu.status == BSP_ICM45686_DEGRADED) {
-    imu_text = "DEGRADED";
-  }
+  const QspiTargetTestStatus status = QspiTargetTest_GetStatus();
+  const char *result = status == QSPI_TARGET_TEST_RUNNING
+                           ? "RUNNING"
+                           : status == QSPI_TARGET_TEST_PASSED ? "PASS"
+                                                               : "FAIL";
+  char fields[128];
 
-  if (rtc_ok) {
-    (void)snprintf(rtc_text, sizeof(rtc_text),
-                   "PASS time=20%02u-%02u-%02u %02u:%02u:%02u",
-                   (unsigned int)system_status.rtc_year,
-                   (unsigned int)system_status.rtc_month,
-                   (unsigned int)system_status.rtc_date,
-                   (unsigned int)system_status.rtc_hours,
-                   (unsigned int)system_status.rtc_minutes,
-                   (unsigned int)system_status.rtc_seconds);
-  } else {
-    (void)snprintf(rtc_text, sizeof(rtc_text), "FAIL");
-  }
-  if (!system_status.board_health.qspi_read_ok) {
-    (void)snprintf(qspi_text, sizeof(qspi_text), "FAIL read");
-  } else if (system_status.board_health.qspi_capacity_bytes == 0U) {
-    (void)snprintf(qspi_text, sizeof(qspi_text),
-                   "FAIL jedec=%02X%02X%02X capacity=UNKNOWN",
-                   system_status.board_health.qspi_jedec_id[0],
-                   system_status.board_health.qspi_jedec_id[1],
-                   system_status.board_health.qspi_jedec_id[2]);
-  } else if (!system_status.board_health.qspi_id_valid) {
-    (void)snprintf(qspi_text, sizeof(qspi_text),
-                   "FAIL jedec=%02X%02X%02X detected=%luMiB expected=%luMiB",
-                   system_status.board_health.qspi_jedec_id[0],
-                   system_status.board_health.qspi_jedec_id[1],
-                   system_status.board_health.qspi_jedec_id[2],
-                   (unsigned long)(system_status.board_health.qspi_capacity_bytes /
-                                   (1024UL * 1024UL)),
-                   (unsigned long)(QSPI_FLASH_CAPACITY_BYTES /
-                                   (1024UL * 1024UL)));
-  } else {
-    (void)snprintf(qspi_text, sizeof(qspi_text),
-                   "PASS jedec=%02X%02X%02X capacity=%luMiB",
-                   system_status.board_health.qspi_jedec_id[0],
-                   system_status.board_health.qspi_jedec_id[1],
-                   system_status.board_health.qspi_jedec_id[2],
-                   (unsigned long)(system_status.board_health.qspi_capacity_bytes /
-                                   (1024UL * 1024UL)));
-  }
-
-  length = snprintf(
-      report_buffer, sizeof(report_buffer),
-      "SELF_TEST\r\n"
-      "USART_TX_DMA: READY\r\n"
-      "USART_RX_DMA: READY\r\n"
-      "RTC_READ: %s\r\n"
-      "RTC_BACKUP: READY\r\n"
-      "QSPI_ID: %s\r\n"
-      "QSPI_RW_TEST: %s\r\n"
-      "OTA_CONFIRM: %s\r\n"
-      "OTA_TRANSFER: source=%u state=%u next=%lu uart_errors=%lu can_drops=%lu\r\n"
-      "LCD: %s\r\n"
-      "FDCAN_INTERNAL: DISABLED\r\n"
-      "FDCAN_EXTERNAL: %s\r\n"
-      "KEY: %s\r\n"
-      "BUTTON_1: READY pressed=%u count=%lu\r\n"
-      "BUTTON_2: READY pressed=%u count=%lu\r\n"
-      "SENSORS:\r\n"
-      "SR501: %s motion=%u raw=%u count=%lu last_ms=%lu warmup_ms=%lu\r\n"
-      "ICM45686: %s whoami=0x%02X samples=%lu fifo=%lu irq=%lu errors=%lu parse=%lu full=%lu flush=%lu/%lu timestamp_errors=%lu dt_us=%lu dma_timeout=%lu raw_a=%d,%d,%d raw_g=%d,%d,%d\r\n"
-      "IMU_FUSION: %s calibration=%u/%u bias_urad=%ld,%ld,%ld rpy_mrad=%ld,%ld,%ld yaw_unbounded=1\r\n"
-      "MOTOR:\r\n"
-      "CONTROL: state=%lu\r\n"
-      "WHEEL: left[target=%ld speed=%ld pwm=%d] right[target=%ld speed=%ld pwm=%d]\r\n"
-      "ENCODER: left_total=%lld right_total=%lld\r\n"
-      "PID: left=%u,%u,%u right=%u,%u,%u\r\n"
-      "MOTOR_TEST: running=%u left_pwm=%d right_pwm=%d\r\n"
-      "CONTROL_OVERRUN: count=%lu missed=%lu\r\n"
-      "SYSTEM:\r\n"
-      "RTOS: uptime_ms=%lu critical=%u service[state=%s period_ms=%lu expected_ms=%lu timeout_ms=%lu age_ms=%lu stack_free_words=%lu runs=%lu] control[state=%s period_ms=%lu expected_ms=%lu timeout_ms=%lu age_ms=%lu stack_free_words=%lu runs=%lu] diagnostics[state=%s period_ms=%lu expected_ms=%lu timeout_ms=%lu age_ms=%lu stack_free_words=%lu runs=%lu] display[state=%s period_ms=%lu expected_ms=%lu timeout_ms=%lu age_ms=%lu stack_free_words=%lu runs=%lu]\r\n"
-      "RESET: reason=%s flags=0x%08lX\r\n"
-      "COMMUNICATION:\r\n"
-      "IWDG_RESET_TEST: %s\r\n"
-      "TELEMETRY: %s\r\n"
-      "%s",
-      rtc_text, qspi_text, qspi_rw_text, ota_text,
-      (unsigned int)system_status.ota_source,
-      (unsigned int)system_status.ota_state,
-      (unsigned long)system_status.ota_next_offset,
-      (unsigned long)system_status.uart_error_count,
-      (unsigned long)system_status.can_drop_count, lcd_text, fdcan_text,
-      system_status.board_health.button_test_passed ? "PASS" : "READY",
-      system_status.buttons.pressed[BOARD_BUTTON_1] ? 1U : 0U,
-      (unsigned long)system_status.buttons.pressed_count[BOARD_BUTTON_1],
-      system_status.buttons.pressed[BOARD_BUTTON_2] ? 1U : 0U,
-      (unsigned long)system_status.buttons.pressed_count[BOARD_BUTTON_2],
-      system_status.sr501.status == BSP_SR501_READY ? "READY" : "WARMING_UP",
-      system_status.sr501.motion_detected ? 1U : 0U,
-      system_status.sr501.raw_high ? 1U : 0U,
-      (unsigned long)system_status.sr501.event_count,
-      (unsigned long)system_status.sr501.last_motion_ms,
-      (unsigned long)system_status.sr501.warmup_remaining_ms,
-      imu_text, system_status.imu.who_am_i,
-      (unsigned long)system_status.imu.sample_count,
-      (unsigned long)system_status.imu.fifo_frame_count,
-      (unsigned long)system_status.imu.interrupt_count,
-      (unsigned long)system_status.imu.transfer_error_count,
-      (unsigned long)system_status.imu.fifo_parse_error_count,
-      (unsigned long)system_status.imu.fifo_full_count,
-      (unsigned long)system_status.imu.fifo_flush_count,
-      (unsigned long)system_status.imu.fifo_flush_error_count,
-      (unsigned long)system_status.imu.timestamp_error_count,
-      (unsigned long)(system_status.imu.sample_period_s * 1000000.0f),
-      (unsigned long)system_status.imu.dma_timeout_count,
-      (int)system_status.imu.accel[0], (int)system_status.imu.accel[1],
-      (int)system_status.imu.accel[2], (int)system_status.imu.gyro[0],
-      (int)system_status.imu.gyro[1], (int)system_status.imu.gyro[2],
-      system_status.imu.orientation_valid ? "READY"
-                                           : system_status.imu.calibrated
-                                                 ? "STARTING"
-                                                 : "CALIBRATING",
-      (unsigned int)system_status.imu.calibration_samples,
-      (unsigned int)IMU_FUSION_CALIBRATION_SAMPLES,
-      (long)(system_status.imu.gyro_bias_rad_s[0] * 1000000.0f),
-      (long)(system_status.imu.gyro_bias_rad_s[1] * 1000000.0f),
-      (long)(system_status.imu.gyro_bias_rad_s[2] * 1000000.0f),
-      (long)(system_status.imu.roll_rad * 1000.0f),
-      (long)(system_status.imu.pitch_rad * 1000.0f),
-      (long)(system_status.imu.yaw_rad * 1000.0f),
-      (unsigned long)system_status.control_state,
-      (long)system_status.wheels.left_target,
-      (long)system_status.wheels.left_measurement,
-      (int)system_status.wheels.left_output,
-      (long)system_status.wheels.right_target,
-      (long)system_status.wheels.right_measurement,
-      (int)system_status.wheels.right_output,
-      (long long)system_status.odometry.left_total,
-      (long long)system_status.odometry.right_total,
-      (unsigned int)system_status.parameters.left_pid.kp,
-      (unsigned int)system_status.parameters.left_pid.ki,
-      (unsigned int)system_status.parameters.left_pid.kd,
-      (unsigned int)system_status.parameters.right_pid.kp,
-      (unsigned int)system_status.parameters.right_pid.ki,
-      (unsigned int)system_status.parameters.right_pid.kd,
-      system_status.motor_test.running ? 1U : 0U,
-      (int)system_status.motor_test.left_duty,
-      (int)system_status.motor_test.right_duty,
-      (unsigned long)system_status.board_health.control_overrun_count,
-      (unsigned long)system_status.board_health.control_missed_tick_count,
-      (unsigned long)system_status.runtime.uptime_ms,
-      system_status.runtime.critical_tasks_healthy ? 1U : 0U,
-      TaskStateText(system_status.runtime.service_task_state),
-      (unsigned long)system_status.runtime.service_period_ms,
-      (unsigned long)system_status.runtime.service_expected_period_ms,
-      (unsigned long)system_status.runtime.service_timeout_ms,
-      (unsigned long)system_status.runtime.service_heartbeat_age_ms,
-      (unsigned long)system_status.runtime.service_stack_high_water_words,
-      (unsigned long)system_status.runtime.service_run_count,
-      TaskStateText(system_status.runtime.control_task_state),
-      (unsigned long)system_status.runtime.control_period_ms,
-      (unsigned long)system_status.runtime.control_expected_period_ms,
-      (unsigned long)system_status.runtime.control_timeout_ms,
-      (unsigned long)system_status.runtime.control_heartbeat_age_ms,
-      (unsigned long)system_status.runtime.control_stack_high_water_words,
-      (unsigned long)system_status.runtime.control_run_count,
-      TaskStateText(system_status.runtime.diagnostics_task_state),
-      (unsigned long)system_status.runtime.diagnostics_period_ms,
-      (unsigned long)system_status.runtime.diagnostics_expected_period_ms,
-      (unsigned long)system_status.runtime.diagnostics_timeout_ms,
-      (unsigned long)system_status.runtime.diagnostics_heartbeat_age_ms,
-      (unsigned long)system_status.runtime.diagnostics_stack_high_water_words,
-      (unsigned long)system_status.runtime.diagnostics_run_count,
-      TaskStateText(system_status.runtime.display_task_state),
-      (unsigned long)system_status.runtime.display_period_ms,
-      (unsigned long)system_status.runtime.display_expected_period_ms,
-      (unsigned long)system_status.runtime.display_timeout_ms,
-      (unsigned long)system_status.runtime.display_heartbeat_age_ms,
-      (unsigned long)system_status.runtime.display_stack_high_water_words,
-      (unsigned long)system_status.runtime.display_run_count,
-      ResetCauseText(system_status.board_health.reset_cause_flags),
-      (unsigned long)system_status.board_health.reset_cause_flags,
-      iwdg_text,
-      telemetry_mode == TELEMETRY_MODE_TEXT
-          ? "TEXT"
-          : telemetry_mode == TELEMETRY_MODE_VOFA ? "VOFA" : "OFF",
-      help);
-  return length > 0 && (size_t)length < sizeof(report_buffer) &&
-         BspUart_Write(report_buffer, (size_t)length);
+  (void)snprintf(fields, sizeof(fields),
+                 "state=%s address=0x%08lX size=1024", result,
+                 (unsigned long)QSPI_TEST_START);
+  return UartProtocol_SendLog(
+      now_ms, status == QSPI_TARGET_TEST_PASSED ? UART_PROTOCOL_LOG_INFO
+                                                 : UART_PROTOCOL_LOG_ERROR,
+      "qspi", "RW_TEST", fields);
 }
 
 static const char *TaskStateText(uint32_t state)
@@ -414,18 +288,97 @@ static const char *ResetCauseText(uint32_t flags)
   return "UNKNOWN";
 }
 
-static bool WriteQspiTestReport(void)
+static const char *ControlStateText(ChassisControlState state)
 {
-  const QspiTargetTestStatus status = QspiTargetTest_GetStatus();
-  const char *result = status == QSPI_TARGET_TEST_RUNNING
-                           ? "RUNNING"
-                           : status == QSPI_TARGET_TEST_PASSED ? "PASS"
-                                                               : "FAIL";
-  const int length = snprintf(
-      report_buffer, sizeof(report_buffer),
-      "QSPI_RW_TEST: %s address=0x%08lX size=%u DMA\r\n", result,
-      (unsigned long)QSPI_TEST_START, 1024U);
+  switch (state) {
+    case CHASSIS_CONTROL_RUNNING:
+      return "RUNNING";
+    case CHASSIS_CONTROL_COMMAND_TIMEOUT:
+      return "COMMAND_TIMEOUT";
+    case CHASSIS_CONTROL_EMERGENCY_STOP:
+      return "EMERGENCY_STOP";
+    case CHASSIS_CONTROL_INTERNAL_FAULT:
+      return "INTERNAL_FAULT";
+    case CHASSIS_CONTROL_OPEN_LOOP_TEST:
+      return "OPEN_LOOP_TEST";
+    case CHASSIS_CONTROL_STOPPED:
+    default:
+      return "STOPPED";
+  }
+}
 
-  return length > 0 && (size_t)length < sizeof(report_buffer) &&
-         BspUart_Write(report_buffer, (size_t)length);
+static const char *CanStateText(SystemStatusCanState state)
+{
+  switch (state) {
+    case SYSTEM_STATUS_CAN_PASSED:
+      return "PASSED";
+    case SYSTEM_STATUS_CAN_FAILED:
+      return "FAILED";
+    case SYSTEM_STATUS_CAN_READY:
+    default:
+      return "READY";
+  }
+}
+
+static const char *LcdStateText(SystemStatusLcdState state)
+{
+  switch (state) {
+    case SYSTEM_STATUS_LCD_DRAWING:
+      return "DRAWING";
+    case SYSTEM_STATUS_LCD_READY:
+      return "READY";
+    case SYSTEM_STATUS_LCD_FAILED:
+      return "FAILED";
+    case SYSTEM_STATUS_LCD_DISABLED:
+    default:
+      return "DISABLED";
+  }
+}
+
+static const char *ImuStateText(const BspIcm45686Snapshot *snapshot)
+{
+  if (snapshot == NULL) {
+    return "UNINITIALIZED";
+  }
+  switch (snapshot->status) {
+    case BSP_ICM45686_NOT_FOUND:
+      return "NOT_FOUND";
+    case BSP_ICM45686_READY:
+      return snapshot->orientation_valid ? "READY" : "STARTING";
+    case BSP_ICM45686_DEGRADED:
+      return "DEGRADED";
+    case BSP_ICM45686_UNINITIALIZED:
+    default:
+      return "UNINITIALIZED";
+  }
+}
+
+static const char *OtaConfirmationText(uint32_t state)
+{
+  switch ((OtaConfirmationStatus)state) {
+    case OTA_CONFIRMATION_NOT_REQUIRED:
+      return "NOT_REQUIRED";
+    case OTA_CONFIRMATION_RUNNING:
+      return "RUNNING";
+    case OTA_CONFIRMATION_CONFIRMED:
+      return "CONFIRMED";
+    case OTA_CONFIRMATION_FAILED:
+      return "FAILED";
+    case OTA_CONFIRMATION_WAITING:
+    default:
+      return "WAITING";
+  }
+}
+
+static const char *TelemetryModeText(uint32_t mode)
+{
+  switch ((TelemetryMode)mode) {
+    case TELEMETRY_MODE_TEXT:
+      return "TEXT";
+    case TELEMETRY_MODE_VOFA:
+      return "VOFA";
+    case TELEMETRY_MODE_OFF:
+    default:
+      return "OFF";
+  }
 }

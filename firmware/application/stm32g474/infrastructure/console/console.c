@@ -11,9 +11,6 @@
 #define CONSOLE_COMMAND_QUEUE_DEPTH 8U
 #define CONSOLE_READ_CHUNK_SIZE 32U
 
-static const char help_text[] =
-    "COMMANDS: ping, status, telemetry text, telemetry vofa, telemetry off, can status, can tx confirm, pid show, pid left <kp> <ki> <kd>, pid right <kp> <ki> <kd>, pid target <left> <right>, pid stop, encoder zero, encoder result, ota uart confirm, qspi test confirm, iwdg reset confirm, motor left forward confirm, motor left reverse confirm, motor right forward confirm, motor right reverse confirm, motor stop\r\n";
-
 static char line_buffer[CONSOLE_LINE_SIZE];
 static uint8_t line_length;
 static bool line_discarded;
@@ -50,7 +47,7 @@ void Console_Run(void)
       if (value == '\n') {
         line_buffer[line_length] = '\0';
         if (line_discarded) {
-          QueueCommand((ConsoleCommand){.type = CONSOLE_COMMAND_HELP});
+          QueueCommand((ConsoleCommand){.type = CONSOLE_COMMAND_INVALID});
         } else if (line_length != 0U) {
           QueueCommand(ParseCommand(line_buffer));
         }
@@ -82,14 +79,6 @@ bool Console_TakeCommand(ConsoleCommand *command)
   return true;
 }
 
-const char *Console_GetHelpText(size_t *length)
-{
-  if (length != NULL) {
-    *length = sizeof(help_text) - 1U;
-  }
-  return help_text;
-}
-
 uint32_t Console_GetDroppedCommandCount(void)
 {
   return dropped_command_count;
@@ -97,9 +86,11 @@ uint32_t Console_GetDroppedCommandCount(void)
 
 static ConsoleCommand ParseCommand(const char *line)
 {
-  ConsoleCommand command = {.type = CONSOLE_COMMAND_HELP};
+  ConsoleCommand command = {.type = CONSOLE_COMMAND_INVALID};
 
-  if (strcmp(line, "ping") == 0) {
+  if (strcmp(line, "help") == 0) {
+    command.type = CONSOLE_COMMAND_HELP;
+  } else if (strcmp(line, "ping") == 0) {
     command.type = CONSOLE_COMMAND_PING;
   } else if (strcmp(line, "status") == 0) {
     command.type = CONSOLE_COMMAND_STATUS;

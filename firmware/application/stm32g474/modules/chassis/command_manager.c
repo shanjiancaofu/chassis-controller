@@ -64,7 +64,8 @@ CommandSource CommandManager_GetOwner(void)
   return control_owner;
 }
 
-bool CommandManager_Submit(const CommandManagerCommand *command)
+CommandManagerSubmitResult CommandManager_Submit(
+    const CommandManagerCommand *command)
 {
   if (command == NULL || !IsMotionSource(command->source) ||
       (command->source == COMMAND_SOURCE_CAN_REMOTE) !=
@@ -72,14 +73,16 @@ bool CommandManager_Submit(const CommandManagerCommand *command)
       command->left_target < -MOTOR_CONTROL_TARGET_LIMIT ||
       command->left_target > MOTOR_CONTROL_TARGET_LIMIT ||
       command->right_target < -MOTOR_CONTROL_TARGET_LIMIT ||
-      command->right_target > MOTOR_CONTROL_TARGET_LIMIT ||
-      !CommandManager_Acquire(command->source)) {
-    return false;
+      command->right_target > MOTOR_CONTROL_TARGET_LIMIT) {
+    return COMMAND_SUBMIT_INVALID_ARGUMENT;
+  }
+  if (!CommandManager_Acquire(command->source)) {
+    return COMMAND_SUBMIT_NOT_OWNER;
   }
 
   active_command = *command;
   command_valid = true;
-  return true;
+  return COMMAND_SUBMIT_ACCEPTED;
 }
 
 bool CommandManager_Refresh(CommandSource source, uint32_t now_ms)
