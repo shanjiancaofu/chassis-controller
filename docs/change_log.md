@@ -2,6 +2,29 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-18 - LCD 四页状态显示（0.5.0 build1）
+
+### 变更内容
+
+- 新增 `OVERVIEW`、`MOTOR`、`SENSORS`、`SYSTEM` 四个状态页，显示电压、控制、通信、故障、
+  电机、编码器、PID、IMU、SR501、RTC、QSPI、任务健康、栈余量、运行时间和复位原因。
+- 四页数据统一由 `status_display` 读取一次 `SystemStatusSnapshot` 后转换，LCD BSP 不直接读取
+  业务模块；IMU 姿态在转换层换算为整数角度，不依赖目标板浮点格式化。
+- PB8/BOOT0 改为单键循环四页，`SYSTEM` 后返回 `OVERVIEW`；切页不再触发诊断自检。
+- 48x47 taifei Logo 固定保留在所有页面右上角，并补充 `/` 字形以正确显示页码。
+
+### 设计决定
+
+- PD3/PD4 未接线，继续保留为通用按钮，不参与 LCD 页面操作。
+- 电量只显示已校验电压；电池类型、串数和放电曲线确定前不换算百分比。
+- 本次可见功能变化进入 `0.5.0`，版本切换后 build 从 1 开始。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=87896 data=120 bss=52944`，Release
+  `text=78056 data=120 bss=52936`；构建无警告，`git diff --check` 通过。
+- 四页实际内容、颜色、Logo、刷新和 PB8 循环尚未目标板验证，保持 `NOT VERIFIED`。
+
 ## 2026-08-18 - LCD 小 Logo 与单页结构（0.4.0 build1）
 
 ### 变更内容
@@ -165,13 +188,14 @@
 | b16 | `0.2.2` | UART 与诊断容量统一为 2048 字节 |
 | b17 | `0.3.0` | FreeRTOS 四任务、统一快照和正式 UART 协议 |
 | 当前板上 | `0.3.0 build1` | confirmed Application 实物基线 |
-| 当前工作树 | `0.4.0 build1` | LCD Logo 与页面结构调整，尚未上板 |
+| 上一工作树 | `0.4.0 build1` | LCD 小 Logo 与页面结构调整，尚未上板 |
+| 当前工作树 | `0.5.0 build1` | LCD 四页状态显示，尚未上板 |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
-- LCD `OVERVIEW`、`MOTOR`、`SENSORS`、`SYSTEM` 四页和 PB8 按键循环。
+- LCD `OVERVIEW`、`MOTOR`、`SENSORS`、`SYSTEM` 四页内容和 PB8 按键循环的目标板验证。
 - ICM45686 目标板 WHO_AM_I、FIFO/DMA 连续性、零偏、安装方向和 Kalman/时间轴融合。
 - SR501 模块供电/指示灯、OUT 高电平、50 ms 滤波和上升沿事件计数。
 - confirmed 镜像断电启动与四路 PWM 电气零输出、Application 安装中断恢复、TRIAL 自动回滚及 rollback 中断恢复。

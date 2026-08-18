@@ -46,6 +46,7 @@ typedef struct
 static const LcdGlyph lcd_glyphs[] = {
     {'-', {0x08U, 0x08U, 0x08U, 0x08U, 0x08U}},
     {'.', {0x00U, 0x60U, 0x60U, 0x00U, 0x00U}},
+    {'/', {0x20U, 0x10U, 0x08U, 0x04U, 0x02U}},
     {':', {0x00U, 0x36U, 0x36U, 0x00U, 0x00U}},
     {'0', {0x3EU, 0x51U, 0x49U, 0x45U, 0x3EU}},
     {'1', {0x00U, 0x42U, 0x7FU, 0x40U, 0x00U}},
@@ -186,50 +187,290 @@ static const char *LcdValueText(BspLcdValueState state)
   }
 }
 
-static void LcdPrepareStatusPage(void)
+static const char *LcdControlText(BspLcdControlState state)
 {
-  (void)snprintf(lcd_text_lines[0], LCD_TEXT_LINE_LENGTH,
-                 "CHASSIS STATUS");
-  if (lcd_status_data.rtc_state == BSP_LCD_VALUE_PASS) {
+  switch (state) {
+    case BSP_LCD_CONTROL_RUNNING:
+      return "RUNNING";
+    case BSP_LCD_CONTROL_TIMEOUT:
+      return "TIMEOUT";
+    case BSP_LCD_CONTROL_EMERGENCY_STOP:
+      return "E-STOP";
+    case BSP_LCD_CONTROL_FAULT:
+      return "FAULT";
+    case BSP_LCD_CONTROL_TEST:
+      return "TEST";
+    default:
+      return "STOPPED";
+  }
+}
+
+static const char *LcdSensorText(BspLcdSensorState state)
+{
+  switch (state) {
+    case BSP_LCD_SENSOR_WARMING:
+      return "WARMING";
+    case BSP_LCD_SENSOR_READY:
+      return "READY";
+    case BSP_LCD_SENSOR_DEGRADED:
+      return "DEGRADED";
+    case BSP_LCD_SENSOR_FAILED:
+      return "FAILED";
+    default:
+      return "DISABLED";
+  }
+}
+
+static uint16_t LcdSensorColor(BspLcdSensorState state)
+{
+  switch (state) {
+    case BSP_LCD_SENSOR_READY:
+      return LCD_COLOR_PASS;
+    case BSP_LCD_SENSOR_FAILED:
+      return LCD_COLOR_FAIL;
+    case BSP_LCD_SENSOR_DISABLED:
+      return LCD_COLOR_DISABLED;
+    default:
+      return LCD_COLOR_READY;
+  }
+}
+
+static uint16_t LcdControlColor(BspLcdControlState state)
+{
+  switch (state) {
+    case BSP_LCD_CONTROL_RUNNING:
+      return LCD_COLOR_PASS;
+    case BSP_LCD_CONTROL_EMERGENCY_STOP:
+    case BSP_LCD_CONTROL_FAULT:
+      return LCD_COLOR_FAIL;
+    default:
+      return LCD_COLOR_READY;
+  }
+}
+
+static const char *LcdResetText(BspLcdResetCause cause)
+{
+  switch (cause) {
+    case BSP_LCD_RESET_PIN:
+      return "PIN";
+    case BSP_LCD_RESET_BROWNOUT:
+      return "BOR";
+    case BSP_LCD_RESET_SOFTWARE:
+      return "SW";
+    case BSP_LCD_RESET_IWDG:
+      return "IWDG";
+    case BSP_LCD_RESET_WWDG:
+      return "WWDG";
+    case BSP_LCD_RESET_LOW_POWER:
+      return "LOWPOWER";
+    case BSP_LCD_RESET_OPTION_BYTE:
+      return "OPTION";
+    default:
+      return "NONE";
+  }
+}
+
+static const char *LcdPageTitle(BspLcdPage page)
+{
+  switch (page) {
+    case BSP_LCD_PAGE_MOTOR:
+      return "MOTOR 2/4";
+    case BSP_LCD_PAGE_SENSORS:
+      return "SENSORS 3/4";
+    case BSP_LCD_PAGE_SYSTEM:
+      return "SYSTEM 4/4";
+    default:
+      return "OVERVIEW 1/4";
+  }
+}
+
+static void LcdPrepareOverviewPage(void)
+{
+  if (lcd_status_data.supply_state == BSP_LCD_VALUE_PASS) {
     (void)snprintf(lcd_text_lines[1], LCD_TEXT_LINE_LENGTH,
+                   "BAT   %luMV", (unsigned long)lcd_status_data.adc_mv);
+  } else {
+    (void)snprintf(lcd_text_lines[1], LCD_TEXT_LINE_LENGTH, "BAT   FAIL");
+  }
+  (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH, "CTRL  %s",
+                 LcdControlText(lcd_status_data.control_state));
+  (void)snprintf(lcd_text_lines[3], LCD_TEXT_LINE_LENGTH, "CAN   %s",
+                 LcdValueText(lcd_status_data.can_state));
+  (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH,
+                 "FAULT 0X%08lX",
+                 (unsigned long)lcd_status_data.fault_flags);
+  (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH,
+                 "QSPI  %s %uMIB",
+                 LcdValueText(lcd_status_data.qspi_state),
+                 (unsigned int)lcd_status_data.qspi_capacity_mib);
+  (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH,
+                 "FW V%s B%s", CHASSIS_FIRMWARE_VERSION,
+                 CHASSIS_FIRMWARE_BUILD_STRING);
+
+  lcd_text_colors[1] = lcd_status_data.supply_state == BSP_LCD_VALUE_PASS
+                           ? LCD_COLOR_PASS
+                           : LCD_COLOR_FAIL;
+  lcd_text_colors[2] = LcdControlColor(lcd_status_data.control_state);
+  lcd_text_colors[3] = LcdValueColor(lcd_status_data.can_state);
+  lcd_text_colors[4] = lcd_status_data.fault_flags == 0U
+                           ? LCD_COLOR_PASS
+                           : LCD_COLOR_FAIL;
+  lcd_text_colors[5] = LcdValueColor(lcd_status_data.qspi_state);
+  lcd_text_colors[6] = LCD_COLOR_TEXT;
+}
+
+static void LcdPrepareMotorPage(void)
+{
+  (void)snprintf(lcd_text_lines[1], LCD_TEXT_LINE_LENGTH,
+                 "L T%ld S%ld",
+                 (long)lcd_status_data.left_target,
+                 (long)lcd_status_data.left_measurement);
+  (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH,
+                 "R T%ld S%ld",
+                 (long)lcd_status_data.right_target,
+                 (long)lcd_status_data.right_measurement);
+  (void)snprintf(lcd_text_lines[3], LCD_TEXT_LINE_LENGTH,
+                 "PWM L%ld R%ld",
+                 (long)lcd_status_data.left_output,
+                 (long)lcd_status_data.right_output);
+  (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH,
+                 "ENC L%ld R%ld",
+                 (long)lcd_status_data.left_encoder_delta,
+                 (long)lcd_status_data.right_encoder_delta);
+  (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH, "PID   %s",
+                 lcd_status_data.control_state == BSP_LCD_CONTROL_RUNNING
+                     ? "ACTIVE"
+                     : "READY");
+  (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH, "CTRL  %s",
+                 LcdControlText(lcd_status_data.control_state));
+
+  lcd_text_colors[1] = LCD_COLOR_TEXT;
+  lcd_text_colors[2] = LCD_COLOR_TEXT;
+  lcd_text_colors[3] = LCD_COLOR_TEXT;
+  lcd_text_colors[4] = LCD_COLOR_TEXT;
+  lcd_text_colors[5] = LCD_COLOR_READY;
+  lcd_text_colors[6] = LcdControlColor(lcd_status_data.control_state);
+}
+
+static void LcdPrepareSensorsPage(void)
+{
+  (void)snprintf(lcd_text_lines[1], LCD_TEXT_LINE_LENGTH, "IMU   %s",
+                 LcdSensorText(lcd_status_data.imu_state));
+  if (lcd_status_data.imu_orientation_valid) {
+    (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH,
+                   "RPY %d %d %d", (int)lcd_status_data.roll_deg,
+                   (int)lcd_status_data.pitch_deg,
+                   (int)lcd_status_data.yaw_deg);
+  } else {
+    (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH,
+                   "RPY NOT READY");
+  }
+  if (lcd_status_data.sr501_state == BSP_LCD_SENSOR_WARMING) {
+    (void)snprintf(lcd_text_lines[3], LCD_TEXT_LINE_LENGTH,
+                   "SR501 WARM %lus",
+                   (unsigned long)(lcd_status_data.sr501_warmup_remaining_ms /
+                                   1000U));
+  } else {
+    (void)snprintf(lcd_text_lines[3], LCD_TEXT_LINE_LENGTH,
+                   "SR501 %s", LcdSensorText(lcd_status_data.sr501_state));
+  }
+  (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH,
+                 "M%d R%d E%lu",
+                 lcd_status_data.sr501_motion ? 1 : 0,
+                 lcd_status_data.sr501_raw_high ? 1 : 0,
+                 (unsigned long)lcd_status_data.sr501_event_count);
+  if (lcd_status_data.supply_state == BSP_LCD_VALUE_PASS) {
+    (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH,
+                   "ADC   %luMV", (unsigned long)lcd_status_data.adc_mv);
+  } else {
+    (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH, "ADC   FAIL");
+  }
+  if (lcd_status_data.rtc_state == BSP_LCD_VALUE_PASS) {
+    (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH,
                    "RTC   %02u:%02u:%02u",
                    (unsigned int)lcd_status_data.rtc_hours,
                    (unsigned int)lcd_status_data.rtc_minutes,
                    (unsigned int)lcd_status_data.rtc_seconds);
   } else {
-    (void)snprintf(lcd_text_lines[1], LCD_TEXT_LINE_LENGTH, "RTC   %s",
+    (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH, "RTC   %s",
                    LcdValueText(lcd_status_data.rtc_state));
   }
-  (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH,
+
+  lcd_text_colors[1] = LcdSensorColor(lcd_status_data.imu_state);
+  lcd_text_colors[2] = lcd_status_data.imu_orientation_valid
+                           ? LCD_COLOR_TEXT
+                           : LCD_COLOR_READY;
+  lcd_text_colors[3] = LcdSensorColor(lcd_status_data.sr501_state);
+  lcd_text_colors[4] = lcd_status_data.sr501_motion ? LCD_COLOR_READY
+                                                    : LCD_COLOR_TEXT;
+  lcd_text_colors[5] = LcdValueColor(lcd_status_data.supply_state);
+  lcd_text_colors[6] = LcdValueColor(lcd_status_data.rtc_state);
+}
+
+static void LcdPrepareSystemPage(void)
+{
+  (void)snprintf(lcd_text_lines[1], LCD_TEXT_LINE_LENGTH,
                  "QSPI  %s %uMIB",
                  LcdValueText(lcd_status_data.qspi_state),
                  (unsigned int)lcd_status_data.qspi_capacity_mib);
-  (void)snprintf(lcd_text_lines[3], LCD_TEXT_LINE_LENGTH, "CAN   %s",
-                 LcdValueText(lcd_status_data.can_state));
-  if (lcd_status_data.adc_valid) {
-    (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH,
-                   "ADC   %luMV", (unsigned long)lcd_status_data.adc_mv);
-  } else {
-    (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH,
-                   "ADC   FAIL");
-  }
+  (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH,
+                 "TASK S%d C%d D%d L%d",
+                 lcd_status_data.service_task_healthy ? 1 : 0,
+                 lcd_status_data.control_task_healthy ? 1 : 0,
+                 lcd_status_data.diagnostics_task_healthy ? 1 : 0,
+                 lcd_status_data.display_task_healthy ? 1 : 0);
+  (void)snprintf(lcd_text_lines[3], LCD_TEXT_LINE_LENGTH,
+                 "STACK S%lu C%lu",
+                 (unsigned long)lcd_status_data.service_stack_free_words,
+                 (unsigned long)lcd_status_data.control_stack_free_words);
+  (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH,
+                 "STACK D%lu L%lu",
+                 (unsigned long)lcd_status_data.diagnostics_stack_free_words,
+                 (unsigned long)lcd_status_data.display_stack_free_words);
   (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH,
-                 "FAULT 0X%08lX",
-                 (unsigned long)lcd_status_data.fault_flags);
+                 "UP %lus RST %s",
+                 (unsigned long)(lcd_status_data.uptime_ms / 1000U),
+                 LcdResetText(lcd_status_data.reset_cause));
   (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH,
-                 "FW V%s B%s", CHASSIS_FIRMWARE_VERSION,
-                 CHASSIS_FIRMWARE_BUILD_STRING);
+                 "CRITICAL %s",
+                 lcd_status_data.critical_tasks_healthy ? "OK" : "FAIL");
 
-  lcd_text_colors[0] = LCD_COLOR_HEADER;
-  lcd_text_colors[1] = LcdValueColor(lcd_status_data.rtc_state);
-  lcd_text_colors[2] = LcdValueColor(lcd_status_data.qspi_state);
-  lcd_text_colors[3] = LcdValueColor(lcd_status_data.can_state);
-  lcd_text_colors[4] = lcd_status_data.adc_valid ? LCD_COLOR_PASS
-                                                 : LCD_COLOR_FAIL;
-  lcd_text_colors[5] = lcd_status_data.fault_flags == 0U
+  lcd_text_colors[1] = LcdValueColor(lcd_status_data.qspi_state);
+  lcd_text_colors[2] = lcd_status_data.critical_tasks_healthy
                            ? LCD_COLOR_PASS
                            : LCD_COLOR_FAIL;
-  lcd_text_colors[6] = LCD_COLOR_TEXT;
+  lcd_text_colors[3] = LCD_COLOR_TEXT;
+  lcd_text_colors[4] = LCD_COLOR_TEXT;
+  lcd_text_colors[5] = LCD_COLOR_TEXT;
+  lcd_text_colors[6] = lcd_status_data.critical_tasks_healthy
+                           ? LCD_COLOR_PASS
+                           : LCD_COLOR_FAIL;
+}
+
+static void LcdPreparePage(BspLcdPage page)
+{
+  (void)snprintf(lcd_text_lines[0], LCD_TEXT_LINE_LENGTH, "%s",
+                 LcdPageTitle(page));
+  for (uint8_t line = 1U; line < LCD_TEXT_LINE_COUNT; ++line) {
+    lcd_text_lines[line][0] = '\0';
+    lcd_text_colors[line] = LCD_COLOR_TEXT;
+  }
+  lcd_text_colors[0] = LCD_COLOR_HEADER;
+
+  switch (page) {
+    case BSP_LCD_PAGE_MOTOR:
+      LcdPrepareMotorPage();
+      break;
+    case BSP_LCD_PAGE_SENSORS:
+      LcdPrepareSensorsPage();
+      break;
+    case BSP_LCD_PAGE_SYSTEM:
+      LcdPrepareSystemPage();
+      break;
+    default:
+      LcdPrepareOverviewPage();
+      break;
+  }
 }
 
 static void LcdDrawTextOnRow(uint16_t row, uint16_t y, const char *text,
@@ -299,7 +540,7 @@ static bool LcdStartRow(uint16_t row)
 static bool LcdStartDrawing(void)
 {
   lcd_redraw_requested = false;
-  LcdPrepareStatusPage();
+  LcdPreparePage(lcd_requested_page);
   if (!LcdBeginFrame()) {
     return false;
   }
@@ -330,7 +571,7 @@ bool BspLcd_Init(void)
       0x33U, 0x48U, 0x17U, 0x14U, 0x15U, 0x31U, 0x34U};
 
   lcd_status = BSP_LCD_FAILED;
-  lcd_requested_page = BSP_LCD_PAGE_STATUS;
+  lcd_requested_page = BSP_LCD_PAGE_OVERVIEW;
   __HAL_TIM_SET_COMPARE(&BOARD_LCD_BACKLIGHT_TIMER, BOARD_LCD_BACKLIGHT_CHANNEL, 0U);
   if (HAL_TIM_PWM_Start(&BOARD_LCD_BACKLIGHT_TIMER, BOARD_LCD_BACKLIGHT_CHANNEL) != HAL_OK) {
     return false;
@@ -406,7 +647,7 @@ void BspLcd_Run(void)
 
 void BspLcd_SetPage(BspLcdPage page)
 {
-  if (page != BSP_LCD_PAGE_STATUS) {
+  if (page >= BSP_LCD_PAGE_COUNT) {
     return;
   }
   if (lcd_requested_page != page) {

@@ -170,20 +170,23 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 | b16 | UART 消息容量修复 | `0.2.2` | UART 上限与诊断缓冲统一为 2048 字节 |
 | b17 | FreeRTOS 与正式 UART | `0.3.0` | 四任务快照、`[RSP]`/`[LOG]`/`[TEL]` 和 64 位格式化修复 |
 | 当前板上 | 正式 UART 实物基线 | `0.3.0 build1` | 当前 confirmed 目标板版本 |
-| 当前工作树 | LCD Logo 与页面结构调整 | `0.4.0 build1` | 已构建，尚未上板 |
+| 上一工作树 | LCD 小 Logo 与页面结构调整 | `0.4.0 build1` | 已构建，尚未上板 |
+| 当前工作树 | LCD 四页状态显示 | `0.5.0 build1` | 已构建，尚未上板 |
 
 ### 阶段 3：LCD 硬件总览
 
-状态：`IN PROGRESS`（Logo 与单页结构已完成构建，四个功能页尚未实施）
+状态：`IMPLEMENTED / NOT VERIFIED`（Logo、四页和 PB8 循环已构建，尚未上板）
 
 - 已保留原始 taifei 全屏资源，并复制生成 48x47 RGB565 小 Logo；独立封面页已移除，Logo 固定
   显示在功能页右上角，释放一个页面位置。该显示变化尚未上板验证。
-- 多页显示硬件子系统状态：电机/编码器、CAN、QSPI、RTC、IMU、SR501、FreeRTOS 和故障。
-- 四页将由已接线的 `PB8/BOOT0` 按键循环：`OVERVIEW`（电压、控制、CAN、Fault、版本）、
+- 四页已显示电机/编码器、CAN、QSPI、RTC、IMU、SR501、FreeRTOS 和故障状态，数据统一来自
+  `SystemStatusSnapshot`，LCD 不直接读取各业务模块。
+- 四页由已接线的 `PB8/BOOT0` 按键循环：`OVERVIEW`（电压、控制、CAN、Fault、版本）、
   `MOTOR`（目标、速度、PWM、编码器、PID）、`SENSORS`（IMU、SR501、ADC、RTC）、`SYSTEM`
   （QSPI、任务健康、运行时间、复位原因）。PD3/PD4 当前未接线，继续保留为通用按钮。
-- 显示固件版本和构建信息。
+- 已显示固件版本和构建信息；PB8 切页不再触发自检，只保留板级按键事件统计。
 - 电量先显示经校验的电压；在电池化学体系、串数和电压曲线确定前，不显示伪造的百分比。
+- 目标板仍需确认四页内容、小 Logo、刷新和 PB8 循环，完成前不得标记硬件通过。
 
 ### 阶段 4：ICM45686 与估计器
 
@@ -202,8 +205,8 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 状态：`DEFERRED`
 
-- SR501 已接入统一 `SystemStatusSnapshot` 和正式 UART `sensors` 字段；剩余 LCD 展示随阶段 3
-  实现，不绑定电机或安全逻辑。
+- SR501 已接入统一 `SystemStatusSnapshot`、正式 UART `sensors` 字段和 LCD `SENSORS` 页，
+  不绑定电机或安全逻辑。
 - 继续保留 60 秒预热、50 ms 滤波和单次上升沿语义。
 - 完成模块供电、指示灯、OUT 高电平和事件计数实物排查后，才更新硬件验证结论。
 

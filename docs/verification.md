@@ -26,8 +26,8 @@
 | QSPI JEDEC | `HARDWARE PASS` | `EF4017`，识别 8 MiB |
 | QSPI 擦写 | `HARDWARE PASS` | 保留扇区 1 KiB DMA 写入和回读 |
 | LCD SPI DMA | `HARDWARE PASS` | 封面和动态状态页显示正常 |
-| LCD 小 Logo/单页结构 | `NOT VERIFIED` | 0.4.0 build1 构建通过，新的 Logo 和页面行为尚未上板 |
-| KEY 消抖 | `HARDWARE PASS` | 历史封面/状态页切换已验证；0.4.0 后续四页循环需重新验收 |
+| LCD 四页状态显示 | `NOT VERIFIED` | 0.5.0 build1 构建通过，四页内容、Logo 和刷新尚未上板 |
+| KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；0.5.0 PB8 四页循环需重新验收 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
 | 双电机开环 | `HARDWARE PASS` | 左右轮正反转和自动停止 |
@@ -772,3 +772,30 @@ git diff --check
 原全屏 RGB565 资源不再链接到 Application，改为链接 4512 字节的小 Logo 像素数据，因此
 Flash 占用明显下降。本轮未执行烧录或 LCD 实物观察，Logo 尺寸、颜色、位置和 PB8 页面操作均
 保持 `NOT VERIFIED`。
+
+## 2026-08-18 LCD 四页状态显示构建（0.5.0 build1）
+
+LCD 已实现 `OVERVIEW`、`MOTOR`、`SENSORS`、`SYSTEM` 四页，固定显示 48x47 taifei Logo。
+四页均由 `status_display` 一次读取 `SystemStatusSnapshot` 后转换数据；PB8/BOOT0 每次有效按下
+循环到下一页，`SYSTEM` 后返回 `OVERVIEW`，不再触发诊断自检。PD3/PD4 未接线且不参与本轮操作。
+
+执行：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+git diff --check
+```
+
+结果：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 87896 | 120 | 52944 | `BUILD PASS` |
+| Release | 78056 | 120 | 52936 | `BUILD PASS` |
+
+构建未产生警告。四页实际文字、颜色、Logo、1 秒刷新以及
+`OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 的 PB8 循环尚未烧录观察，均保持
+`NOT VERIFIED`。本轮未执行电机命令，也未改变 SR501、ICM45686 或 OTA 的既有硬件结论。

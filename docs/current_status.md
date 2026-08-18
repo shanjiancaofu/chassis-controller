@@ -5,15 +5,16 @@
 
 ## 代码基线
 
-- Application 工作树：`0.4.0`，build `1`。
+- Application 工作树：`0.5.0`，build `1`。
 - Bootloader：`0.1.0 build22`。
 - 板上 confirmed 镜像仍为 Application `0.3.0 build1`；b12/build22 仍是已上板冻结 factory
-  基线，历史 b13 和当前产物不得覆盖该基线。`0.4.0 build1` 仅完成构建，尚未上板。
+  基线，历史 b13 和当前产物不得覆盖该基线。`0.5.0 build1` 仅完成构建，尚未上板。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
   调参已后置；当前代码主线已完成 FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
-  下一阶段为 LCD 四页。目标加减速限制、ICM45686、SR501 高电平闭环按路线后续实施。
+  LCD 四页代码与构建已完成，下一步为目标板页面和 PB8 循环验证。目标加减速限制、
+  ICM45686、SR501 高电平闭环按路线后续实施。
 
 ## 当前实现
 
@@ -21,12 +22,14 @@
   和 SR501 输入（PD5）；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()`、SPI3 DMA1 CH5/CH6、
   EXTI1/3/4，以及 PD5 普通输入和内部下拉初始化。
 - 已加入 `bsp/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
-- LCD 已移除独立全屏封面页，将 taifei 复制缩小为 48x47 RGB565 Logo 并绘制在状态页右上角；
-  原始 `picture_tafei.h` 保留但不再链接到当前页面。当前继续使用已接线的 `PB8/BOOT0` 按键，
-  PD3/PD4 只保留 CubeMX/BSP 配置且尚未接线；四个功能页及 PB8 循环切页仍待实现。
+- LCD 已移除独立全屏封面页，将 taifei 复制缩小为 48x47 RGB565 Logo 并固定绘制在四个功能页
+  右上角；原始 `picture_tafei.h` 保留但不再链接到当前页面。`OVERVIEW`、`MOTOR`、`SENSORS`、
+  `SYSTEM` 四页均读取同一 `SystemStatusSnapshot`，已接线的 `PB8/BOOT0` 按键用于循环切页；
+  PD3/PD4 只保留 CubeMX/BSP 配置且尚未接线。四页显示和按键循环尚未目标板验证。
 - 已加入 `bsp/sr501` 轮询驱动。PD5 由 CubeMX 生成代码配置为内部下拉普通输入；驱动忽略 60 秒预热期，
   使用 50 ms 稳定滤波，只统计 READY 后的稳定低到高事件，并通过 `status` 输出原始电平、
-  稳定运动状态、事件计数、最近事件时间和剩余预热时间。当前不绑定电机、安全、LCD 或业务。
+  稳定运动状态、事件计数、最近事件时间和剩余预热时间。状态已进入统一快照、UART 和 LCD，
+  但不绑定电机、安全或具体业务。
 - ICM45686 已拆分为 HAL 无关的 `components/icm45686` 寄存器/FIFO 驱动、HAL 无关的
   `components/imu_fusion` 六轴融合组件，以及 `bsp/imu` STM32 HAL SPI3/DMA 适配层。
   当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、ODR/4 内部低通、FIFO watermark、
@@ -56,14 +59,14 @@
 - 当前代码已运行 `control_task`、`service_task`、`diagnostics_task`、`display_task` 四任务；
   `SystemStatusSnapshot` 记录四个任务的周期、期望周期、超时、运行状态、运行次数、栈余量、
   heartbeat age、uptime、RCC 复位原因，以及板级/传感器/通信/供电/RTC 状态。UART `status`
-  和 LCD 当前页读取同一快照；正式 `[RSP]`、`[LOG]`、`[TEL]` UART emitter 已实现，LCD 四页
-  仍未实施。VOFA 数字流保留为显式兼容模式。
+  和 LCD 四页读取同一快照；正式 `[RSP]`、`[LOG]`、`[TEL]` UART emitter 已实现。VOFA 数字流
+  保留为显式兼容模式。
 
 ## 已验证
 
-- 2026-08-18 Application `0.4.0 build1` 的小 Logo/单状态页工作树完成 CMake 构建：Debug
-  `text=85712 data=120 bss=52864`，Release `text=76244 data=120 bss=52856`。新的 Logo、状态页
-  首屏和 PB8 后续循环切页尚未目标板验证。
+- 2026-08-18 Application `0.5.0 build1` 的 LCD 四页工作树完成 CMake 构建：Debug
+  `text=87896 data=120 bss=52944`，Release `text=78056 data=120 bss=52936`。四页内容、Logo
+  显示和 PB8 循环切页尚未目标板验证。
 - 2026-08-18 Application `0.3.0` build `1` 已在目标板确认四任务均为 `RUNNING`，周期、栈余量、heartbeat age、运行次数
   和复位原因可通过同一 `SystemStatusSnapshot` 读取；`critical_tasks=1`、`control=STOPPED`、
   `fault=0`、`overrun=0`、`missed=0`。
@@ -119,6 +122,9 @@
 
 - ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及FIFO恢复计数，但任何软件状态均不得据此标记硬件PASS。
 
+- LCD `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 页面内容、小 Logo 显示以及 PB8
+  单键循环尚未目标板验证；PD3/PD4 仍未接线且不参与本轮操作。
+
 - SR501 已按 5 V、共地、OUT 接 PD5 完成接线。b16 实测 `warmup_ms` 递减并在 60 秒后进入
   `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
   OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
@@ -132,10 +138,10 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 在现有小 Logo 状态页基础上实现 LCD `OVERVIEW`、`MOTOR`、`SENSORS`、`SYSTEM` 四页，
-   全部读取现有 `SystemStatusSnapshot`，并由已接线的 `PB8/BOOT0` 按键循环切页。
-2. 电量先显示已校验电压；电池类型、串数和放电曲线确定前不显示百分比。ICM45686
-   时间轴/Kalman、SR501 实物收尾和目标加减速限制继续按路线后置。
+1. 将 `0.5.0 build1` 烧录到目标板，确认四页内容、小 Logo、1 秒刷新和
+   `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 的 PB8 单键循环。
+2. 电量继续只显示已校验电压；电池类型、串数和放电曲线确定前不显示百分比。完成 LCD
+   回归后进入 ICM45686 实物识别、FIFO/DMA 连续性、零偏和安装方向验证。
 
 当前路线：
 
