@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/lcd/lcd_cover_image.h"
+#include "bsp/lcd/lcd_logo_image.h"
 #include "main.h"
 #include "config/build_info.h"
 #include "board/board_config.h"
@@ -17,6 +17,8 @@
 #define LCD_BACKLIGHT_COMPARE 35U
 #define LCD_TEXT_LINE_COUNT 7U
 #define LCD_TEXT_LINE_LENGTH 28U
+#define LCD_LOGO_X (LCD_WIDTH - LCD_LOGO_IMAGE_WIDTH - 4U)
+#define LCD_LOGO_Y 2U
 
 #define LCD_COMMAND_SLEEP_OUT 0x11U
 #define LCD_COMMAND_INVERSION_ON 0x21U
@@ -28,7 +30,6 @@
 #define LCD_COMMAND_PIXEL_FORMAT 0x3AU
 
 #define LCD_COLOR_BACKGROUND 0x18E3U
-#define LCD_COLOR_COVER_MARGIN 0xFFFFU
 #define LCD_COLOR_HEADER 0xFD20U
 #define LCD_COLOR_TEXT 0xFFFFU
 #define LCD_COLOR_PASS 0x07E0U
@@ -91,7 +92,6 @@ static volatile bool lcd_dma_complete;
 static volatile bool lcd_dma_failed;
 static uint16_t lcd_next_row;
 static BspLcdStatus lcd_status;
-static BspLcdPage lcd_page;
 static BspLcdPage lcd_requested_page;
 static bool lcd_redraw_requested;
 static BspLcdStatusData lcd_status_data;
@@ -217,7 +217,7 @@ static void LcdPrepareStatusPage(void)
                  "FAULT 0X%08lX",
                  (unsigned long)lcd_status_data.fault_flags);
   (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH,
-                 "FW V%s B%s KEY:COVER", CHASSIS_FIRMWARE_VERSION,
+                 "FW V%s B%s", CHASSIS_FIRMWARE_VERSION,
                  CHASSIS_FIRMWARE_BUILD_STRING);
 
   lcd_text_colors[0] = LCD_COLOR_HEADER;
@@ -264,24 +264,21 @@ static void LcdDrawTextOnRow(uint16_t row, uint16_t y, const char *text,
 
 static bool LcdStartRow(uint16_t row)
 {
-  const uint16_t cover_start_x =
-      (LCD_WIDTH - LCD_COVER_IMAGE_WIDTH) / 2U;
-
   for (uint16_t column = 0U; column < LCD_WIDTH; ++column) {
-    uint16_t color = lcd_page == BSP_LCD_PAGE_COVER
-                         ? LCD_COLOR_COVER_MARGIN
-                         : LCD_COLOR_BACKGROUND;
+    uint16_t color = LCD_COLOR_BACKGROUND;
 
-    if (lcd_page == BSP_LCD_PAGE_COVER &&
-        column >= cover_start_x &&
-        column < cover_start_x + LCD_COVER_IMAGE_WIDTH) {
+    if (row >= LCD_LOGO_Y &&
+        row < LCD_LOGO_Y + LCD_LOGO_IMAGE_HEIGHT &&
+        column >= LCD_LOGO_X &&
+        column < LCD_LOGO_X + LCD_LOGO_IMAGE_WIDTH) {
       const uint32_t image_index =
-          (row * LCD_COVER_IMAGE_WIDTH + column - cover_start_x) * 2U;
+          ((row - LCD_LOGO_Y) * LCD_LOGO_IMAGE_WIDTH +
+           column - LCD_LOGO_X) * 2U;
 
       lcd_line_buffer[column * 2U] =
-          LCD_COVER_IMAGE_DATA[image_index];
+          LCD_LOGO_IMAGE_DATA[image_index];
       lcd_line_buffer[column * 2U + 1U] =
-          LCD_COVER_IMAGE_DATA[image_index + 1U];
+          LCD_LOGO_IMAGE_DATA[image_index + 1U];
       continue;
     }
 
@@ -289,11 +286,9 @@ static bool LcdStartRow(uint16_t row)
     lcd_line_buffer[column * 2U + 1U] = (uint8_t)color;
   }
 
-  if (lcd_page == BSP_LCD_PAGE_STATUS) {
-    for (uint8_t line = 0U; line < LCD_TEXT_LINE_COUNT; ++line) {
-      LcdDrawTextOnRow(row, lcd_text_y[line], lcd_text_lines[line],
-                       lcd_text_colors[line], line == 6U ? 1U : 2U);
-    }
+  for (uint8_t line = 0U; line < LCD_TEXT_LINE_COUNT; ++line) {
+    LcdDrawTextOnRow(row, lcd_text_y[line], lcd_text_lines[line],
+                     lcd_text_colors[line], line == 6U ? 1U : 2U);
   }
 
   lcd_dma_complete = false;
@@ -303,11 +298,8 @@ static bool LcdStartRow(uint16_t row)
 
 static bool LcdStartDrawing(void)
 {
-  lcd_page = lcd_requested_page;
   lcd_redraw_requested = false;
-  if (lcd_page == BSP_LCD_PAGE_STATUS) {
-    LcdPrepareStatusPage();
-  }
+  LcdPrepareStatusPage();
   if (!LcdBeginFrame()) {
     return false;
   }
@@ -338,7 +330,7 @@ bool BspLcd_Init(void)
       0x33U, 0x48U, 0x17U, 0x14U, 0x15U, 0x31U, 0x34U};
 
   lcd_status = BSP_LCD_FAILED;
-  lcd_requested_page = BSP_LCD_PAGE_COVER;
+  lcd_requested_page = BSP_LCD_PAGE_STATUS;
   __HAL_TIM_SET_COMPARE(&BOARD_LCD_BACKLIGHT_TIMER, BOARD_LCD_BACKLIGHT_CHANNEL, 0U);
   if (HAL_TIM_PWM_Start(&BOARD_LCD_BACKLIGHT_TIMER, BOARD_LCD_BACKLIGHT_CHANNEL) != HAL_OK) {
     return false;
@@ -414,7 +406,7 @@ void BspLcd_Run(void)
 
 void BspLcd_SetPage(BspLcdPage page)
 {
-  if (page != BSP_LCD_PAGE_COVER && page != BSP_LCD_PAGE_STATUS) {
+  if (page != BSP_LCD_PAGE_STATUS) {
     return;
   }
   if (lcd_requested_page != page) {
@@ -429,9 +421,7 @@ void BspLcd_SetStatusData(const BspLcdStatusData *data)
     return;
   }
   lcd_status_data = *data;
-  if (lcd_requested_page == BSP_LCD_PAGE_STATUS) {
-    lcd_redraw_requested = true;
-  }
+  lcd_redraw_requested = true;
 }
 
 BspLcdStatus BspLcd_GetStatus(void)

@@ -14,8 +14,7 @@ typedef enum
 
 typedef enum
 {
-  BSP_LCD_PAGE_COVER = 0,
-  BSP_LCD_PAGE_STATUS
+  BSP_LCD_PAGE_STATUS = 0
 } BspLcdPage;
 
 typedef enum

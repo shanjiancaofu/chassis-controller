@@ -26,7 +26,8 @@
 | QSPI JEDEC | `HARDWARE PASS` | `EF4017`，识别 8 MiB |
 | QSPI 擦写 | `HARDWARE PASS` | 保留扇区 1 KiB DMA 写入和回读 |
 | LCD SPI DMA | `HARDWARE PASS` | 封面和动态状态页显示正常 |
-| KEY 消抖 | `HARDWARE PASS` | 按键切换 LCD 页面 |
+| LCD 小 Logo/单页结构 | `NOT VERIFIED` | 0.4.0 build1 构建通过，新的 Logo 和页面行为尚未上板 |
+| KEY 消抖 | `HARDWARE PASS` | 历史封面/状态页切换已验证；0.4.0 后续四页循环需重新验收 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
 | 双电机开环 | `HARDWARE PASS` | 左右轮正反转和自动停止 |
@@ -743,3 +744,31 @@ OTA 工具完成 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED`。目标板状态�
 
 四任务均为 `RUNNING`，控制保持 `STOPPED`，未执行电机命令。后续同一 `0.3.0` 源码的重复
 可部署产物才使用 build2、build3；功能或协议变化时进入下一个语义版本并将 build 重置为 1。
+
+## 2026-08-18 LCD 小 Logo 与单页结构构建（0.4.0 build1）
+
+本轮保留原始 `assets/tafei/picture_tafei.h`，从原始 JPG 复制生成 48x47 RGB565
+`picture_tafei_logo.h`。LCD 不再使用独立全屏封面页，小 Logo 改为状态页右上角固定元素；当前
+继续使用已接线的 PB8/BOOT0 按键，PD3/PD4 尚未接线且不参与 LCD 操作。四个功能页和 PB8
+循环切页仍是后续工作。
+
+执行：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+git diff --check
+```
+
+结果：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 85712 | 120 | 52864 | `BUILD PASS` |
+| Release | 76244 | 120 | 52856 | `BUILD PASS` |
+
+原全屏 RGB565 资源不再链接到 Application，改为链接 4512 字节的小 Logo 像素数据，因此
+Flash 占用明显下降。本轮未执行烧录或 LCD 实物观察，Logo 尺寸、颜色、位置和 PB8 页面操作均
+保持 `NOT VERIFIED`。

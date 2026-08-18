@@ -26,9 +26,6 @@ void StatusDisplay_Run(uint32_t now_ms)
     if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET &&
         now_ms - last_key_press_ms >= KEY_LOCKOUT_MS) {
       last_key_press_ms = now_ms;
-      BspLcd_SetPage(BspLcd_GetPage() == BSP_LCD_PAGE_COVER
-                         ? BSP_LCD_PAGE_STATUS
-                         : BSP_LCD_PAGE_COVER);
       BoardHealth_NotifyButtonPressed();
       DiagnosticReport_RequestSelfTest();
     }

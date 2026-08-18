@@ -43,7 +43,7 @@
 | LCD SCK/DC/MOSI | `PB13/PB14/PB15` |
 | ICM45686 SPI3 | `PC10/PC11/PC12`，SCK/MISO/MOSI |
 | ICM45686 CS/INT1 | `PD0/PD1`，高电平空闲/EXTI1 上升沿 |
-| 通用按钮 1/2 | `PD3/PD4`，内部上拉、低有效、EXTI3/EXTI4 |
+| 通用按钮 1/2 | `PD3/PD4`，内部上拉、低有效、EXTI3/EXTI4；当前未接线 |
 | HC-SR501 OUT | `PD5`，普通输入、内部下拉、高有效 |
 | 左编码器 | `PA0/PA1`, TIM2 CH1/CH2 |
 | 右编码器 | `PD12/PD13`, TIM4 CH1/CH2 |
@@ -172,7 +172,8 @@ PB15 -> SDA/MOSI
 GND  -> GND
 ```
 
-LCD 使用 SPI2 TX DMA。当前屏幕没有触摸控制器，通过 `PB8/BOOT0` 按键切换页面。
+LCD 使用 SPI2 TX DMA。当前屏幕没有触摸控制器，规划中的页面切换使用已接线的
+`PB8/BOOT0` 按键；PD3/PD4 暂不参与 LCD 操作。
 
 ## ICM45686
 
