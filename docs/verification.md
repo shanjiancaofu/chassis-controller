@@ -26,8 +26,8 @@
 | QSPI JEDEC | `HARDWARE PASS` | `EF4017`，识别 8 MiB |
 | QSPI 擦写 | `HARDWARE PASS` | 保留扇区 1 KiB DMA 写入和回读 |
 | LCD SPI DMA | `HARDWARE PASS` | 封面和动态状态页显示正常 |
-| LCD 四页状态显示 | `NOT VERIFIED` | 0.5.0 build1 构建通过，四页内容、Logo 和刷新尚未上板 |
-| KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；0.5.0 PB8 四页循环需重新验收 |
+| LCD 四页状态显示 | `NOT VERIFIED` | 0.7.1 build1 已 OTA confirmed；中性配色、大号电量显示和新版布局尚待人工验收 |
+| KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；0.7.1 PB8 四页循环需重新验收 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
 | 双电机开环 | `HARDWARE PASS` | 左右轮正反转和自动停止 |
@@ -39,7 +39,7 @@
 | 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-18，build22 从 confirmed Application 0.2.0 build1 升级到 0.3.0 build1，完成真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-18，build22 已完成到 0.3.0、0.6.0、0.7.0 和 0.7.1 build1 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
@@ -799,3 +799,194 @@ git diff --check
 构建未产生警告。四页实际文字、颜色、Logo、1 秒刷新以及
 `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 的 PB8 循环尚未烧录观察，均保持
 `NOT VERIFIED`。本轮未执行电机命令，也未改变 SR501、ICM45686 或 OTA 的既有硬件结论。
+
+## 2026-08-18 LCD DMA 调度修复与上板观察（0.5.1 build1）
+
+### 观察与修复
+
+使用 ST-Link 直接写入 Application 区 `0x08008000` 后执行普通复位，Bootloader 检测到内部
+镜像与 QSPI confirmed `0.3.0 build1` 不匹配，按 confirmed repair 路径恢复旧镜像；Bootloader
+和 QSPI 未被修改。随后使用 GDB 从 Application 向量直接启动 `0.5.0 build1`，UART 确认：
+
+```text
+[TEL] ... fw=0.5.0 build=1 ... control=STOPPED ... left_pwm=0 right_pwm=0 ...
+[TEL] ... display_task=RUNNING ... lcd=DRAWING ...
+```
+
+调试读取表明 LCD DMA 已完成但显示任务每 20 ms 只推进一行，约 4.8 秒才能完成一帧；1 秒
+刷新会在完成后立即再次请求绘制，导致状态长期停留在 `DRAWING`。因此将
+`DISPLAY_TASK_EXPECTED_PERIOD_MS` 改为 1 ms，并将补丁版本提升为 `0.5.1`。
+
+### 0.5.1 构建
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+```
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 87896 | 120 | 52944 | `BUILD PASS` |
+| Release | 78056 | 120 | 52936 | `BUILD PASS` |
+
+`0.5.1` 调试启动已观察到 `lcd=READY`、四任务 `RUNNING`、`control=STOPPED` 和四路 PWM 为零；
+四页实际内容、Logo 颜色和 PB8 循环仍未人工观察，保持 `NOT VERIFIED`。同一输出暴露
+`display_period_ms=1` 但 `display_expected_ms=20` 的快照字段不一致，已在 `0.5.2` 修复。
+
+## 2026-08-18 LCD 任务诊断周期统一（0.5.2 build1）
+
+将 `SystemRuntimeSnapshot.display_expected_period_ms` 改为复用
+`DISPLAY_TASK_EXPECTED_PERIOD_MS`，使实际 1 ms 调度周期、期望周期和 UART/LCD 诊断一致。
+本修正不改变 LCD 页面、Logo、按键或电机控制逻辑。
+
+执行：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+git diff --check
+```
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 87892 | 120 | 52944 | `BUILD PASS` |
+| Release | 78052 | 120 | 52936 | `BUILD PASS` |
+
+`0.5.2` 已通过 ST-Link 写入 Application 区并由 GDB 从 Application 向量直接启动。串口状态为：
+
+```text
+[TEL] ... fw=0.5.2 build=1 ... control=STOPPED ... critical_tasks=1
+[TEL] ... service_task=RUNNING control_task=RUNNING diagnostics_task=RUNNING display_task=RUNNING
+[TEL] ... display_period_ms=1 display_expected_ms=1 ... left_pwm=0 right_pwm=0
+[TEL] ... lcd=READY ...
+```
+
+停止 OpenOCD 后 `ping` 仍返回正式 `[RSP]`，Application 保持运行。该验证证明 LCD DMA 状态机
+能够完成一帧并进入 `READY`，不代表四页文字、颜色、Logo 或 PB8 循环已完成人工目视验收；
+这些项目继续保持 `NOT VERIFIED`。普通复位仍会由 Bootloader 恢复 QSPI confirmed
+`0.3.0 build1`，因此本节也不构成 `0.5.2` 正常上电启动或 OTA 确认证据。
+
+## 2026-08-18 LCD UI 美化与电量估算构建（0.6.0 build1）
+
+本轮将 taifei Logo 裁剪为 40x40 RGB565，并增加透明掩码去除白色背景；LCD 四页增加深色
+标题栏、分隔面板、状态色和总览页电量条。百分比使用 9.0--12.6 V 电压窗口估算，实际电池
+化学体系、串数和放电曲线确认后仍需校准。
+
+执行：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+git diff --check
+```
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 88612 | 120 | 52944 | `BUILD PASS` |
+| Release | 78660 | 120 | 52944 | `BUILD PASS` |
+
+`0.6.0` 已通过 ST-Link 写入 Application 区并由 GDB 从 Application 向量直接启动。`status`
+确认 `fw=0.6.0 build=1`、四任务 `RUNNING`、`control=STOPPED`、左右 PWM 为零，LCD 在 1 s
+刷新周期中可观察到 `DRAWING` 并回到 `READY`；停止 OpenOCD 后 `ping` 仍正常响应。当前电机
+电源未接入，ADC 报告 `supply_mv=0`，因此百分比实际电压效果仍需带电池观察。
+
+透明 Logo、百分比和电量条、四页颜色布局以及 PB8 循环尚待人工目视，均保持
+`NOT VERIFIED`。本轮未执行电机命令，也未改变 SR501 或 ICM45686 的既有硬件结论；
+初次直接写内部 Application 后普通复位仍会恢复当时 QSPI confirmed `0.3.0 build1`。
+
+为使本版断电后可由 Bootloader 正常启动，随后从 `build/arm-release/application.bin` 生成
+`0.6.0 build1` OTA 包并通过 `/dev/ttyUSB0`、115200 8N1 发送：
+
+```text
+payload=78788 bytes
+payload_crc32=0x8DE78C48
+bin_sha256=93725db9139c330f4b25b29254ecf475b4825329ae39694804b4a1af11d675a1
+ota_sha256=fc1e70013396d729f853253011b35ba0923aca4b3eacc63d98e775aaea7203a8
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: TRIAL VERIFIED
+```
+
+健康窗口后 `status` 报告 `fw=0.6.0 build=1`、`ota_confirmation=CONFIRMED`、四任务
+`RUNNING`、`control=STOPPED` 和左右 PWM 为零。随后通过 ST-Link 执行普通复位，目标板继续
+报告 `fw=0.6.0 build=1`、`ota_confirmation=NOT_REQUIRED`、`lcd=READY`，证明内部镜像与
+QSPI confirmed 基线已经一致。真实断电重上电未执行，不能据此记录断电启动 `PASS`。
+
+## 2026-08-18 LCD 信息层级与大号电量显示（0.7.0 build1）
+
+本轮将 LCD 文本布局扩展为 10 个可独立设置坐标、字号和颜色的区域。总览页使用 3 倍字号
+显示电压和百分比，并将电量条扩大到 288x16；电机页改为左右双栏，传感器页和系统页重新
+按信息层级排版。四页继续使用统一标题栏、内容面板、分隔线、底部状态栏和 40x40 透明 Logo。
+
+执行：
+
+```text
+cmake --preset arm-debug
+cmake --build --preset arm-debug --parallel
+cmake --preset arm-release
+cmake --build --preset arm-release --parallel
+```
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 89204 | 120 | 53088 | `BUILD PASS` |
+| Release | 79264 | 120 | 53080 | `BUILD PASS` |
+
+Release `application.bin` 和 OTA 包信息：
+
+```text
+payload=79392 bytes
+payload_crc32=0x7B2868B2
+bin_sha256=c3bcc39853b10a530853e445c1c2e9aabf2dae073c849a3d1d7e811ca029beac
+ota_sha256=e012ab69122be5dc46f0a0c5cdce72e727f556f9573ebf04d65c7d58d7794202
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: TRIAL VERIFIED
+```
+
+健康窗口后 `status` 报告 `fw=0.7.0 build=1` 和 `ota_confirmation=CONFIRMED`。随后通过
+ST-Link 执行普通复位，复位后再次读取 `status`：
+
+```text
+fw=0.7.0 build=1 reset=SOFTWARE critical_tasks=1
+service_task=RUNNING control_task=RUNNING diagnostics_task=RUNNING display_task=RUNNING
+control=STOPPED left_pwm=0 right_pwm=0
+lcd=READY ota_confirmation=NOT_REQUIRED
+```
+
+当前 ADC 报告 0 mV，所以页面应显示 0% 和空进度条。该串口结果只证明软件状态、普通复位
+启动和零 PWM；大号电量显示、透明 Logo、双栏/分组布局无重叠以及 PB8 四页循环仍需人工
+目视确认，保持 `NOT VERIFIED`。真实断电重上电和四路 PWM 电气测量未执行，继续 `DEFERRED`。
+
+## 2026-08-18 LCD 中性配色修正（0.7.1 build1）
+
+本轮保留 `0.7.0` 的页面信息、坐标、字号和透明 Logo，将标题栏、内容面板和背景调整为中性
+深灰，移除贯穿全屏的青色横线；标题下方仅保留短青色强调线，页脚和电机双栏分隔改为灰色。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 89216 | 120 | 53088 | `BUILD PASS` |
+| Release | 79272 | 120 | 53080 | `BUILD PASS` |
+
+Release 产物：
+
+```text
+payload=79400 bytes
+payload_crc32=0xAABB8733
+bin_sha256=6c828adf6845add29a1be8b23476c8363b9a7beec478056604e889ee0fbe9738
+ota_sha256=febdea7b478d970a3d26259b5d0d01f6a5946196fc8498e83cba845c17b902e9
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: TRIAL VERIFIED
+```
+
+健康窗口后报告 `fw=0.7.1 build=1`、`ota_confirmation=CONFIRMED`。ST-Link 普通复位后再次
+读取状态：四任务均为 `RUNNING`，`control=STOPPED`，左右 PWM 为零，`lcd=READY`，
+`ota_confirmation=NOT_REQUIRED`。串口证据不等于配色人工验收，中性背景和短标题强调线的
+实际观感仍保持 `NOT VERIFIED`。

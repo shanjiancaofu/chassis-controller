@@ -21,7 +21,7 @@
 #define SERVICE_TASK_EXPECTED_PERIOD_MS 1U
 #define CONTROL_TASK_EXPECTED_PERIOD_MS 10U
 #define DIAGNOSTICS_TASK_EXPECTED_PERIOD_MS 100U
-#define DISPLAY_TASK_EXPECTED_PERIOD_MS 20U
+#define DISPLAY_TASK_EXPECTED_PERIOD_MS 1U
 
 #define SERVICE_TASK_HEALTH_TIMEOUT_MS 200U
 #define CONTROL_TASK_HEALTH_TIMEOUT_MS 50U
@@ -224,7 +224,7 @@ void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
   snapshot->service_expected_period_ms = 1U;
   snapshot->control_expected_period_ms = 10U;
   snapshot->diagnostics_expected_period_ms = 100U;
-  snapshot->display_expected_period_ms = 20U;
+  snapshot->display_expected_period_ms = DISPLAY_TASK_EXPECTED_PERIOD_MS;
   snapshot->service_timeout_ms = SERVICE_TASK_HEALTH_TIMEOUT_MS;
   snapshot->control_timeout_ms = CONTROL_TASK_HEALTH_TIMEOUT_MS;
   snapshot->diagnostics_timeout_ms = DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS;

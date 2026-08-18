@@ -94,6 +94,8 @@ typedef struct
   uint8_t rtc_seconds;
   uint8_t qspi_capacity_mib;
   uint32_t adc_mv;
+  uint8_t battery_percent;
+  bool battery_percent_valid;
   uint32_t fault_flags;
   uint32_t uptime_ms;
   BspLcdResetCause reset_cause;

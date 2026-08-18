@@ -2,6 +2,125 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-18 - LCD 中性配色修正（0.7.1 build1）
+
+### 变更内容
+
+- 将标题栏、内容面板和页面背景调整为中性深灰，降低大面积蓝色对界面的支配感。
+- 移除贯穿全屏的青色横线，标题下方只保留一段短青色强调线。
+- 页脚边界和电机左右双栏分隔改为低对比灰色；状态文字和电量条仍使用原有状态色。
+
+### 设计决定
+
+- 保留 `0.7.0` 的字号、坐标、四页信息结构和透明 Logo，只修正背景层级，不重新调整内容。
+- 本次属于已部署 UI 的视觉修正，提升补丁版本为 `0.7.1 build1`。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=89216 data=120 bss=53088`，Release
+  `text=79272 data=120 bss=53080`。
+- Release BIN 为 79400 字节，payload CRC32 `0xAABB8733`；UART OTA 完成 `STAGED ->
+  INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。
+- 普通复位后报告 `fw=0.7.1 build=1`、`ota_confirmation=NOT_REQUIRED`、四任务 `RUNNING`、
+  `lcd=READY`、控制停止且左右 PWM 为零。中性配色实际观感仍待人工目视确认。
+
+## 2026-08-18 - LCD 信息层级与大号电量显示（0.7.0 build1）
+
+### 变更内容
+
+- 将 LCD 文本布局从固定 7 行改为 10 个可独立配置坐标、字号和颜色的文本区域。
+- 总览页使用 3 倍字号显示电压和百分比，将电量条扩大到接近全屏宽，并重新分区控制、CAN、
+  QSPI、Fault 和版本信息。
+- 电机页改为左右双栏，PWM、编码器和 PID 分组显示；传感器页和系统页按信息层级重新排版。
+- 四页统一标题栏、内容面板、青色分隔线和底部状态栏，继续使用 40x40 透明 taifei Logo。
+
+### 设计决定
+
+- 保持现有四页内容和 PB8 单键循环，不新增页面；LCD 仍只读取统一 `SystemStatusSnapshot`。
+- 电池百分比继续使用 9.0--12.6 V 电压窗口估算，当前 ADC 为 0 mV 时显示 0% 和空进度条。
+- 不改变控制、电机、OTA、SR501 或 ICM45686 行为，所有电机输出保持零。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=89204 data=120 bss=53088`，Release
+  `text=79264 data=120 bss=53080`。
+- Release BIN 为 79392 字节，payload CRC32 `0x7B2868B2`；UART OTA 完成 `STAGED ->
+  INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。
+- 普通复位后报告 `fw=0.7.0 build=1`、`ota_confirmation=NOT_REQUIRED`、四任务 `RUNNING`、
+  `lcd=READY`、控制停止且左右 PWM 为零。大号电量显示、透明 Logo、四页无重叠和 PB8 循环
+  尚待人工目视确认，保持 `NOT VERIFIED`。
+
+## 2026-08-18 - LCD UI 美化与电量估算（0.6.0 build1）
+
+### 变更内容
+
+- 将 taifei Logo 从 48x47 调整为带透明掩码的 40x40 RGB565 资源，去除页面上的白色矩形背景。
+- 四页统一为深色背景、标题栏、青色分隔线、交替信息区和状态色，总览页增加电量进度条与
+  百分比显示。
+- 百分比按 9.0--12.6 V 电压窗口估算，阈值集中在 `board_config.h`；保留实测电压作为主要
+  数据，不把估算百分比当作精确 SOC。
+
+### 设计决定
+
+- 原始 `picture_tafei.h` 和 `tafei.jpg` 保留；页面只链接新的紧凑 Logo 与透明掩码。
+- UI 继续由 `display_task` 逐行 DMA 绘制，数据继续来自统一 `SystemStatusSnapshot`，不改变
+  电机、控制、OTA 或 UART 协议。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=88612 data=120 bss=52944`，Release
+  `text=78660 data=120 bss=52944`。
+- `0.6.0` 已通过 ST-Link 写入并由 GDB 直接启动；串口确认四任务 `RUNNING`、控制停止、左右
+  PWM 为零，LCD 在刷新周期中能够进入 `READY`。新 Logo、百分比、电量条和四页视觉效果
+  尚待人工确认，保持 `NOT VERIFIED`。
+- Release BIN 为 78788 字节，OTA payload CRC32 `0x8DE78C48`；UART OTA 完成 `STAGED ->
+  INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。普通复位后仍启动
+  `0.6.0 build1` 并报告 `ota_confirmation=NOT_REQUIRED`、`lcd=READY`，真实断电重上电未执行。
+
+## 2026-08-18 - LCD 任务诊断周期统一（0.5.2 build1）
+
+### 变更内容
+
+- 统一 `display_task` 实际 1 ms 周期与 `SystemRuntimeSnapshot.display_expected_period_ms`，
+  修复遥测中实际周期为 1 ms、期望周期仍为 20 ms 的不一致。
+
+### 设计决定
+
+- 期望周期必须复用任务调度常量，避免任务调度修改后快照、UART 和 LCD 显示出现不同结论。
+- 不改变 LCD 页面、Logo、PB8 按键或控制安全逻辑；版本提升为 `0.5.2`。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=87892 data=120 bss=52944`，Release
+  `text=78052 data=120 bss=52936`；`git diff --check` 通过。
+- `0.5.2` 已通过 ST-Link 写入并由 GDB 直接启动；UART 确认四任务 `RUNNING`、显示实际/期望
+  周期均为 1 ms、`lcd=READY`、控制停止且 PWM 为零。四页内容、Logo 和 PB8 循环仍保持
+  `NOT VERIFIED`，普通上电仍使用 QSPI confirmed `0.3.0 build1`。
+
+## 2026-08-18 - LCD DMA 调度修复（0.5.1 build1）
+
+### 变更内容
+
+- 将 `display_task` 的调度周期从 20 ms 调整为 1 ms，及时推进 LCD 逐行 SPI DMA；LCD 页面
+  内容刷新仍保持 1 s。
+- 保留四页、Logo、PB8 循环和统一快照设计，不改变控制任务、电机安全或 OTA 逻辑。
+- `0.5.0` 调试启动观察到 LCD 长期 `DRAWING` 后，补丁版本提升为 `0.5.1 build1`。
+
+### 设计决定
+
+- LCD BSP 继续使用逐行 DMA，避免分配整屏缓冲；显示任务只增加调度频率，不在控制任务中
+  加入 LCD 操作。
+- 直接写 Application 后正常复位会触发 Bootloader confirmed repair，这是保护行为；测试不
+  修改冻结的 QSPI confirmed 基线。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=87896 data=120 bss=52944`，Release
+  `text=78056 data=120 bss=52936`。
+- `0.5.1` 已通过 GDB 直接启动，UART 观察到 `lcd=READY`、四任务 `RUNNING`、控制停止且
+  PWM 为零；同时发现快照中显示期望周期仍为 20 ms，已在 `0.5.2` 修复。四页内容、Logo
+  和 PB8 循环仍保持 `NOT VERIFIED`。
+
 ## 2026-08-18 - LCD 四页状态显示（0.5.0 build1）
 
 ### 变更内容
@@ -187,9 +306,14 @@
 | b15 | `0.2.1` | 诊断报告缓冲扩大 |
 | b16 | `0.2.2` | UART 与诊断容量统一为 2048 字节 |
 | b17 | `0.3.0` | FreeRTOS 四任务、统一快照和正式 UART 协议 |
-| 当前板上 | `0.3.0 build1` | confirmed Application 实物基线 |
+| 当前板上 | `0.7.1 build1` | UART OTA confirmed，普通复位回归通过 |
 | 上一工作树 | `0.4.0 build1` | LCD 小 Logo 与页面结构调整，尚未上板 |
-| 当前工作树 | `0.5.0 build1` | LCD 四页状态显示，尚未上板 |
+| 上一修复树 | `0.5.0 build1` | LCD 四页状态显示，调试启动观察到 DMA 调度过慢 |
+| 上一修复树 | `0.5.1 build1` | LCD DMA 调度修复，调试启动已进入 `lcd=READY` |
+| 上一工作树 | `0.5.2 build1` | LCD 任务诊断周期统一，调试启动并确认 LCD 正常显示 |
+| 上一工作树 | `0.6.0 build1` | LCD UI 美化、透明 Logo 和电量估算，已 OTA confirmed |
+| 上一工作树 | `0.7.0 build1` | LCD 信息层级、大号电量显示和双栏布局，蓝色横带待修正 |
+| 当前工作树 | `0.7.1 build1` | LCD 中性深灰背景和短标题强调线，待人工观察 |
 
 ## 后置工作
 

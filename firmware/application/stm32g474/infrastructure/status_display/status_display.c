@@ -2,6 +2,7 @@
 
 #include "bsp/lcd/bsp_lcd.h"
 #include "bsp/reset/bsp_reset.h"
+#include "board/board_config.h"
 #include "main.h"
 #include "modules/diagnostics/system_status.h"
 
@@ -13,6 +14,18 @@ static volatile bool key_edge_pending;
 static volatile uint32_t key_edge_ms;
 static uint32_t last_key_press_ms;
 static uint32_t last_refresh_ms;
+
+static uint8_t EstimateBatteryPercent(uint32_t supply_mv)
+{
+  if (supply_mv <= BOARD_POWER_PERCENT_EMPTY_MV) {
+    return 0U;
+  }
+  if (supply_mv >= BOARD_POWER_PERCENT_FULL_MV) {
+    return 100U;
+  }
+  return (uint8_t)(((supply_mv - BOARD_POWER_PERCENT_EMPTY_MV) * 100U) /
+                   (BOARD_POWER_PERCENT_FULL_MV - BOARD_POWER_PERCENT_EMPTY_MV));
+}
 
 static int16_t DegreesFromRadians(float radians)
 {
@@ -140,6 +153,10 @@ static void RefreshLcdData(void)
       (uint8_t)(system_status.board_health.qspi_capacity_bytes /
                 (1024UL * 1024UL));
   lcd_data.adc_mv = system_status.supply_valid ? system_status.supply_mv : 0U;
+  lcd_data.battery_percent_valid = system_status.supply_valid;
+  lcd_data.battery_percent = system_status.supply_valid
+                                 ? EstimateBatteryPercent(system_status.supply_mv)
+                                 : 0U;
   lcd_data.fault_flags = system_status.fault_flags;
   lcd_data.uptime_ms = system_status.runtime.uptime_ms;
   lcd_data.reset_cause =

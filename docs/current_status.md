@@ -5,15 +5,16 @@
 
 ## 代码基线
 
-- Application 工作树：`0.5.0`，build `1`。
+- Application 工作树：`0.7.1`，build `1`。
 - Bootloader：`0.1.0 build22`。
-- 板上 confirmed 镜像仍为 Application `0.3.0 build1`；b12/build22 仍是已上板冻结 factory
-  基线，历史 b13 和当前产物不得覆盖该基线。`0.5.0 build1` 仅完成构建，尚未上板。
+- 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.7.1 build1`；Bootloader 仍为
+  build22，b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.7.1`
+  已完成普通复位回归，新的 UI 尚待人工目视验证。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
   调参已后置；当前代码主线已完成 FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
-  LCD 四页代码与构建已完成，下一步为目标板页面和 PB8 循环验证。目标加减速限制、
+  LCD 四页代码与 DMA 调度修复已完成，下一步为目标板页面和 PB8 循环验证。目标加减速限制、
   ICM45686、SR501 高电平闭环按路线后续实施。
 
 ## 当前实现
@@ -22,10 +23,13 @@
   和 SR501 输入（PD5）；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()`、SPI3 DMA1 CH5/CH6、
   EXTI1/3/4，以及 PD5 普通输入和内部下拉初始化。
 - 已加入 `bsp/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
-- LCD 已移除独立全屏封面页，将 taifei 复制缩小为 48x47 RGB565 Logo 并固定绘制在四个功能页
-  右上角；原始 `picture_tafei.h` 保留但不再链接到当前页面。`OVERVIEW`、`MOTOR`、`SENSORS`、
-  `SYSTEM` 四页均读取同一 `SystemStatusSnapshot`，已接线的 `PB8/BOOT0` 按键用于循环切页；
-  PD3/PD4 只保留 CubeMX/BSP 配置且尚未接线。四页显示和按键循环尚未目标板验证。
+- LCD 已移除独立全屏封面页，将 taifei 裁剪为带透明掩码的 40x40 RGB565 Logo 并固定绘制在
+  四个功能页右上角；原始 `picture_tafei.h` 保留但不再链接到当前页面。`OVERVIEW` 将电压和
+  百分比放大到 3 倍字号并扩大电量条，`MOTOR` 使用左右双栏，其余页面按信息层级重新排版。
+  主体背景和内容面板改为中性深灰，移除贯穿全屏的青色横线；标题仅保留短青色下划线，
+  页脚和双栏分隔使用低对比灰色。
+  四页均读取同一 `SystemStatusSnapshot`，已接线的 `PB8/BOOT0` 按键用于循环切页；PD3/PD4
+  只保留 CubeMX/BSP 配置且尚未接线。新版布局和按键循环尚未人工目视验证。
 - 已加入 `bsp/sr501` 轮询驱动。PD5 由 CubeMX 生成代码配置为内部下拉普通输入；驱动忽略 60 秒预热期，
   使用 50 ms 稳定滤波，只统计 READY 后的稳定低到高事件，并通过 `status` 输出原始电平、
   稳定运动状态、事件计数、最近事件时间和剩余预热时间。状态已进入统一快照、UART 和 LCD，
@@ -60,13 +64,24 @@
   `SystemStatusSnapshot` 记录四个任务的周期、期望周期、超时、运行状态、运行次数、栈余量、
   heartbeat age、uptime、RCC 复位原因，以及板级/传感器/通信/供电/RTC 状态。UART `status`
   和 LCD 四页读取同一快照；正式 `[RSP]`、`[LOG]`、`[TEL]` UART emitter 已实现。VOFA 数字流
-  保留为显式兼容模式。
+  保留为显式兼容模式。`display_task` 以 1 ms 周期推进 LCD 逐行 DMA，保持页面 1 s 刷新。总览页新增
+  9.0--12.6 V 电压窗口估算百分比和电量条；该值不是电池 SOC，阈值需按最终电池规格校准。
 
 ## 已验证
 
-- 2026-08-18 Application `0.5.0 build1` 的 LCD 四页工作树完成 CMake 构建：Debug
-  `text=87896 data=120 bss=52944`，Release `text=78056 data=120 bss=52936`。四页内容、Logo
-  显示和 PB8 循环切页尚未目标板验证。
+- 2026-08-18 Application `0.7.1 build1` 的 LCD 中性配色修正完成 CMake 构建：Debug
+  `text=89216 data=120 bss=53088`，Release `text=79272 data=120 bss=53080`。Release 已通过
+  UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED ->
+  CONFIRMED`。普通复位后报告 `fw=0.7.1 build=1`、`ota_confirmation=NOT_REQUIRED`、四任务
+  `RUNNING`、`lcd=READY`、`control=STOPPED` 且左右 PWM 为零；具体视觉效果尚待人工确认。
+- 同日已将 Release `0.6.0 build1` 通过 UART OTA 写入 QSPI 并完成 `STAGED -> INSTALL VERIFIED
+  -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。普通复位后仍报告 `fw=0.6.0 build=1`、
+  `ota_confirmation=NOT_REQUIRED`、四任务 `RUNNING`、`lcd=READY` 且左右 PWM 为零；真实断电
+  重上电尚未执行。
+- 直接烧写 `0.5.0 build1` 后复位被 Bootloader 按 confirmed QSPI `0.3.0 build1` 自动恢复，
+  属于保护路径；随后 GDB 直接启动 Application 观察到 `lcd=DRAWING`，确认 20 ms 显示任务
+  无法及时推进逐行 DMA。本轮已将显示任务周期修复为 1 ms，版本提升为 `0.5.1`；调试运行
+  已进入 `lcd=READY`，但发现快照 expected period 仍为 20 ms，已在 `0.5.2` 统一为 1 ms。
 - 2026-08-18 Application `0.3.0` build `1` 已在目标板确认四任务均为 `RUNNING`，周期、栈余量、heartbeat age、运行次数
   和复位原因可通过同一 `SystemStatusSnapshot` 读取；`critical_tasks=1`、`control=STOPPED`、
   `fault=0`、`overrun=0`、`missed=0`。
@@ -122,14 +137,14 @@
 
 - ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及FIFO恢复计数，但任何软件状态均不得据此标记硬件PASS。
 
-- LCD `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 页面内容、小 Logo 显示以及 PB8
+- LCD `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 页面内容、透明 Logo 显示以及 PB8
   单键循环尚未目标板验证；PD3/PD4 仍未接线且不参与本轮操作。
 
 - SR501 已按 5 V、共地、OUT 接 PD5 完成接线。b16 实测 `warmup_ms` 递减并在 60 秒后进入
   `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
   OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
 
-- confirmed build1 按键/断电复位启动和上电四路 PWM 电气零输出：`DEFERRED`。
+- confirmed `0.7.1 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；普通复位启动已通过。
 - CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
 - Application 安装过程中断电恢复、TRIAL 不确认自动回滚和 rollback 安装中断电：`DEFERRED`。
 
@@ -138,10 +153,10 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 将 `0.5.0 build1` 烧录到目标板，确认四页内容、小 Logo、1 秒刷新和
+1. 目视确认 `0.7.1 build1` 的中性深灰背景、短标题下划线、大号电量显示、透明 Logo 和
    `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 的 PB8 单键循环。
-2. 电量继续只显示已校验电压；电池类型、串数和放电曲线确定前不显示百分比。完成 LCD
-   回归后进入 ICM45686 实物识别、FIFO/DMA 连续性、零偏和安装方向验证。
+2. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口；完成 LCD 回归后进入
+   ICM45686 实物识别、FIFO/DMA 连续性、零偏和安装方向验证。
 
 当前路线：
 

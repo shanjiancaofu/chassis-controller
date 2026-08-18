@@ -22,6 +22,9 @@
 #define BOARD_POWER_DIVIDER_RATIO 11ULL
 #define BOARD_POWER_ADC_MAX 4095ULL
 #define BOARD_POWER_ADC_TIMEOUT_MS 2U
+/* Voltage-only estimate for the current nominal 12 V battery setup. */
+#define BOARD_POWER_PERCENT_EMPTY_MV 9000U
+#define BOARD_POWER_PERCENT_FULL_MV 12600U
 
 #define BOARD_LCD_SPI hspi2
 #define BOARD_LCD_BACKLIGHT_TIMER htim3

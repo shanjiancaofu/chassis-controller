@@ -299,7 +299,7 @@ app / rtos
 | `control_task` | 100 Hz，TIM6 通知 | 最高业务优先级 | 50 ms 健康超时；单周期目标 10 ms | 编码器、轮速控制、安全停车和 PWM |
 | `service_task` | 事件驱动，空闲时 1 ms 轮询 | 中高 | 200 ms 通信超时由协议定义 | UART/CAN、Console、OTA 会话和命令入口 |
 | `diagnostics_task` | 100 ms | 普通 | 500 ms 诊断刷新超时 | 更新 `SystemStatusSnapshot`、复位原因、任务统计和遥测快照 |
-| `display_task` | 20 ms 事件循环，LCD 1 s 刷新 | 较低 | 2 s 显示刷新超时 | LCD 页面切换和显示快照，不读取硬件拼接状态 |
+| `display_task` | 1 ms DMA 推进循环，LCD 1 s 刷新 | 较低 | 2 s 显示刷新超时 | LCD 页面切换和显示快照，不读取硬件拼接状态 |
 
 CubeMX 的 `defaultTask` 在 USER CODE 中调整为 `service_task`；其余三个任务由手写 RTOS 层
 静态创建。任务迁移保持 OTA、控制和零 PWM 语义不变。
