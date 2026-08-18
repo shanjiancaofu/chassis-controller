@@ -23,6 +23,14 @@
 #define QSPI_TEST_START 0x007FF000UL
 #define QSPI_TEST_SIZE QSPI_FLASH_SECTOR_SIZE
 
+#if (QSPI_PARAMETERS_START + QSPI_PARAMETERS_SIZE) > QSPI_LOG_START
+#error "QSPI parameter area overlaps the log area"
+#endif
+
+#if QSPI_PARAMETERS_SIZE < (2UL * QSPI_FLASH_SECTOR_SIZE)
+#error "QSPI parameter area must contain two sectors"
+#endif
+
 #if (QSPI_UPGRADE_SLOT_B_START + QSPI_UPGRADE_SLOT_B_SIZE) > QSPI_TEST_START
 #error "OTA slot B overlaps the target-test sector"
 #endif

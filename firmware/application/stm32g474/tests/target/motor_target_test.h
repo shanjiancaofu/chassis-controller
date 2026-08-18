@@ -24,6 +24,8 @@ void MotorTargetTest_Init(void);
 bool MotorTargetTest_Start(MotorTargetTestAction action, uint32_t now_ms);
 void MotorTargetTest_Run(uint32_t now_ms);
 void MotorTargetTest_Stop(void);
+bool MotorTargetTest_SetDuty(uint16_t duty);
+uint16_t MotorTargetTest_GetDuty(void);
 void MotorTargetTest_GetSnapshot(MotorTargetTestSnapshot *snapshot);
 
 #endif

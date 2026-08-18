@@ -6,6 +6,9 @@
 /* Closed-loop limit: 80% of the 8500-count TIM8 PWM period. */
 #define MOTOR_CONTROL_OUTPUT_LIMIT 8000
 #define MOTOR_CONTROL_TARGET_LIMIT 100
+#define MOTOR_CONTROL_TARGET_SLEW_COUNTS_PER_TICK 5
+#define MOTOR_ENCODER_MAX_DELTA_PER_TICK 500
+#define MOTOR_CONTROL_MIN_SUPPLY_MV 9000U
 #define MOTOR_ENCODER_COUNTS_PER_REVOLUTION 1320
 
 /* Initial values; finish tuning with the drive wheels suspended. */

@@ -8,11 +8,13 @@
 
 static MotorTargetTestSnapshot test_snapshot;
 static uint32_t test_started_ms;
+static uint16_t test_duty;
 
 void MotorTargetTest_Init(void)
 {
   test_snapshot = (MotorTargetTestSnapshot){0};
   test_started_ms = 0U;
+  test_duty = MOTOR_OPEN_LOOP_TEST_DUTY;
 }
 
 bool MotorTargetTest_Start(MotorTargetTestAction action, uint32_t now_ms)
@@ -31,16 +33,16 @@ bool MotorTargetTest_Start(MotorTargetTestAction action, uint32_t now_ms)
 
   switch (action) {
     case MOTOR_TARGET_TEST_LEFT_FORWARD:
-      left_duty = MOTOR_OPEN_LOOP_TEST_DUTY;
+      left_duty = (int16_t)test_duty;
       break;
     case MOTOR_TARGET_TEST_LEFT_REVERSE:
-      left_duty = -MOTOR_OPEN_LOOP_TEST_DUTY;
+      left_duty = -(int16_t)test_duty;
       break;
     case MOTOR_TARGET_TEST_RIGHT_FORWARD:
-      right_duty = MOTOR_OPEN_LOOP_TEST_DUTY;
+      right_duty = (int16_t)test_duty;
       break;
     case MOTOR_TARGET_TEST_RIGHT_REVERSE:
-      right_duty = -MOTOR_OPEN_LOOP_TEST_DUTY;
+      right_duty = -(int16_t)test_duty;
       break;
     default:
       return false;
@@ -78,6 +80,20 @@ void MotorTargetTest_Stop(void)
   if (SafetyManager_IsOpenLoopTestRunning()) {
     SafetyManager_Stop();
   }
+}
+
+bool MotorTargetTest_SetDuty(uint16_t duty)
+{
+  if (test_snapshot.running || duty > BSP_MOTOR_COMPARE_MAX) {
+    return false;
+  }
+  test_duty = duty;
+  return true;
+}
+
+uint16_t MotorTargetTest_GetDuty(void)
+{
+  return test_duty;
 }
 
 void MotorTargetTest_GetSnapshot(MotorTargetTestSnapshot *snapshot)

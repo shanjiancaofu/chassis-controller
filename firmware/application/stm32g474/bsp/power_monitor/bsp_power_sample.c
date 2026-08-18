@@ -4,8 +4,13 @@
 
 #include "board/board_config.h"
 
+static volatile uint32_t latest_millivolts;
+static volatile bool latest_valid;
+
 bool BspPowerSample_Init(void)
 {
+  latest_millivolts = 0U;
+  latest_valid = false;
   return HAL_ADCEx_Calibration_Start(&BOARD_POWER_ADC, ADC_SINGLE_ENDED) ==
          HAL_OK;
 }
@@ -41,5 +46,16 @@ bool BspPowerSample_ReadMillivolts(uint32_t *vin_mv)
   scaled = (uint64_t)raw * BOARD_POWER_ADC_REFERENCE_MV *
            BOARD_POWER_DIVIDER_RATIO;
   *vin_mv = (uint32_t)(scaled / BOARD_POWER_ADC_MAX);
+  latest_millivolts = *vin_mv;
+  latest_valid = true;
+  return true;
+}
+
+bool BspPowerSample_GetLatestMillivolts(uint32_t *vin_mv)
+{
+  if (vin_mv == NULL || !latest_valid) {
+    return false;
+  }
+  *vin_mv = latest_millivolts;
   return true;
 }

@@ -15,9 +15,18 @@ enum {
 
 static ParameterSnapshot DefaultParameters(void);
 
-void ParameterManager_Init(void)
+void ParameterManager_Init(const ParameterSnapshot *initial_parameters)
 {
   active_parameters = DefaultParameters();
+  if (initial_parameters != NULL &&
+      initial_parameters->left_pid.kp <= MOTOR_PID_KP_MAX &&
+      initial_parameters->left_pid.ki <= MOTOR_PID_KI_MAX &&
+      initial_parameters->left_pid.kd <= MOTOR_PID_KD_MAX &&
+      initial_parameters->right_pid.kp <= MOTOR_PID_KP_MAX &&
+      initial_parameters->right_pid.ki <= MOTOR_PID_KI_MAX &&
+      initial_parameters->right_pid.kd <= MOTOR_PID_KD_MAX) {
+    active_parameters = *initial_parameters;
+  }
   pending_parameters = active_parameters;
   pending_wheels = 0U;
 }

@@ -13,13 +13,19 @@
 static SpeedPid left_pid;
 static SpeedPid right_pid;
 static WheelControllerSnapshot controller_snapshot;
+static int32_t left_ramped_target;
+static int32_t right_ramped_target;
 
 static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
                            int32_t measurement, int16_t current_duty);
+static int32_t SlewTarget(int32_t current, int32_t requested,
+                          uint32_t elapsed_ticks);
 
 void WheelController_Init(void)
 {
   controller_snapshot = (WheelControllerSnapshot){0};
+  left_ramped_target = 0;
+  right_ramped_target = 0;
   SpeedPid_Init(&left_pid, MOTOR_LEFT_PID_KP, MOTOR_LEFT_PID_KI,
                 MOTOR_LEFT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
@@ -35,6 +41,8 @@ void WheelController_Stop(void)
   controller_snapshot.right_target = 0;
   controller_snapshot.left_output = 0;
   controller_snapshot.right_output = 0;
+  left_ramped_target = 0;
+  right_ramped_target = 0;
   WheelController_Reset();
 }
 
@@ -51,13 +59,18 @@ void WheelController_EmergencyStop(void)
   controller_snapshot.right_target = 0;
   controller_snapshot.left_output = 0;
   controller_snapshot.right_output = 0;
+  left_ramped_target = 0;
+  right_ramped_target = 0;
   WheelController_Reset();
 }
 
 bool WheelController_Update(int32_t left_target, int32_t right_target,
                             int32_t left_measurement,
-                            int32_t right_measurement)
+                            int32_t right_measurement,
+                            uint32_t elapsed_ticks)
 {
+  int32_t effective_left_target;
+  int32_t effective_right_target;
   int16_t left_duty;
   int16_t right_duty;
 
@@ -68,13 +81,21 @@ bool WheelController_Update(int32_t left_target, int32_t right_target,
     return false;
   }
 
-  left_duty = UpdateWheel(&left_pid, left_target, left_measurement,
+  effective_left_target =
+      SlewTarget(left_ramped_target, left_target, elapsed_ticks);
+  effective_right_target =
+      SlewTarget(right_ramped_target, right_target, elapsed_ticks);
+  left_ramped_target = effective_left_target;
+  right_ramped_target = effective_right_target;
+
+  left_duty = UpdateWheel(&left_pid, effective_left_target, left_measurement,
                           BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT));
-  right_duty = UpdateWheel(&right_pid, right_target, right_measurement,
+  right_duty = UpdateWheel(&right_pid, effective_right_target,
+                           right_measurement,
                            BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT));
   BspMotor_SetSignedDutyBoth(left_duty, right_duty);
-  controller_snapshot.left_target = left_target;
-  controller_snapshot.right_target = right_target;
+  controller_snapshot.left_target = effective_left_target;
+  controller_snapshot.right_target = effective_right_target;
   controller_snapshot.left_measurement = left_measurement;
   controller_snapshot.right_measurement = right_measurement;
   controller_snapshot.left_output = left_duty;
@@ -123,4 +144,32 @@ static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
     return 0;
   }
   return duty;
+}
+
+static int32_t SlewTarget(int32_t current, int32_t requested,
+                          uint32_t elapsed_ticks)
+{
+  uint32_t max_step;
+  int32_t delta;
+
+  if (requested == 0 || (current > 0 && requested < 0) ||
+      (current < 0 && requested > 0)) {
+    return 0;
+  }
+  if (elapsed_ticks == 0U) {
+    max_step = MOTOR_CONTROL_TARGET_SLEW_COUNTS_PER_TICK;
+  } else if (elapsed_ticks >
+             MOTOR_CONTROL_TARGET_LIMIT /
+                 MOTOR_CONTROL_TARGET_SLEW_COUNTS_PER_TICK) {
+    max_step = MOTOR_CONTROL_TARGET_LIMIT;
+  } else {
+    max_step = MOTOR_CONTROL_TARGET_SLEW_COUNTS_PER_TICK * elapsed_ticks;
+  }
+  delta = requested - current;
+  if (delta > 0) {
+    return delta <= (int32_t)max_step ? requested
+                                      : current + (int32_t)max_step;
+  }
+  return -delta <= (int32_t)max_step ? requested
+                                     : current - (int32_t)max_step;
 }

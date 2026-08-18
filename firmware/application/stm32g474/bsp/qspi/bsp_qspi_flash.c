@@ -85,6 +85,36 @@ bool BspQspiFlash_ReadJedecId(uint8_t jedec_id[3])
                           QSPI_COMMAND_TIMEOUT_MS) == HAL_OK;
 }
 
+bool BspQspiFlash_Read(uint32_t address, uint8_t *data, uint32_t size)
+{
+  QSPI_CommandTypeDef command = {0};
+
+  if (data == NULL || size == 0U || size > QSPI_DMA_MAX_TRANSFER_SIZE ||
+      address >= QSPI_FLASH_CAPACITY_BYTES ||
+      size > QSPI_FLASH_CAPACITY_BYTES - address ||
+      BOARD_QSPI.State != HAL_QSPI_STATE_READY) {
+    return false;
+  }
+
+  command.Instruction = QSPI_FAST_READ_COMMAND;
+  command.InstructionMode = QSPI_INSTRUCTION_1_LINE;
+  command.Address = address;
+  command.AddressMode = QSPI_ADDRESS_1_LINE;
+  command.AddressSize = QSPI_ADDRESS_24_BITS;
+  command.AlternateByteMode = QSPI_ALTERNATE_BYTES_NONE;
+  command.DataMode = QSPI_DATA_1_LINE;
+  command.DummyCycles = 8U;
+  command.NbData = size;
+  command.DdrMode = QSPI_DDR_MODE_DISABLE;
+  command.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
+  command.SIOOMode = QSPI_SIOO_INST_EVERY_CMD;
+
+  return HAL_QSPI_Command(&BOARD_QSPI, &command,
+                          QSPI_COMMAND_TIMEOUT_MS) == HAL_OK &&
+         HAL_QSPI_Receive(&BOARD_QSPI, data,
+                          QSPI_COMMAND_TIMEOUT_MS) == HAL_OK;
+}
+
 bool BspQspiFlash_ReadDma(uint32_t address, uint8_t *data,
                           uint32_t size)
 {

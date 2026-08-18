@@ -26,16 +26,21 @@
 | QSPI JEDEC | `HARDWARE PASS` | `EF4017`，识别 8 MiB |
 | QSPI 擦写 | `HARDWARE PASS` | 保留扇区 1 KiB DMA 写入和回读 |
 | LCD SPI DMA | `HARDWARE PASS` | 封面和动态状态页显示正常 |
-| LCD 四页状态显示 | `NOT VERIFIED` | 0.7.1 build1 已 OTA confirmed；中性配色、大号电量显示和新版布局尚待人工验收 |
-| KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；0.7.1 PB8 四页循环需重新验收 |
+| LCD 四页状态显示 | `HARDWARE PASS` | 0.9.1 build1；四页切换、文字、Logo 和电量显示已由用户确认正常 |
+| KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；PB8 四页循环已人工确认正常，PD3/PD4 尚未接线 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
-| ICM45686 SPI/FIFO | `NOT VERIFIED` | 0.8.0 已启用完整路径；目标板读取 WHO_AM_I=0xFF，需检查供电和 SPI 接线 |
+| ICM45686 SPI/FIFO | `NOT VERIFIED` | 0.8.0 已启用完整路径；重新整理接线后目标板读取 WHO_AM_I=0x00，需检查供电和 SPI 接线 |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
-| 双电机开环 | `HARDWARE PASS` | 左右轮正反转和自动停止 |
+| 双电机开环 | `HARDWARE PASS` | 方向沿用历史验收；0.9.1 运行期占空比测试确认自动停止 |
+| 开环启动下限 | `HARDWARE PASS` | 约 12.22 V、架空轮；左右可靠下限约 3500/8499（41.2%） |
+| 目标加减速限制 | `NOT VERIFIED` | 0.10.0 已实现每 10 ms 最多 5 counts/tick；尚未完成带负载阶跃验收 |
+| 编码器异常保护 | `NOT VERIFIED` | 0.10.0 已实现异常增量 critical fault 急停；尚未注入异常脉冲 |
+| 欠压保护 | `NOT VERIFIED` | 0.10.0 已实现低于 9000 mV 锁存并急停；尚未做可控欠压注入 |
 | 急停 | `HARDWARE PASS` | PD2 触发故障并清零 PWM |
 | IWDG 受控复位 | `HARDWARE PASS` | 复位后报告测试通过 |
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
-| 低速 PID 闭环 | `DEFERRED` | PID/100 Hz 控制和调参入口已实现；方向、停车和稳定性实物验收后置 |
+| 低速 PID 闭环 | `DEFERRED` | 参数持久化和 6500 开环启动已验证；低速闭环、停车和稳定性仍后置 |
+| PID 参数持久化 | `HARDWARE PASS` | 0.9.0 build1，`pid left 210 310 1` 返回 SAVED/STORED sequence=1 |
 | FreeRTOS 四任务运行字段 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 四任务均为 `RUNNING`，周期、栈余量、heartbeat 和运行次数可读 |
 | 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
@@ -390,14 +395,15 @@ telemetry off
 
 规则：
 
-- `pid left/right` 写入 RAM pending 参数，并在下一个控制周期边界自动应用。
-- 当前没有 `pid save/apply/reset` 或 `tune start/stop` 命令；参数不会持久化。
+- `pid left/right` 立即更新 RAM 参数，并由 `service_task` 异步写入 QSPI 双副本；响应中的
+  `persistence=QUEUED/SAVING/STORED/ERROR` 表示持久化状态。
+- 启动时选择最新有效的 QSPI 副本；当前仍没有单独的 `pid save/apply/reset` 命令。
 - `pid target` 持续保持到 `pid stop`，不使用 CAN 的 200 ms heartbeat timeout。
 - 停止、急停、超时、故障和换向时重置积分。
 - 先调 `kp`，再增加少量 `ki`，最后仅在确有必要时加入 `kd`。
 - `telemetry vofa` 以 10 ms 周期输出左右目标、增量、RPM x10、PWM、电压、状态和故障；
   出现异常立即执行 `pid stop`。
-- 正反向、左右轮和安全停车实物验收按当前计划后置，低速 PID 标记为 `DEFERRED`。
+- 方向沿用已有实物验收结论，不重复测试；低速 PID 闭环、停车和稳定性仍标记为 `DEFERRED`。
 
 ## CAN FD 联调
 
@@ -1030,3 +1036,152 @@ BOOT: TRIAL VERIFIED
 约 12.22 V。`WHO_AM_I=0xFF` 通常表示 MISO 保持高电平，应优先检查模块 3.3 V、共地、PD0 CS、
 PC10 SCK、PC11 MISO 和 PC12 MOSI；在读到规定值 `0xE9` 前不得记录硬件通过，也不进入
 FIFO 连续性、零偏和安装方向结论。
+
+## 2026-08-18 ICM45686/SR501 接线整理后复核（0.8.0 build1）
+
+用户将模块电源和信号线重新整理到面包板后，未重新烧录，直接读取运行中的 Application：
+
+```text
+fw=0.8.0 build=1 reset=PIN
+control=STOPPED left_pwm=0 right_pwm=0
+imu=NOT_FOUND imu_whoami=0x00 imu_samples=0 imu_fifo_frames=0
+sr501=READY sr501_raw=0 sr501_motion=0 sr501_count=14 sr501_warmup_ms=0
+lcd=READY ota_confirmation=NOT_REQUIRED
+```
+
+ICM45686 的返回值从整理前 `0xFF` 变为 `0x00`，仍不是规定的 `0xE9`，因此目前不能判断
+WHO_AM_I、FIFO/DMA 或姿态数据通过。`0x00` 优先指向模块端未供电、CS 未选中、MISO 被拉低或
+模块针脚定义与当前接线不一致；应在模块插针处测量 3.3 V 和 GND，并用万用表逐根确认
+`PD0-CS`、`PC10-SCK`、`PC11-MISO`、`PC12-MOSI` 的连续性。
+
+SR501 已完成预热并处于 `READY`，本次运行累计 `14` 个事件，但没有进行受控的人体移动、
+静止和持续高电平重复计数测试，仍保持 `NOT VERIFIED`。本次复核未执行任何电机命令，四路
+PWM 保持零。
+
+## 2026-08-18 其他硬件在线复核（0.8.0 build1）
+
+跳过 ICM45686 后，通过 `/dev/ttyUSB0`、115200 8N1 对当前板上运行中的 Application
+执行只读状态、CAN 状态和编码器查询，并运行已有的 QSPI 目标读写自检。整个过程没有发送
+电机、PID 或 OTA 命令，控制保持 `STOPPED`，左右 PWM 保持零。
+
+`status` 实测摘要：
+
+```text
+fw=0.8.0 build=1
+supply_valid=1 supply_mv=12206..12215
+rtc_valid=1
+service_task=RUNNING control_task=RUNNING diagnostics_task=RUNNING display_task=RUNNING
+control=STOPPED left_pwm=0 right_pwm=0 overrun=0 missed=0
+qspi_read=1 qspi_id=1 qspi_jedec=EF4017 qspi_capacity_bytes=8388608
+lcd=READY
+imu=NOT_FOUND imu_whoami=0x00 imu_samples=0 imu_fifo_frames=0
+```
+
+CAN 查询返回：
+
+```text
+activity=8 lec=7 dlec=7 tec=0 rec=0 passive=0 warning=0
+busoff=0 restricted=0 rxfill=0 txfree=3
+warning_count=0 passive_count=0 busoff_count=0 protocol_error_count=0
+rx_fifo_full_count=0 rx_fifo_lost_count=0 recovery_count=0 recovery_failure_count=0
+```
+
+编码器查询返回 `left_total=1 right_total=-2`，表示当前静止状态下没有持续计数异常。
+
+QSPI 目标自检使用保留地址 `0x007FF000` 的 1024 字节区域，完成擦除、写入、回读和比较：
+
+```text
+[LOG] ... module=qspi event=RW_TEST state=PASS address=0x007FF000 size=1024
+qspi_test=2
+```
+
+本轮可记录为 QSPI 目标读写 `HARDWARE PASS` 的新增证据；LCD 仅确认驱动状态为 `READY`，
+四页排版和 PB8 循环仍需人工目视验收。ICM45686 和 SR501 高电平事件结论不变，继续后置。
+
+## 2026-08-18 PID 持久化与架空轮启动复核（0.9.0 build1）
+
+当前目标板运行 `0.9.0 build1`，测试前通过 `status` 确认 `control=STOPPED`、左右 PWM 为零，
+车轮保持架空，遥测关闭。方向不在本轮重复验收，沿用已有实物结论。
+
+PID 参数测试：
+
+```text
+pid left 210 310 1
+[RSP] ... result=OK ... persistence=QUEUED sequence=0
+[LOG] ... module=parameters event=SAVED sequence=1 error_count=0
+pid show
+[RSP] ... result=OK ... left_kp=210 left_ki=310 left_kd=1 ... persistence=STORED sequence=1
+```
+
+电机启动测试使用现有受控测试命令，左右各运行约 1 秒，测试结束自动停止：
+
+```text
+left:  encoder result -> left_total=5525; status -> left_encoder=5837 left_pwm=0 control=STOPPED
+right: encoder result -> right_total=4556; status -> right_encoder=4598 right_pwm=0 control=STOPPED
+```
+
+两侧均能启动且编码器有明显变化，6500 占空比满足架空轮启动门槛；本结果不重新定义或覆盖
+既有电机方向结论。低速闭环、停车稳定性和普通复位后的 QSPI 恢复仍待后续验证。
+
+## 2026-08-18 开环 PWM 启动下限复核（0.9.1 build1）
+
+为避免反复重编译，新增运行期命令 `motor duty <0..8499>`；命令只在测试未运行时修改
+本次开环测试占空比，复位后回到默认 `6500`，不改变 PID 参数。每次测试前执行
+`encoder zero`，使用显式 `motor <left|right> forward confirm`，运行约 1.25 秒后自动停止，
+再读取 `encoder result`。
+
+条件：目标板 `0.9.1 build1`、供电约 `12.22 V`、车轮架空、控制初始为 `STOPPED`，方向沿用
+已有实物验收结论。结果如下：
+
+| 侧别 | 临界测试 | 结果 |
+| --- | --- | --- |
+| 左 | `2900` 无计数；`3000` 偶发；`3200` 仍有一次未启动；`3500` 连续两次约 `1144/1173` | 可靠下限取 `3500` |
+| 右 | `3200` 连续三次无计数；`3500` 连续三次约 `938/998/1004` | 可靠下限取 `3500` |
+
+因此当前工程建议的架空轮开环启动值为 `3500/8499`，占满量程约 `41.2%`。更低档位可能在
+某次测试中偶尔转动，但受静摩擦、供电电压、负载和启动时序影响，不作为可靠启动下限，也不
+直接用于闭环 PID 输出限制。测试结束后已发送 `motor stop` 和 `motor duty 6500`，最终
+`control=STOPPED`、左右 PWM 为零。
+
+## 2026-08-18 控制收尾与低速 PID 响应（0.10.0 build1）
+
+`0.10.0 build1` 通过 Debug/Release 构建和 UART OTA，目标板报告 `ota_confirmation=CONFIRMED`、
+四任务 `RUNNING`、供电约 `12.206 V`、故障为零。
+
+低速 PID 架空轮测试：
+
+```text
+pid target 5 5
+left_speed=3..7   right_speed=5..6
+left_pwm=1935..2043  right_pwm=2238..2408
+left_encoder=173..1908  right_encoder=490..1951
+pid stop -> control=STOPPED left_pwm=0 right_pwm=0
+```
+
+这证明当前 PID、编码器反馈和停止路径能在短时架空轮测试中工作；不等同于带负载稳定性、
+停车距离或长时间运行通过。
+
+控制保护代码已构建并上板：目标加减速限制为每个 10 ms tick 最多 5 counts/tick；控制任务
+读取 diagnostics 任务缓存的 ADC 电压，低于 `9000 mV` 锁存 `CHASSIS_FAULT_UNDERVOLTAGE`；
+单周期编码器增量超过 `500` counts/tick 锁存 `CHASSIS_FAULT_ENCODER`。本轮只观察正常供电和
+正常编码器，无故障注入，因此两项保持 `NOT VERIFIED`。
+
+ICM45686 软件侧寄存器复核：PC10/PC11/PC12 为 SPI3 AF6，SPI3 时钟使能，PD0 CS 为输出高；
+目标板仍返回 `WHO_AM_I=0x00`、`imu_samples=0`。软件配置无异常证据，模块供电、CS/SPI 线序
+和模块型号仍需实测确认。
+
+## 2026-08-18 当前工作树收尾构建（0.10.0 build1）
+
+修正安全故障位宏格式和控制周期异常路径缩进后，重新执行 Debug/Release 配置和构建：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 106492 | 120 | 53520 | `BUILD PASS`，CMake/Ninja，GNU Arm Embedded 14.3.rel1 |
+| Release | 94852 | 120 | 53512 | `BUILD PASS`，CMake/Ninja，GNU Arm Embedded 14.3.rel1 |
+
+从最新 Release ELF 重新生成 `application.bin` 和 `app-v0.10.0-b1.ota`；OTA payload 为
+`94980` 字节，CRC32 为 `0x9BAB75E6`。本次只重建和校验产物，未再次烧录目标板，因此不改变
+已有 `0.10.0 build1` 上板记录。
+
+宿主机回归：`tools/ota` unittest 全部 13 项通过；参数记录和 UART 64 位格式化 C 宿主机测试
+使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过。`git diff --check` 通过。

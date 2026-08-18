@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "bsp/motor/bsp_motor.h"
 #include "bsp/uart/uart_bsp.h"
 #include "config/control_config.h"
 
@@ -153,6 +154,16 @@ static ConsoleCommand ParseCommand(const char *line)
     command.type = CONSOLE_COMMAND_QSPI_TEST;
   } else if (strcmp(line, "iwdg reset confirm") == 0) {
     command.type = CONSOLE_COMMAND_IWDG_RESET;
+  } else if (strncmp(line, "motor duty ", 11U) == 0) {
+    unsigned int duty;
+    int consumed = 0;
+
+    if (sscanf(&line[11], "%u%n", &duty, &consumed) == 1 &&
+        line[11U + (size_t)consumed] == '\0' &&
+        duty <= BSP_MOTOR_COMPARE_MAX) {
+      command.type = CONSOLE_COMMAND_MOTOR_DUTY;
+      command.arguments.motor_duty = (uint16_t)duty;
+    }
   } else if (strcmp(line, "motor stop") == 0) {
     command.type = CONSOLE_COMMAND_MOTOR_STOP;
   } else if (strcmp(line, "motor left forward confirm") == 0) {

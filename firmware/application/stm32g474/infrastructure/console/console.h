@@ -24,6 +24,7 @@ typedef enum {
   CONSOLE_COMMAND_QSPI_TEST,
   CONSOLE_COMMAND_IWDG_RESET,
   CONSOLE_COMMAND_MOTOR_STOP,
+  CONSOLE_COMMAND_MOTOR_DUTY,
   CONSOLE_COMMAND_MOTOR_LEFT_FORWARD,
   CONSOLE_COMMAND_MOTOR_LEFT_REVERSE,
   CONSOLE_COMMAND_MOTOR_RIGHT_FORWARD,
@@ -44,6 +45,7 @@ typedef struct {
       int16_t left;
       int16_t right;
     } target;
+    uint16_t motor_duty;
   } arguments;
 } ConsoleCommand;
 

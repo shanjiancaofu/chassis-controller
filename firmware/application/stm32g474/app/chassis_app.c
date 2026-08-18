@@ -26,6 +26,7 @@
 #include "iwdg.h"
 #include "infrastructure/console/console.h"
 #include "infrastructure/console/diagnostic_report.h"
+#include "infrastructure/parameter_storage/parameter_storage.h"
 #include "infrastructure/telemetry/telemetry.h"
 #include "infrastructure/uart_protocol/uart_protocol.h"
 #include "main.h"
@@ -60,6 +61,8 @@ static void SendPidParameterReport(uint32_t now_ms, const char *command_name,
 static void SendEncoderResult(uint32_t now_ms);
 static void SendCanDiagnostics(uint32_t now_ms);
 static void SendConsoleHelp(uint32_t now_ms);
+static const char *ParameterPersistenceText(
+    const ParameterStorageSnapshot *snapshot);
 static bool StartControl(void);
 static void StopControl(void);
 static void ReleaseMotionOwner(void);
@@ -87,6 +90,9 @@ static uint32_t demo_stage_started_ms;
 void ChassisApp_Init(void)
 {
   const uint32_t now_ms = HAL_GetTick();
+  ParameterSnapshot initial_parameters;
+  ParameterStorageSnapshot parameter_storage;
+  bool parameters_loaded;
 
   if (!BspUart_Start()) {
     Error_Handler();
@@ -157,10 +163,40 @@ void ChassisApp_Init(void)
   FaultManager_Init();
   SafetyManager_Init(
       HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET);
-  ParameterManager_Init();
-  WheelController_Init();
-  Odometry_Init();
   BoardHealth_Init();
+  parameters_loaded = ParameterStorage_Init(&initial_parameters);
+  ParameterManager_Init(parameters_loaded ? &initial_parameters : NULL);
+  WheelController_Init();
+  ParameterManager_GetActive(&initial_parameters);
+  WheelController_ApplyPidGains(
+      WHEEL_CONTROLLER_LEFT, initial_parameters.left_pid.kp,
+      initial_parameters.left_pid.ki, initial_parameters.left_pid.kd);
+  WheelController_ApplyPidGains(
+      WHEEL_CONTROLLER_RIGHT, initial_parameters.right_pid.kp,
+      initial_parameters.right_pid.ki, initial_parameters.right_pid.kd);
+  ParameterStorage_GetSnapshot(&parameter_storage);
+  {
+    char fields[128];
+
+    (void)snprintf(
+        fields, sizeof(fields),
+        "source=%s sequence=%lu left=%u,%u,%u right=%u,%u,%u",
+        parameters_loaded ? "QSPI" : "DEFAULTS",
+        (unsigned long)parameter_storage.sequence,
+        (unsigned int)initial_parameters.left_pid.kp,
+        (unsigned int)initial_parameters.left_pid.ki,
+        (unsigned int)initial_parameters.left_pid.kd,
+        (unsigned int)initial_parameters.right_pid.kp,
+        (unsigned int)initial_parameters.right_pid.ki,
+        (unsigned int)initial_parameters.right_pid.kd);
+    (void)UartProtocol_SendLog(
+        HAL_GetTick(),
+        parameter_storage.status == PARAMETER_STORAGE_ERROR
+            ? UART_PROTOCOL_LOG_ERROR
+            : UART_PROTOCOL_LOG_INFO,
+        "parameters", parameters_loaded ? "LOADED" : "DEFAULTS", fields);
+  }
+  Odometry_Init();
   SystemStatus_Init();
   OtaConfirmation_Init();
   QspiTargetTest_Init();
@@ -310,7 +346,31 @@ void ChassisApp_RunServiceCycle(void)
             status.runtime.critical_tasks_healthy &&
             !FaultManager_HasCritical(),
         QspiTargetTest_GetStatus() != QSPI_TARGET_TEST_RUNNING &&
-            !OtaSession_IsUsingQspi());
+            !OtaSession_IsUsingQspi() &&
+            !ParameterStorage_IsUsingQspi());
+  }
+  ParameterStorage_Run(
+      now_ms,
+      QspiTargetTest_GetStatus() != QSPI_TARGET_TEST_RUNNING &&
+          !OtaSession_IsUsingQspi() &&
+          !OtaConfirmation_IsUsingQspi());
+  {
+    bool save_success;
+
+    if (ParameterStorage_TakeCompletion(&save_success)) {
+      ParameterStorageSnapshot storage;
+      char fields[64];
+
+      ParameterStorage_GetSnapshot(&storage);
+      (void)snprintf(fields, sizeof(fields),
+                     "sequence=%lu error_count=%lu",
+                     (unsigned long)storage.sequence,
+                     (unsigned long)storage.error_count);
+      (void)UartProtocol_SendLog(
+          now_ms,
+          save_success ? UART_PROTOCOL_LOG_INFO : UART_PROTOCOL_LOG_ERROR,
+          "parameters", save_success ? "SAVED" : "SAVE_FAILED", fields);
+    }
   }
   if (OtaSession_HasCriticalFault() ||
       OtaConfirmation_HasCriticalFault() ||
@@ -559,6 +619,7 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
     case CONSOLE_COMMAND_PID_SET_LEFT:
     case CONSOLE_COMMAND_PID_SET_RIGHT: {
       bool accepted;
+      ParameterSnapshot requested_parameters;
 
       taskENTER_CRITICAL();
       accepted = ParameterManager_StagePidGains(
@@ -567,7 +628,11 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
               : PARAMETER_WHEEL_RIGHT,
           command->arguments.pid.kp, command->arguments.pid.ki,
           command->arguments.pid.kd);
+      ParameterManager_GetRequested(&requested_parameters);
       taskEXIT_CRITICAL();
+      if (accepted) {
+        accepted = ParameterStorage_RequestSave(&requested_parameters);
+      }
       SendPidParameterReport(now_ms, "pid_set", accepted);
       break;
     }
@@ -654,6 +719,17 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
         DiagnosticReport_RequestIwdgArmed();
       }
       break;
+    case CONSOLE_COMMAND_MOTOR_DUTY: {
+      const bool accepted =
+          MotorTargetTest_SetDuty(command->arguments.motor_duty);
+      char fields[48];
+
+      (void)snprintf(fields, sizeof(fields), "duty=%u",
+                     (unsigned int)MotorTargetTest_GetDuty());
+      (void)UartProtocol_SendResponse(now_ms, "motor_duty", accepted,
+                                      accepted ? fields : "code=RUNNING");
+      break;
+    }
     case CONSOLE_COMMAND_MOTOR_STOP:
     case CONSOLE_COMMAND_MOTOR_LEFT_FORWARD:
     case CONSOLE_COMMAND_MOTOR_LEFT_REVERSE:
@@ -720,20 +796,25 @@ static void SendPidParameterReport(uint32_t now_ms, const char *command_name,
 {
   char fields[192];
   ParameterSnapshot parameters;
+  ParameterStorageSnapshot storage;
 
   taskENTER_CRITICAL();
   ParameterManager_GetRequested(&parameters);
   taskEXIT_CRITICAL();
+  ParameterStorage_GetSnapshot(&storage);
   if (accepted) {
     (void)snprintf(
         fields, sizeof(fields),
-        "left_kp=%u left_ki=%u left_kd=%u right_kp=%u right_ki=%u right_kd=%u",
+        "left_kp=%u left_ki=%u left_kd=%u right_kp=%u right_ki=%u "
+        "right_kd=%u persistence=%s sequence=%lu",
         (unsigned int)parameters.left_pid.kp,
         (unsigned int)parameters.left_pid.ki,
         (unsigned int)parameters.left_pid.kd,
         (unsigned int)parameters.right_pid.kp,
         (unsigned int)parameters.right_pid.ki,
-        (unsigned int)parameters.right_pid.kd);
+        (unsigned int)parameters.right_pid.kd,
+        ParameterPersistenceText(&storage),
+        (unsigned long)storage.sequence);
     (void)UartProtocol_SendResponse(now_ms, command_name, true, fields);
   } else {
     (void)snprintf(fields, sizeof(fields),
@@ -804,10 +885,35 @@ static void SendConsoleHelp(uint32_t now_ms)
   const char *commands =
       "commands=help,ping,status,telemetry,can_status,can_tx,pid_show,pid_set," \
       "pid_target,pid_stop,encoder_zero,encoder_result,ota_uart,qspi_test," \
-      "iwdg_reset_test,motor_stop,motor_left_forward,motor_left_reverse," \
+      "iwdg_reset_test,motor_duty,motor_stop,motor_left_forward,motor_left_reverse," \
       "motor_right_forward,motor_right_reverse";
 
   (void)UartProtocol_SendResponse(now_ms, "help", true, commands);
+}
+
+static const char *ParameterPersistenceText(
+    const ParameterStorageSnapshot *snapshot)
+{
+  if (snapshot == NULL) {
+    return "ERROR";
+  }
+  if (snapshot->dirty) {
+    return snapshot->status == PARAMETER_STORAGE_SAVING ? "SAVING"
+                                                        : "QUEUED";
+  }
+  switch (snapshot->status) {
+    case PARAMETER_STORAGE_LOADED:
+    case PARAMETER_STORAGE_STORED:
+      return "STORED";
+    case PARAMETER_STORAGE_DEFAULTS:
+      return "DEFAULTS";
+    case PARAMETER_STORAGE_ERROR:
+      return "ERROR";
+    case PARAMETER_STORAGE_SAVING:
+      return "SAVING";
+    default:
+      return "ERROR";
+  }
 }
 
 static bool StartControl(void)
@@ -852,6 +958,10 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
   int32_t left_measurement;
   int32_t right_delta;
   int32_t right_measurement;
+  uint32_t latest_supply_mv;
+  int64_t max_encoder_delta;
+  int64_t left_abs_delta;
+  int64_t right_abs_delta;
   bool command_available;
   uint32_t missed_ticks;
   const uint32_t now_ms = HAL_GetTick();
@@ -867,7 +977,7 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     if (missed_ticks > MOTOR_CONTROL_MAX_MISSED_TICKS ||
         consecutive_control_overruns >=
             MOTOR_CONTROL_MAX_CONSECUTIVE_OVERRUNS) {
-    LatchChassisInternalFault(CHASSIS_FAULT_CONTROL_OVERRUN);
+      LatchChassisInternalFault(CHASSIS_FAULT_CONTROL_OVERRUN);
       return;
     }
   } else {
@@ -875,6 +985,20 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
   }
 
   BspEncoder_ReadDelta(&left_delta, &right_delta);
+  max_encoder_delta =
+      (int64_t)MOTOR_ENCODER_MAX_DELTA_PER_TICK * notification_count;
+  left_abs_delta = left_delta < 0 ? -(int64_t)left_delta : left_delta;
+  right_abs_delta = right_delta < 0 ? -(int64_t)right_delta : right_delta;
+  if (left_abs_delta > max_encoder_delta ||
+      right_abs_delta > max_encoder_delta) {
+    LatchChassisInternalFault(CHASSIS_FAULT_ENCODER);
+    return;
+  }
+  if (BspPowerSample_GetLatestMillivolts(&latest_supply_mv) &&
+      latest_supply_mv < MOTOR_CONTROL_MIN_SUPPLY_MV) {
+    LatchChassisInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
+    return;
+  }
   Odometry_Update(left_delta, right_delta);
   left_measurement = left_delta / (int32_t)notification_count;
   right_measurement = right_delta / (int32_t)notification_count;
@@ -923,7 +1047,8 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
   }
 
   if (!WheelController_Update(command.left_target, command.right_target,
-                              left_measurement, right_measurement)) {
+                              left_measurement, right_measurement,
+                              notification_count)) {
     LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
   }
 }
@@ -952,6 +1077,7 @@ static bool AcquireTargetTestLock(void)
   if (IwdgTargetTest_IsResetRequested() ||
       QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING ||
       OtaConfirmation_IsUsingQspi() ||
+      ParameterStorage_IsUsingQspi() ||
       OtaSession_IsActive() || OtaUartTransport_IsEnabled() ||
       motor_test.running) {
     return false;
@@ -980,7 +1106,8 @@ static bool AcquireOtaMaintenanceLock(void)
   MotorTargetTest_GetSnapshot(&motor_test);
   if (IwdgTargetTest_IsResetRequested() ||
       QspiTargetTest_GetStatus() == QSPI_TARGET_TEST_RUNNING ||
-      OtaConfirmation_IsUsingQspi() || OtaSession_IsActive() ||
+      OtaConfirmation_IsUsingQspi() ||
+      ParameterStorage_IsUsingQspi() || OtaSession_IsActive() ||
       motor_test.running) {
     return false;
   }

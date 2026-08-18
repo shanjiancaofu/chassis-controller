@@ -24,7 +24,8 @@ void WheelController_Reset(void);
 void WheelController_EmergencyStop(void);
 bool WheelController_Update(int32_t left_target, int32_t right_target,
                             int32_t left_measurement,
-                            int32_t right_measurement);
+                            int32_t right_measurement,
+                            uint32_t elapsed_ticks);
 void WheelController_ApplyPidGains(WheelControllerSide side, uint16_t kp,
                                    uint16_t ki, uint16_t kd);
 void WheelController_GetSnapshot(WheelControllerSnapshot *snapshot);

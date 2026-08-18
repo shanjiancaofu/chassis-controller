@@ -20,7 +20,7 @@ typedef struct {
   ParameterPidGains right_pid;
 } ParameterSnapshot;
 
-void ParameterManager_Init(void);
+void ParameterManager_Init(const ParameterSnapshot *initial_parameters);
 bool ParameterManager_StagePidGains(ParameterWheel wheel, uint16_t kp,
                                     uint16_t ki, uint16_t kd);
 bool ParameterManager_ApplyPending(ParameterSnapshot *active_parameters);

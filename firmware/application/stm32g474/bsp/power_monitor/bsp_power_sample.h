@@ -7,5 +7,6 @@
 bool BspPowerSample_Init(void);
 bool BspPowerSample_ReadRaw(uint16_t *raw);
 bool BspPowerSample_ReadMillivolts(uint32_t *vin_mv);
+bool BspPowerSample_GetLatestMillivolts(uint32_t *vin_mv);
 
 #endif

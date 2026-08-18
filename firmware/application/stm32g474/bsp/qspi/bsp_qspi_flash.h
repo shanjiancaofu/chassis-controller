@@ -13,6 +13,7 @@ typedef enum
 } BspQspiTransferStatus;
 
 bool BspQspiFlash_ReadJedecId(uint8_t jedec_id[3]);
+bool BspQspiFlash_Read(uint32_t address, uint8_t *data, uint32_t size);
 bool BspQspiFlash_ReadDma(uint32_t address, uint8_t *data,
                           uint32_t size);
 bool BspQspiFlash_EraseSector(uint32_t address);

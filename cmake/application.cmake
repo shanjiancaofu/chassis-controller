@@ -81,6 +81,8 @@ set(APP_SOURCES
   components/pid/speed_pid.c
   infrastructure/console/console.c
   infrastructure/console/diagnostic_report.c
+  infrastructure/parameter_storage/parameter_record.c
+  infrastructure/parameter_storage/parameter_storage.c
   infrastructure/status_display/status_display.c
   infrastructure/telemetry/telemetry.c
   infrastructure/uart_protocol/uart_protocol.c
@@ -101,6 +103,7 @@ set(APP_SOURCES
   tests/unit/test_icm45686.c
   tests/unit/test_imu_fusion.c
   tests/unit/test_ota_metadata.c
+  tests/unit/test_parameter_record.c
   tests/unit/test_uart_protocol.c)
 list(TRANSFORM APP_SOURCES PREPEND "${APP_ROOT}/")
 
