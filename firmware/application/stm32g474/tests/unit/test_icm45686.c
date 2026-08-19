@@ -42,6 +42,7 @@ typedef struct {
   uint8_t gyro_lpf_bandwidth;
   uint8_t accel_lpf_bandwidth;
   bool fifo_flush_stuck;
+  bool ignore_sreg_write;
 } FakeTransport;
 
 static bool FakeRead(void *context, uint8_t reg, uint8_t *data,
@@ -83,7 +84,9 @@ static bool FakeWrite(void *context, uint8_t reg, const uint8_t *data,
       fake->smc_control_0 = data[2];
       ++fake->mreg_address;
     } else if (length == 3U && fake->mreg_address == 0xA267U) {
-      fake->sreg_control = data[2];
+      if (!fake->ignore_sreg_write) {
+        fake->sreg_control = data[2];
+      }
       ++fake->mreg_address;
     } else if (length == 3U && fake->mreg_address == 0xA4ACU) {
       fake->gyro_lpf_bandwidth = data[2];
@@ -186,11 +189,11 @@ int main(void)
   assert((fake.registers[REG_FIFO_CONFIG4] & 0x02U) == 0x02U);
   assert((fake.registers[REG_TMST_WOM_CONFIG] & 0x60U) == 0x20U);
   assert((fake.smc_control_0 & 0x01U) == 0x01U);
-  assert((fake.sreg_control & 0x01U) == 0x01U);
+  assert(fake.sreg_control == 0x02U);
   assert((fake.accel_lpf_bandwidth & 0x07U) == 0x01U);
   assert((fake.gyro_lpf_bandwidth & 0x07U) == 0x01U);
   assert(fake.delay_total_ms == 4U);
-  assert(fake.delay_total_us == 64U);
+  assert(fake.delay_total_us == 72U);
 
   fake.registers[REG_INT1_STATUS0] = 0x03U;
   assert(Icm45686_ReadFifoStatus(&device, &fifo_status) ==
@@ -255,6 +258,25 @@ int main(void)
          0.000001f);
   assert(fabsf(Icm45686_TimestampDeltaSeconds(65500U, 589U) - 0.01f) <
          0.000001f);
+  {
+    FakeTransport ignored_endian_write = {0};
+    Icm45686Device rejected_device;
+    const Icm45686Transport rejected_transport = {
+        .context = &ignored_endian_write,
+        .read = FakeRead,
+        .write = FakeWrite,
+        .delay_ms = FakeDelay,
+        .delay_us = FakeDelayUs,
+    };
+
+    ignored_endian_write.registers[REG_WHO_AM_I] =
+        ICM45686_WHO_AM_I_VALUE;
+    ignored_endian_write.registers[REG_INT1_STATUS0] = 0x80U;
+    ignored_endian_write.ignore_sreg_write = true;
+    assert(Icm45686_Init(&rejected_device, &rejected_transport, &config) ==
+           ICM45686_RESULT_CONFIGURATION_FAILED);
+    assert(!rejected_device.initialized);
+  }
   return 0;
 }
 

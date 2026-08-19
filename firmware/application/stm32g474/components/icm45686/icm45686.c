@@ -48,7 +48,8 @@
 #define FIFO_ACCEL_GYRO 0x06U
 #define FIFO_TIMESTAMP_ENABLE 0x02U
 #define SMC_TIMESTAMP_ENABLE 0x01U
-#define SREG_DATA_BIG_ENDIAN 0x01U
+#define SREG_DATA_ENDIAN_MASK 0x02U
+#define SREG_DATA_BIG_ENDIAN 0x02U
 #define LOW_NOISE_BANDWIDTH_MASK 0x07U
 #define TIMESTAMP_CONFIG_MASK 0x60U
 #define TIMESTAMP_RESOLUTION_16_US 0x20U
@@ -132,10 +133,19 @@ Icm45686Result Icm45686_Init(Icm45686Device *device,
     if (result != ICM45686_RESULT_OK) {
       return result;
     }
-    sreg_control |= SREG_DATA_BIG_ENDIAN;
+    sreg_control =
+        (sreg_control & (uint8_t)~SREG_DATA_ENDIAN_MASK) |
+        SREG_DATA_BIG_ENDIAN;
     result = WriteMreg(device, MREG_SREG_CTRL, &sreg_control, 1U);
     if (result != ICM45686_RESULT_OK) {
       return result;
+    }
+    result = ReadMreg(device, MREG_SREG_CTRL, &sreg_control, 1U);
+    if (result != ICM45686_RESULT_OK) {
+      return result;
+    }
+    if ((sreg_control & SREG_DATA_ENDIAN_MASK) != SREG_DATA_BIG_ENDIAN) {
+      return ICM45686_RESULT_CONFIGURATION_FAILED;
     }
   }
   result = Update(device, REG_ACCEL_CONFIG0, 0x7FU,

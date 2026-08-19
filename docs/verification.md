@@ -29,7 +29,7 @@
 | LCD 四页状态显示 | `HARDWARE PASS` | 0.9.1 build1；四页切换、文字、Logo 和电量显示已由用户确认正常 |
 | KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；PB8 四页循环已人工确认正常，PD3/PD4 尚未接线 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
-| ICM45686 SPI/FIFO | `NOT VERIFIED` | 0.8.0 已启用完整路径；重新整理接线后目标板读取 WHO_AM_I=0x00，需检查供电和 SPI 接线 |
+| ICM45686 SPI/FIFO | `HARDWARE PASS` | 0.11.1；WHO_AM_I=0xE9，普通复位后 224 帧零解析/时间戳错误，100 Hz 周期 10 ms |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
 | 双电机开环 | `HARDWARE PASS` | 方向沿用历史验收；0.9.1 运行期占空比测试确认自动停止 |
 | 开环启动下限 | `HARDWARE PASS` | 约 12.22 V、架空轮；左右可靠下限约 3500/8499（41.2%） |
@@ -1185,3 +1185,52 @@ ICM45686 软件侧寄存器复核：PC10/PC11/PC12 为 SPI3 AF6，SPI3 时钟使
 
 宿主机回归：`tools/ota` unittest 全部 13 项通过；参数记录和 UART 64 位格式化 C 宿主机测试
 使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过。`git diff --check` 通过。
+
+## 2026-08-19 roll/pitch Kalman 组件实现（0.11.1 build1）
+
+新增独立的 roll/pitch 两状态 Kalman（角度 + 陀螺零偏）输出。Mahony 输出保持不变，Kalman
+结果进入 `BspIcm45686Snapshot` 和 `sensors` 诊断字段；LCD 继续显示原 Mahony 姿态，避免
+在硬件数据尚未确认前改变已验收页面。
+
+宿主机测试覆盖静止零偏初始化、roll/pitch 初始姿态、陀螺 yaw 对照、四元数归一化，以及线性
+加速度导致重力幅值无效时只做 Kalman 预测。测试使用 `-std=c11 -Wall -Wextra -Werror` 编译
+运行通过。
+
+参考本地 ICM45686 数据手册和官方驱动后确认 `SREG_CTRL.SREG_DATA_ENDIAN_SEL` 位于 bit 1；原代码
+误写 bit 0，器件保持默认小端而解析器按大端解释。修正为 bit 1 并增加初始化回读校验后，目标板
+读取 `WHO_AM_I=0xE9`。调试快照连续 588 帧，`fifo_parse_error_count=0`、
+`timestamp_error_count=0`、`dma_timeout_count=0`、`transfer_error_count=0`，采样周期稳定为
+`0.01 s`。调试暂停引发 2 次 FIFO full，两次 flush 均成功恢复。
+
+静止 200 样本后 `calibrated=1`、Mahony 和 Kalman 均有效；当时加速度约
+`[-0.075, -0.682, 9.823] m/s²`，陀螺零偏约
+`[0.00219, -0.00109, 0.00207] rad/s`，Kalman roll/pitch 约 `[-69, 7] mrad`。
+
+全量 diff 审阅后修正 Kalman 协方差观测更新，使四项均使用预测矩阵，并对 ±π 跨界创新做角度
+归一化；宿主机测试增加协方差对称/非负与跨界回归。该修复按版本规则从中间 `0.11.0 build1`
+提升为 `0.11.1 build1`，不以相同版本号覆盖不同代码。
+
+`0.11.1` Release 已通过 UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL
+VERIFIED -> CONFIRMED`。普通复位后 Bootloader 报告 metadata state `0x5`；5.6 秒后的完整
+`status` 报告 `fw=0.11.1 build=1`、`ota_confirmation=NOT_REQUIRED`、供电 `12.206 V`、
+四任务 `RUNNING`、`fault=0`、`control=STOPPED`、左右 PWM 为零，并再次观察到 224 个 IMU 帧、
+零 FIFO/时间戳错误和 `imu_kalman=1`。模块安装位置和方向未固定，正负轴向动作、动态姿态和
+长期漂移验证已 `DEFERRED`。
+
+同日通过 `/dev/ttyUSB0` 在架空、零 PWM 状态下进行一次临时安装方向观察。近水平状态的 Kalman
+roll/pitch 为 `[-69, 8] mrad`；用户保持车体左侧抬高后读数为 `[-52, -212] mrad`，IMU 样本数
+从 `169408` 增至 `178212`，FIFO 解析和 timestamp 错误仍为零，控制保持 `STOPPED`、左右 PWM
+为零。由于模块安装位置和方向尚未固定，该现象只表明临时摆放时左右倾斜主要进入当前 pitch
+通道，不能据此确定最终轴交换、符号或安装矩阵。用户决定将安装轴向、动态响应和静止回归统一
+后置，状态为 `DEFERRED`，本轮不修改融合算法或轴映射。
+
+最新 CMake/Ninja 构建结果：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 107576 | 120 | 53624 | `BUILD PASS` |
+| Release | 95748 | 120 | 53616 | `BUILD PASS` |
+
+Release BIN 为 `95876` 字节，CRC32 `0x88BB01DD`；OTA 包为 `95940` 字节。ICM45686 与
+IMU fusion C 宿主机测试均使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过，OTA Python
+13 项通过，`git diff --check` 通过。

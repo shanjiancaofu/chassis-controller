@@ -181,6 +181,7 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 | 当前工作树 | PID 参数持久化与电机启动复核 | `0.9.0 build1` | QSPI 保存已实测；6500 开环启动和编码器变化已实测 |
 | 当前工作树 | 可调开环测试占空比与启动下限复核 | `0.9.1 build1` | 运行期占空比命令已 OTA；可靠启动下限约 3500/8499 |
 | 当前工作树 | 控制安全收尾与低速 PID 响应 | `0.10.0 build1` | 加减速限制、编码器/欠压保护已构建并 OTA；低速短时响应已实测 |
+| 当前工作树 | ICM45686/Kalman 静态闭环 | `0.11.1 build1` | UART OTA confirmed；FIFO、timestamp、静止零偏和 Kalman 已上板 |
 
 ### 阶段 3：LCD 硬件总览
 
@@ -206,18 +207,20 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 ### 阶段 4：ICM45686 与估计器
 
-状态：`IMPLEMENTED / NOT VERIFIED`（0.8.0 已启用并上板，当前 `WHO_AM_I=0x00 / NOT_FOUND`）
+状态：`IMPLEMENTED / PARTIALLY VERIFIED`（SPI/FIFO/静止滤波已通过，动态轴向 `DEFERRED`）
 
 - `0.8.0` 已打开 `ENABLE_ICM45686`，完整执行 WHO_AM_I、寄存器配置、FIFO/DMA、零偏标定和
   Mahony 融合路径；启动日志按真实结果输出 `READY / NOT_FOUND / INIT_FAILED`。
-- 首次目标板读取为 `WHO_AM_I=0xFF`；重新整理接线后变为 `0x00`，Application 始终保持正常
-  启动且 PWM 为零。优先检查模块端 3.3 V、
-  共地、PD0 CS、PC10 SCK、PC11 MISO 和 PC12 MOSI；读到 `0xE9` 后再继续 FIFO/DMA 验证。
+- 首次目标板读取为 `WHO_AM_I=0xFF`，重新整理接线后曾为 `0x00`；2026-08-19 接线完成后已
+  稳定读取 `0xE9`。数据手册确认 `SREG_DATA_ENDIAN_SEL` 位于 bit 1，修正并回读配置后，FIFO
+  传感器值和 16 位 timestamp 均按大端正确解析，100 Hz 下相邻周期稳定为 10 ms。
 - 在 Kalman 或轮式里程计融合前，建立统一单调时间戳：保留 IMU FIFO 时间戳，给编码器和 ADC
   记录采样/触发时刻，给 SR501 记录稳定事件时刻；RTC 只用于日历显示和日志，不参与融合校时。
 - 验证传感器时间戳到控制时间轴的映射和延迟，100 Hz 控制下目标对齐误差约 1 ms；未完成前不
   根据任务处理时刻拼接多传感器数据。
-- 保留现有 Mahony 作为对照，不直接删除；在数据证据成立后实现角度+陀螺零偏两状态 Kalman。
+- 保留现有 Mahony 作为对照，不直接删除；`0.11.1` 已实现独立 roll/pitch 角度+陀螺零偏两状态
+  Kalman 输出。静止 200 样本零偏标定和 Kalman 有效状态已上板通过；正负轴向动作、动态响应、
+  静止回归和参数效果需要在模块安装位置和方向固定后验证，当前统一 `DEFERRED`。
 - yaw 没有磁力计时只能约束短期变化，不能消除长期漂移；底盘航向后续采用轮式里程计和陀螺
   Z 轴融合。
 
@@ -267,13 +270,13 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 ### IMU 与里程计
 
-ICM45686 目前 `DEFERRED`，不再阻塞 OTA V1 主线。现有 STM32 端 ICM45686 SPI3/DMA、
-16 字节 FIFO、timestamp、掉线恢复、RAM 零偏标定和六轴 Mahony 代码保持现状，阶段 4 前不扩展。
-阶段 4 先单独验证 `WHO_AM_I`、连续采样、零偏收敛和安装轴向，再实现已定义范围内的
-角度/陀螺零偏两状态 Kalman；20-bit、压缩 FIFO 和自检仍不属于当前上板门槛。
+ICM45686 已进入阶段 4：SPI3/DMA、16 字节 FIFO、timestamp、掉线恢复、RAM 零偏标定、
+Mahony 和 roll/pitch 两状态 Kalman 均已实现。`WHO_AM_I`、连续采样、timestamp、静止零偏和
+Kalman 静态输出已上板通过。临时安装下的左右倾斜不能形成最终轴映射结论，安装轴向、动态响应
+和静止回归已后置到模块位置和方向固定之后；20-bit、压缩 FIFO 和自检仍不属于当前上板门槛。
 
-STM32 轮式里程计仍属于当前底盘阶段。Jetson 后续消费轮式里程计和 IMU 输出并负责 ROS 2
-定位融合，不在 STM32 重复实现导航级融合。
+当前主线转入统一单调时间轴和 STM32 轮式里程计。Jetson 后续消费轮式里程计和 IMU 输出并负责
+ROS 2 定位融合，不在 STM32 重复实现导航级融合；IMU 安装固定前不接入底盘航向融合。
 
 ## 暂不实施
 

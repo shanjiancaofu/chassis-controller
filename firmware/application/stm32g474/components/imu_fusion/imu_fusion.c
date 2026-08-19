@@ -5,8 +5,13 @@
 #include <string.h>
 
 #define HALF 0.5f
+#define PI 3.14159265358979323846f
+#define TWO_PI 6.28318530717958647692f
 #define MAX_UPDATE_PERIOD_SECONDS 0.1f
 #define BIAS_TRACKING_TIME_CONSTANT_SECONDS 30.0f
+#define DEFAULT_KALMAN_ANGLE_PROCESS_NOISE 0.001f
+#define DEFAULT_KALMAN_BIAS_PROCESS_NOISE 0.003f
+#define DEFAULT_KALMAN_MEASUREMENT_NOISE 0.03f
 
 static bool IsStationary(const ImuFusion *fusion, const float accel[3],
                          const float gyro[3]);
@@ -16,7 +21,14 @@ static void InitializeTilt(ImuFusion *fusion, const float accel[3]);
 static void UpdateQuaternion(ImuFusion *fusion, const float accel[3],
                              const float gyro[3], float dt_seconds);
 static void UpdateEulerAngles(ImuFusion *fusion);
+static void InitializeKalman(ImuFusion *fusion, const float accel[3]);
+static void UpdateKalman(ImuFusion *fusion, const float accel[3],
+                         const float gyro[3], float dt_seconds);
+static void UpdateKalmanAxis(ImuFusion *fusion, uint32_t axis, float rate,
+                             float measurement, float dt_seconds,
+                             bool measurement_valid);
 static float Clamp(float value, float minimum, float maximum);
+static float WrapAngle(float angle);
 
 void ImuFusion_Init(ImuFusion *fusion, const ImuFusionConfig *config)
 {
@@ -25,6 +37,18 @@ void ImuFusion_Init(ImuFusion *fusion, const ImuFusionConfig *config)
   }
   memset(fusion, 0, sizeof(*fusion));
   fusion->config = *config;
+  if (fusion->config.kalman_angle_process_noise <= 0.0f) {
+    fusion->config.kalman_angle_process_noise =
+        DEFAULT_KALMAN_ANGLE_PROCESS_NOISE;
+  }
+  if (fusion->config.kalman_bias_process_noise <= 0.0f) {
+    fusion->config.kalman_bias_process_noise =
+        DEFAULT_KALMAN_BIAS_PROCESS_NOISE;
+  }
+  if (fusion->config.kalman_measurement_noise <= 0.0f) {
+    fusion->config.kalman_measurement_noise =
+        DEFAULT_KALMAN_MEASUREMENT_NOISE;
+  }
   fusion->output.quaternion[0] = 1.0f;
 }
 
@@ -68,6 +92,7 @@ void ImuFusion_Update(ImuFusion *fusion, const float accel_mps2[3],
   }
   UpdateQuaternion(fusion, accel_mps2, corrected_gyro, dt_seconds);
   UpdateEulerAngles(fusion);
+  UpdateKalman(fusion, accel_mps2, gyro_rad_s, dt_seconds);
   fusion->output.orientation_valid = true;
 }
 
@@ -128,9 +153,114 @@ static void AccumulateCalibration(ImuFusion *fusion, const float accel[3],
          sizeof(fusion->output.gyro_bias_rad_s));
   memset(fusion->integral_error, 0, sizeof(fusion->integral_error));
   InitializeTilt(fusion, accel);
+  InitializeKalman(fusion, accel);
   UpdateEulerAngles(fusion);
   fusion->output.calibrated = true;
   fusion->output.orientation_valid = true;
+}
+
+static void InitializeKalman(ImuFusion *fusion, const float accel[3])
+{
+  const float roll = atan2f(accel[1], accel[2]);
+  const float pitch =
+      atan2f(-accel[0], sqrtf(accel[1] * accel[1] + accel[2] * accel[2]));
+
+  fusion->kalman_angle[0] = roll;
+  fusion->kalman_angle[1] = pitch;
+  fusion->kalman_bias[0] = fusion->output.gyro_bias_rad_s[0];
+  fusion->kalman_bias[1] = fusion->output.gyro_bias_rad_s[1];
+  memset(fusion->kalman_covariance, 0, sizeof(fusion->kalman_covariance));
+  fusion->kalman_covariance[0][0][0] = 0.1f;
+  fusion->kalman_covariance[0][1][1] = 0.1f;
+  fusion->kalman_covariance[1][0][0] = 0.1f;
+  fusion->kalman_covariance[1][1][1] = 0.1f;
+  fusion->output.kalman_roll_rad = roll;
+  fusion->output.kalman_pitch_rad = pitch;
+  fusion->output.kalman_valid = fusion->config.kalman_enabled;
+}
+
+static void UpdateKalman(ImuFusion *fusion, const float accel[3],
+                         const float gyro[3], float dt_seconds)
+{
+  const float accel_norm =
+      sqrtf(accel[0] * accel[0] + accel[1] * accel[1] + accel[2] * accel[2]);
+  const bool measurement_valid =
+      accel_norm > 0.001f &&
+      fabsf(accel_norm - fusion->config.gravity_mps2) <=
+          fusion->config.stationary_accel_tolerance_mps2 * 2.0f;
+  const float roll_measurement = atan2f(accel[1], accel[2]);
+  const float pitch_measurement =
+      atan2f(-accel[0], sqrtf(accel[1] * accel[1] + accel[2] * accel[2]));
+
+  if (!fusion->config.kalman_enabled || !fusion->output.kalman_valid) {
+    return;
+  }
+  UpdateKalmanAxis(fusion, 0U, gyro[0], roll_measurement, dt_seconds,
+                   measurement_valid);
+  UpdateKalmanAxis(fusion, 1U, gyro[1], pitch_measurement, dt_seconds,
+                   measurement_valid);
+  fusion->output.kalman_roll_rad = fusion->kalman_angle[0];
+  fusion->output.kalman_pitch_rad = fusion->kalman_angle[1];
+}
+
+static void UpdateKalmanAxis(ImuFusion *fusion, uint32_t axis, float rate,
+                             float measurement, float dt_seconds,
+                             bool measurement_valid)
+{
+  float (*covariance)[2] = fusion->kalman_covariance[axis];
+  const float old_p00 = covariance[0][0];
+  const float old_p01 = covariance[0][1];
+  const float old_p10 = covariance[1][0];
+  const float old_p11 = covariance[1][1];
+  const float process_angle = fusion->config.kalman_angle_process_noise;
+  const float process_bias = fusion->config.kalman_bias_process_noise;
+  const float measurement_noise = fusion->config.kalman_measurement_noise;
+  float innovation;
+  float innovation_variance;
+  float gain_angle;
+  float gain_bias;
+  float predicted_p00;
+  float predicted_p01;
+
+  fusion->kalman_angle[axis] +=
+      dt_seconds * (rate - fusion->kalman_bias[axis]);
+  covariance[0][0] = old_p00 +
+                      dt_seconds *
+                          (dt_seconds * old_p11 - old_p01 - old_p10 +
+                           process_angle);
+  covariance[0][1] = old_p01 - dt_seconds * old_p11;
+  covariance[1][0] = old_p10 - dt_seconds * old_p11;
+  covariance[1][1] = old_p11 + process_bias * dt_seconds;
+
+  if (!measurement_valid || fabsf(measurement) > 4.0f) {
+    return;
+  }
+  innovation = WrapAngle(measurement - fusion->kalman_angle[axis]);
+  innovation_variance = covariance[0][0] + measurement_noise;
+  if (innovation_variance <= 0.0f) {
+    return;
+  }
+  gain_angle = covariance[0][0] / innovation_variance;
+  gain_bias = covariance[1][0] / innovation_variance;
+  fusion->kalman_angle[axis] += gain_angle * innovation;
+  fusion->kalman_bias[axis] += gain_bias * innovation;
+  predicted_p00 = covariance[0][0];
+  predicted_p01 = covariance[0][1];
+  covariance[0][0] -= gain_angle * predicted_p00;
+  covariance[0][1] -= gain_angle * predicted_p01;
+  covariance[1][0] -= gain_bias * predicted_p00;
+  covariance[1][1] -= gain_bias * predicted_p01;
+}
+
+static float WrapAngle(float angle)
+{
+  while (angle > PI) {
+    angle -= TWO_PI;
+  }
+  while (angle < -PI) {
+    angle += TWO_PI;
+  }
+  return angle;
 }
 
 static void InitializeTilt(ImuFusion *fusion, const float accel[3])

@@ -31,6 +31,9 @@ typedef struct {
   float roll_rad;
   float pitch_rad;
   float yaw_rad;
+  bool kalman_valid;
+  float kalman_roll_rad;
+  float kalman_pitch_rad;
   uint32_t last_sample_ms;
   uint32_t sample_count;
   uint32_t interrupt_count;

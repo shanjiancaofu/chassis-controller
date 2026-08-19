@@ -122,8 +122,9 @@ system: fw build uptime_ms supply_valid supply_mv control fault reset reset_flag
 motor: control left_target left_speed left_pwm right_target right_speed right_pwm left_encoder
        right_encoder left_kp left_ki left_kd right_kp right_ki right_kd motor_test overrun missed
 sensors: rtc_valid rtc adc_valid adc_mv imu imu_whoami imu_samples imu_fifo_frames imu_fifo_errors
-         imu_timestamp_errors sr501 sr501_raw sr501_motion sr501_count sr501_last_ms
-         sr501_warmup_ms button1_pressed button1_count button2_pressed button2_count
+         imu_timestamp_errors imu_kalman imu_kalman_roll_mrad imu_kalman_pitch_mrad sr501
+         sr501_raw sr501_motion sr501_count sr501_last_ms sr501_warmup_ms button1_pressed
+         button1_count button2_pressed button2_count
 communication: can can_drops uart_errors qspi_read qspi_id qspi_jedec qspi_capacity_bytes
                qspi_test ota_confirmation ota_source ota_state ota_offset lcd telemetry iwdg_test
 ```

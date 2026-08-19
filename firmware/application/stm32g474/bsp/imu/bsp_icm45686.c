@@ -48,6 +48,10 @@ static const ImuFusionConfig fusion_config = {
     .stationary_accel_tolerance_mps2 = 0.8f,
     .stationary_gyro_limit_rad_s = 0.2f,
     .calibration_variance_limit = 0.00001f,
+    .kalman_enabled = true,
+    .kalman_angle_process_noise = 0.001f,
+    .kalman_bias_process_noise = 0.003f,
+    .kalman_measurement_noise = 0.03f,
 };
 
 static Icm45686Device imu_device;
@@ -443,4 +447,7 @@ static void UpdateFusionSnapshot(void)
   imu_snapshot.roll_rad = output.roll_rad;
   imu_snapshot.pitch_rad = output.pitch_rad;
   imu_snapshot.yaw_rad = output.yaw_rad;
+  imu_snapshot.kalman_valid = output.kalman_valid;
+  imu_snapshot.kalman_roll_rad = output.kalman_roll_rad;
+  imu_snapshot.kalman_pitch_rad = output.kalman_pitch_rad;
 }

@@ -5,20 +5,21 @@
 
 ## 代码基线
 
-- Application 工作树：`0.10.0`，build `1`。
+- Application 工作树和板上 confirmed 镜像：`0.11.1 build1`。
 - Bootloader：`0.1.0 build22`。
-- 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.10.0 build1`；Bootloader 仍为
+- 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.11.1 build1`；Bootloader 仍为
   build22，b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.10.0`
-  已完成普通复位回归；当前页面配色、四页切换、文字、Logo 和电量显示均已确认正常。
-- 最新工作树 Release 已重新生成 `build/arm-release/app-v0.10.0-b1.ota`，payload 为
-  `94980` 字节、CRC32 为 `0x9BAB75E6`；该次产物只完成构建和校验，尚未重新烧录目标板。
+  和 `0.11.0` 的既有验证记录继续保留；`0.11.1` 已完成 UART OTA 和普通复位回归。
+- 最新 Release `build/arm-release/app-v0.11.1-b1.ota` 的 payload 为 `95876` 字节、CRC32 为
+  `0x88BB01DD`；OTA 包共 `95940` 字节。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
   调参已后置；当前代码主线已完成 FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
-  LCD 四页代码与 DMA 调度修复已完成，中性配色、四页切换、文字、Logo 和电量显示已人工确认正常；当前已启用 ICM45686
-  完整启动路径，重新整理接线后目标板读取 `WHO_AM_I=0x00`（仍未识别），下一步为模块供电、
-  CS 和 SPI 信号排查。ICM45686 按当前安排先后置，不阻塞其他硬件验收。目标加减速限制、
+  LCD 四页代码与 DMA 调度修复已完成，中性配色、四页切换、文字、Logo 和电量显示已人工确认正常。
+  ICM45686 已读取 `WHO_AM_I=0xE9`，FIFO/DMA、10 ms timestamp、静止零偏、Mahony 和 Kalman
+  静态输出已上板通过；因模块安装位置和方向尚未固定，安装轴向和动态姿态验证已 `DEFERRED`。
+  目标加减速限制、
   编码器异常保护和欠压保护代码已实现，带负载阶跃、异常脉冲和欠压注入仍待实测；SR501
   高电平闭环继续后置。
 
@@ -46,6 +47,9 @@
   静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。当前不启用20-bit、压缩FIFO
   或自检；零偏仅保存在RAM，安装方向和轴映射等待实物确认。`0.8.0` 已启用该路径，启动日志
   根据真实结果输出 `READY / NOT_FOUND / INIT_FAILED`，模块缺失或通信失败不阻塞 Application。
+  `0.11.1` 新增独立 roll/pitch 两状态角度+陀螺零偏 Kalman 输出，Mahony 仍作为现有对照输出；
+  Kalman 结果已进入 IMU 快照和 UART 诊断，未替换 LCD 当前姿态显示。参考 ICM45686 数据手册
+  修正 `SREG_CTRL.SREG_DATA_ENDIAN_SEL` 为 bit 1，并在初始化时回读确认大端配置。
 
 - 内部 Flash 使用 32 KiB Bootloader + 480 KiB 单 Application。
 - QSPI 使用双 metadata 和 Slot A/B，confirmed/candidate 由 metadata 分配。
@@ -87,6 +91,14 @@
   CONFIRMED`。普通复位后报告 `fw=0.8.0 build=1`、`ota_confirmation=NOT_REQUIRED`、四任务
   `RUNNING`、`control=STOPPED` 且左右 PWM 为零。重新接线后的 ICM45686 返回 `who_am_i=0x00` 和
   `imu=NOT_FOUND`，证明软件路径已运行，但不构成硬件通过。
+- 2026-08-19 `0.11.1 build1` 已通过 UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL
+  COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。普通复位后 Bootloader 报告 metadata state
+  `0x5`，Application 报告 `ota_confirmation=NOT_REQUIRED`、四任务 `RUNNING`、`fault=0`、
+  `control=STOPPED`、左右 PWM 为零。
+- ICM45686 实测 `WHO_AM_I=0xE9`。修正端序配置后，调试快照连续 588 帧无解析、timestamp、
+  DMA 或传输错误，采样周期为 `10 ms`；200 个静止样本后零偏标定、Mahony 和 Kalman 均有效。
+  普通复位后的 UART `status` 再次报告 224 帧、`imu_fifo_errors=0`、
+  `imu_timestamp_errors=0`、`imu_kalman=1`。安装位置和方向未固定，动态姿态验证已 `DEFERRED`。
 - 同日通过 `/dev/ttyUSB0` 对 `0.8.0 build1` 做其他硬件在线复核：供电 `12.206--12.215 V`、
   RTC 有效、四任务 `RUNNING`、LCD 驱动 `READY`、CAN 无 bus-off/protocol error、编码器静止
   读数 `left_total=1/right_total=-2`；QSPI 保留区 1024 字节擦写回读自检通过（地址
@@ -116,10 +128,9 @@
   和复位原因可通过同一 `SystemStatusSnapshot` 读取；`critical_tasks=1`、`control=STOPPED`、
   `fault=0`、`overrun=0`、`missed=0`。
 - CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前正式工作树构建通过：Application
-  Debug `text=106492 data=120 bss=53520`，Release `text=94852 data=120 bss=53512`。
-  当前 Release BIN 为 `94980` 字节，OTA payload CRC32 为 `0x9BAB75E6`；OTA Python 13 项、
-  参数记录和 UART 64 位格式化 C 宿主机测试均通过。更早的 `0.3.0 build1` UART 实物闭环尺寸
-  和结果保留在 `verification.md` 历史记录中。
+  Debug `text=107576 data=120 bss=53624`，Release `text=95748 data=120 bss=53616`。
+  ICM45686 和 IMU fusion C 宿主机测试、OTA Python 13 项及 UART OTA/普通复位回归均通过；
+  更早的实物闭环历史保留在 `verification.md`。
 - build1 已实测结构化启动 `[LOG]`、命令 `[RSP]`、同序号四分区 `[TEL]`、错误响应、PID 参数读取、
   100 ms 文本遥测、CRLF 换行和 `encoder_result`。nano printf 不支持 `%lld` 导致的编码器及后续
   变参错位已改为独立 64 位十进制格式化，并在目标板确认编码器、PID、overrun/missed 字段正确。
@@ -164,7 +175,10 @@
 - VS Code 图形界面 F5 已于 2026-08-15 人工确认通过；底层 OpenOCD/GDB 自动烧写、停在
   `main`、源码断点、调用栈、FreeRTOS 符号和 Debug IWDG 冻结也已完成命令行等价目标板验证。
 
-- ICM45686 SPI3 实物接线、`WHO_AM_I=0xE9`、FIFO/DMA连续性、静止零偏收敛、姿态轴向和两个预留按钮的机械消抖尚未上板验证；重新整理接线后读取 `0x00`，诊断可显示 `NOT_FOUND / STARTING / CALIBRATING / READY / DEGRADED` 及 FIFO 恢复计数，但任何软件状态均不得据此标记硬件 PASS。
+- ICM45686 SPI3、`WHO_AM_I=0xE9`、FIFO/DMA 连续性、10 ms timestamp、静止零偏和
+  roll/pitch Kalman 静态输出已上板通过；模块安装位置和方向尚未固定，正负 roll/pitch/yaw
+  动态轴向、安装方向、运动恢复和长时间漂移均为 `DEFERRED`。两个预留按钮的机械消抖也尚未
+  上板验证。
 
 - `0.7.1` 当前可见页面的中性配色已由用户确认可接受；LCD
   `OVERVIEW -> MOTOR -> SENSORS -> SYSTEM -> OVERVIEW` 四页完整内容、透明 Logo、电量显示
@@ -174,7 +188,7 @@
   `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
   OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
 
-- confirmed `0.8.0 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；普通复位启动已通过。
+- confirmed `0.11.1 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；普通复位启动已通过。
 - CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
 - Application 安装过程中断电恢复、TRIAL 不确认自动回滚和 rollback 安装中断电：`DEFERRED`。
 
@@ -185,10 +199,12 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
-2. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
+1. 建立编码器、ADC 和现有 IMU FIFO 数据到统一单调时间轴的映射，为轮式里程计保留明确的
+   采样时刻；RTC 继续只用于日历和日志。
+2. 实现并验证轮式里程计累计、速度和转角；IMU 安装固定前不接入航向融合。
+3. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
+4. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
    欠压注入验证；方向不重复测试。
-3. ICM45686 型号/接线排查保持后置；确认模块型号后再决定是否继续当前 `0xE9` 驱动路径。
 
 当前路线：
 

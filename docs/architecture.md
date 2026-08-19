@@ -205,8 +205,9 @@ BSP 不决定是否允许车辆运动，也不持有业务状态机。
 ### `components`
 
 保存可独立测试、无 HAL 依赖的组件。当前包括速度 PID、Application CRC32、ICM45686
-寄存器/FIFO 协议组件和 `imu_fusion` 六轴 Mahony/静止零偏算法。组件不直接持有 SPI、
-DMA 或 CubeMX 句柄。
+寄存器/FIFO 协议组件，以及 `imu_fusion` 静止零偏、六轴 Mahony 和独立 roll/pitch
+角度+陀螺零偏两状态 Kalman。Mahony 与 Kalman 当前并行输出用于诊断对照，不绑定控制或
+安全逻辑；组件不直接持有 SPI、DMA 或 CubeMX 句柄。
 
 ### `communication`
 

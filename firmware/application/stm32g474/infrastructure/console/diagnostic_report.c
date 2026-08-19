@@ -183,6 +183,7 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       "rtc_valid=%u rtc=20%02u-%02u-%02uT%02u:%02u:%02u "
       "adc_valid=%u adc_mv=%lu imu=%s imu_whoami=0x%02X imu_samples=%lu "
       "imu_fifo_frames=%lu imu_fifo_errors=%lu imu_timestamp_errors=%lu "
+      "imu_kalman=%u imu_kalman_roll_mrad=%ld imu_kalman_pitch_mrad=%ld "
       "sr501=%s sr501_raw=%u sr501_motion=%u sr501_count=%lu "
       "sr501_last_ms=%lu sr501_warmup_ms=%lu button1_pressed=%u "
       "button1_count=%lu button2_pressed=%u button2_count=%lu",
@@ -195,6 +196,9 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       (unsigned long)status.imu.fifo_frame_count,
       (unsigned long)status.imu.fifo_parse_error_count,
       (unsigned long)status.imu.timestamp_error_count,
+      status.imu.kalman_valid ? 1U : 0U,
+      (long)(status.imu.kalman_roll_rad * 1000.0f),
+      (long)(status.imu.kalman_pitch_rad * 1000.0f),
       status.sr501.status == BSP_SR501_READY ? "READY" : "WARMING_UP",
       status.sr501.raw_high ? 1U : 0U,
       status.sr501.motion_detected ? 1U : 0U,

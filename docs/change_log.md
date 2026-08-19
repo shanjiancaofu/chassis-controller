@@ -2,6 +2,36 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-19 - roll/pitch 两状态 Kalman 对照输出（0.11.1 build1）
+
+### 变更内容
+
+- 在现有 Mahony 融合旁新增 roll/pitch 两状态 Kalman：状态为角度和陀螺零偏，观测为加速度重力方向。
+- Kalman 输出进入 ICM45686 BSP 快照和 UART `sensors` 诊断；LCD 保持原 Mahony 姿态显示。
+- UART v1 `sensors` 字段注册表同步增加 Kalman 有效状态和 roll/pitch 毫弧度字段。
+- 增加宿主机测试，覆盖零偏初始化、姿态初始化、预测和无效重力观测处理。
+- 按数据手册修正 `SREG_CTRL.SREG_DATA_ENDIAN_SEL` 位号，并在初始化时回读确认大端配置。
+- 修正 Kalman 协方差观测更新并归一化 ±π 跨界创新，增加协方差与角度边界测试。
+
+### 设计决定
+
+- Mahony 不删除、不替换；Kalman 只做对照输出，不绑定控制或安全逻辑。
+- Kalman 首版为中间 `0.11.0 build1`；动态滤波审阅修复后提升到 `0.11.1 build1`，不复用版本号。
+- 模块安装位置和方向尚未固定，不根据临时摆放修改轴映射；安装轴向、动态响应、静止回归和
+  长时间漂移统一 `DEFERRED`，主线转入统一单调时间轴和轮式里程计。
+
+### 验证结果
+
+- Debug/Release 构建通过：Debug `text=107576 data=120 bss=53624`，Release
+  `text=95748 data=120 bss=53616`；ICM45686、fusion 和 OTA 宿主机测试通过。
+- 目标板读取 `WHO_AM_I=0xE9`；FIFO 588 帧零解析/时间戳错误，10 ms 周期稳定，200 个静止
+  样本后 Mahony/Kalman 均有效。
+- UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED ->
+  CONFIRMED`；普通复位回归保持故障为零、控制停止和左右 PWM 为零。
+- 临时安装观察中，近水平 Kalman roll/pitch 为 `[-69, 8] mrad`，车体左侧抬高后为
+  `[-52, -212] mrad`，采样连续且 FIFO/timestamp 错误为零。该结果只证明临时摆放下左右倾斜
+  主要进入当前 pitch 通道，不构成最终安装轴向或映射验证。
+
 ## 2026-08-18 - 四项功能收尾构建与文档同步（0.10.0 build1）
 
 ### 变更内容
@@ -413,7 +443,7 @@
 | b15 | `0.2.1` | 诊断报告缓冲扩大 |
 | b16 | `0.2.2` | UART 与诊断容量统一为 2048 字节 |
 | b17 | `0.3.0` | FreeRTOS 四任务、统一快照和正式 UART 协议 |
-| 当前板上 | `0.8.0 build1` | UART OTA confirmed，普通复位回归通过 |
+| 历史板上 | `0.8.0 build1` | UART OTA confirmed，普通复位回归通过 |
 | 上一工作树 | `0.4.0 build1` | LCD 小 Logo 与页面结构调整，尚未上板 |
 | 上一修复树 | `0.5.0 build1` | LCD 四页状态显示，调试启动观察到 DMA 调度过慢 |
 | 上一修复树 | `0.5.1 build1` | LCD DMA 调度修复，调试启动已进入 `lcd=READY` |
@@ -421,14 +451,18 @@
 | 上一工作树 | `0.6.0 build1` | LCD UI 美化、透明 Logo 和电量估算，已 OTA confirmed |
 | 上一工作树 | `0.7.0 build1` | LCD 信息层级、大号电量显示和双栏布局，蓝色横带待修正 |
 | 上一工作树 | `0.7.1 build1` | LCD 中性深灰背景和短标题强调线，当前页面配色可接受 |
-| 当前工作树 | `0.8.0 build1` | ICM45686 正式启用，目标板 WHO_AM_I 返回 0xFF |
+| 历史工作树 | `0.8.0 build1` | ICM45686 正式启用，目标板 WHO_AM_I 返回 0xFF |
+| 历史工作树 | `0.9.0 build1` | PID 参数持久化和电机启动复核 |
+| 历史工作树 | `0.9.1 build1` | 可调开环占空比和启动下限复核 |
+| 历史工作树 | `0.10.0 build1` | 控制安全收尾和低速 PID 响应 |
+| 当前板上 | `0.11.1 build1` | ICM45686/FIFO/静止 Kalman 上板，UART OTA confirmed |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
-- LCD `OVERVIEW`、`MOTOR`、`SENSORS`、`SYSTEM` 四页内容和 PB8 按键循环的目标板验证。
-- ICM45686 目标板 WHO_AM_I、FIFO/DMA 连续性、零偏、安装方向和 Kalman/时间轴融合。
+- ICM45686 正负轴向动作、动态姿态、静止回归和长期漂移；模块固定安装前保持 `DEFERRED`。
+- 编码器、ADC 和 IMU FIFO 到本地单调时间的映射，以及后续轮式里程计。
 - SR501 模块供电/指示灯、OUT 高电平、50 ms 滤波和上升沿事件计数。
 - confirmed 镜像断电启动与四路 PWM 电气零输出、Application 安装中断恢复、TRIAL 自动回滚及 rollback 中断恢复。
 - CAN FD OTA，以及后续底盘加减速限制、里程计/安全保护和正式 CAN FD 协议。

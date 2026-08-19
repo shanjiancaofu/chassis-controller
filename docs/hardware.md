@@ -200,7 +200,10 @@ GND              -> GND
 通过 STM32G4 HAL 的 SPI3 RX/TX DMA 批量读取最多 4 个 16 字节 FIFO 帧；DMA1 CH5 为 RX、
 CH6 为 TX。当前传感器配置为100 Hz、加速度计 +/-4 g、陀螺仪 +/-500 dps、低噪声带宽
 ODR/4和16 us timestamp；不启用20-bit或压缩FIFO。`.ioc` 是STM32通道配置的权威来源，
-当前板上仍未验证通信、电气时序或FIFO连续性。
+PC10/PC11/PC12 均配置为 `GPIO_NOPULL`，不额外启用 MCU 内部上下拉；SPI 线束建议保持在
+10 cm 以内，并避免与电机/PWM 线并行。当前模块位置和方向尚未固定，因此底盘 X/Y/Z 到
+传感器轴的映射尚未确定，融合入口不得加入推测性的轴交换或符号修正。目标板通信、FIFO 和
+静态融合验证证据见 [`verification.md`](verification.md)，动态轴向已后置到模块完成固定安装后。
 
 ## 通用按钮
 
