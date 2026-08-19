@@ -27,7 +27,9 @@
 - 里程计宿主机测试通过；Debug `text=110024 data=120 bss=54144`，Release
   `text=97960 data=120 bss=54136`；OTA Python 13 项和 `git diff --check` 通过。
 - Release payload 为 `98088` 字节、CRC32 `0x124D4C30`，OTA 包为 `98152` 字节。
-- 本批未烧录，时间戳对齐、里程计方向、直线距离、旋转角度和 LCD 新字段均为 `NOT VERIFIED`。
+- 已通过 UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED ->
+  CONFIRMED`，启动后四任务运行、故障为零、控制停止且左右 PWM 为零。时间戳对齐、里程计方向、
+  直线距离、旋转角度和 LCD 动态新字段仍为 `NOT VERIFIED`。
 
 ## 2026-08-19 - roll/pitch 两状态 Kalman 对照输出（0.11.1 build1）
 
@@ -483,13 +485,15 @@
 | 历史工作树 | `0.9.1 build1` | 可调开环占空比和启动下限复核 |
 | 历史工作树 | `0.10.0 build1` | 控制安全收尾和低速 PID 响应 |
 | 当前板上 | `0.11.1 build1` | ICM45686/FIFO/静止 Kalman 上板，UART OTA confirmed |
+| 当前板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
 - ICM45686 正负轴向动作、动态姿态、静止回归和长期漂移；模块固定安装前保持 `DEFERRED`。
-- 编码器、ADC 和 IMU FIFO 到本地单调时间的映射，以及后续轮式里程计。
+- `0.12.0 build1` 的编码器/ADC/IMU 本地时间字段、轮式里程计方向和 LCD/UART 动态输出上板复核，
+  以及落地直线距离、原地旋转角度和轮径/轮距校准。
 - SR501 模块供电/指示灯、OUT 高电平、50 ms 滤波和上升沿事件计数。
 - confirmed 镜像断电启动与四路 PWM 电气零输出、Application 安装中断恢复、TRIAL 自动回滚及 rollback 中断恢复。
-- CAN FD OTA，以及后续底盘加减速限制、里程计/安全保护和正式 CAN FD 协议。
+- CAN FD OTA、底盘加减速限制/编码器异常/欠压保护实测，以及正式 CAN FD 底盘协议。

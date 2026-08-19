@@ -31,7 +31,7 @@
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | ICM45686 SPI/FIFO | `HARDWARE PASS` | 0.11.1；WHO_AM_I=0xE9，普通复位后 224 帧零解析/时间戳错误，100 Hz 周期 10 ms |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
-| 轮式里程计 | `NOT VERIFIED` | 0.12.0 已实现时间戳、位姿和速度输出并通过宿主机测试；尚未上板和落地校准 |
+| 轮式里程计 | `NOT VERIFIED` | 0.12.0 已上板启动并报告静态零位；车轮运动、时间对齐和落地几何校准尚未验证 |
 | 双电机开环 | `HARDWARE PASS` | 方向沿用历史验收；0.9.1 运行期占空比测试确认自动停止 |
 | 开环启动下限 | `HARDWARE PASS` | 约 12.22 V、架空轮；左右可靠下限约 3500/8499（41.2%） |
 | 目标加减速限制 | `NOT VERIFIED` | 0.10.0 已实现每 10 ms 最多 5 counts/tick；尚未完成带负载阶跃验收 |
@@ -46,7 +46,7 @@
 | 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-18，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1 和 0.8.0 build1 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-19，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1、0.8.0、0.11.1 和 0.12.0 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
@@ -1254,5 +1254,31 @@ IMU fusion C 宿主机测试均使用 `-std=c11 -Wall -Wextra -Werror` 编译运
 Release BIN/payload 为 `98088` 字节，CRC32 `0x124D4C30`，SHA-256
 `e91540cf5cb93cce6c6876d66c1553aee0bc6ade7ad6b1f3227949a557e8ad20`；OTA 包为 `98152`
 字节，SHA-256 `d7c8a0cf85f085bf1d9d82c44745942818f6b1d1f22d3c8aa7a98f66255df993`。OTA Python
-13 项通过，`git diff --check` 通过。本批未烧录目标板，时间对齐、里程计符号、直线距离和
-原地旋转角度均保持 `NOT VERIFIED`。
+13 项通过，`git diff --check` 通过。该段记录构建阶段证据；随后 OTA 启动复核见下一节。时间
+对齐、里程计符号、直线距离和原地旋转角度仍保持 `NOT VERIFIED`。
+
+## 2026-08-19 0.12.0 build1 UART OTA 与启动复核
+
+使用 `/dev/ttyUSB0`、115200 8N1，将 `build/arm-release/app-v0.12.0-b1.ota`（98152 字节，
+CRC32 `0x124D4C30`）发送到板上 confirmed `0.11.1 build1`。发送工具完成 98152/98152 字节
+传输，Bootloader 日志依次报告：
+
+```text
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: TRIAL VERIFIED
+```
+
+随后 Application 启动日志报告 `fw=0.12.0 build=1`，健康窗口结束后状态为
+`ota_confirmation=CONFIRMED`。复核 `status` 报告：
+
+```text
+fw=0.12.0 build=1 ota_confirmation=CONFIRMED
+control=STOPPED fault=0x00000000 left_pwm=0 right_pwm=0
+service_task=RUNNING control_task=RUNNING diagnostics_task=RUNNING display_task=RUNNING
+odom_valid=1 odom_x_mm=0 odom_y_mm=0 odom_heading_mrad=0
+imu=READY imu_whoami=0xE9 imu_fifo_errors=0 imu_timestamp_errors=0 lcd=READY
+```
+
+供电约 `12.188 V`。本轮只做 OTA、启动和静态安全状态复核，没有驱动车轮；断电恢复、里程计
+方向/距离/旋转角度和 LCD 动态里程计显示仍保持 `NOT VERIFIED`。
