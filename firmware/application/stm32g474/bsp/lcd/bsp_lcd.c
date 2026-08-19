@@ -15,8 +15,8 @@
 #define LCD_HEIGHT 240U
 #define LCD_SPI_TIMEOUT_MS 100U
 #define LCD_BACKLIGHT_COMPARE 35U
-#define LCD_TEXT_LINE_COUNT 16U
-#define LCD_TEXT_LINE_LENGTH 28U
+#define LCD_TEXT_LINE_COUNT 24U
+#define LCD_TEXT_LINE_LENGTH 32U
 #define LCD_LOGO_DISPLAY_SIZE 32U
 #define LCD_LOGO_X (LCD_WIDTH - LCD_LOGO_DISPLAY_SIZE - 8U)
 #define LCD_LOGO_Y 2U
@@ -30,19 +30,20 @@
 #define LCD_COMMAND_MEMORY_ACCESS 0x36U
 #define LCD_COMMAND_PIXEL_FORMAT 0x3AU
 
-#define LCD_COLOR_BACKGROUND 0x0882U
-#define LCD_COLOR_PANEL 0x10C4U
-#define LCD_COLOR_PANEL_ALT 0x1904U
-#define LCD_COLOR_HEADER 0x08A3U
-#define LCD_COLOR_DIVIDER 0x2187U
-#define LCD_COLOR_ACCENT 0x1639U
-#define LCD_COLOR_HIGHLIGHT 0xEDA8U
-#define LCD_COLOR_TEXT 0xE77EU
-#define LCD_COLOR_MUTED 0x84B3U
-#define LCD_COLOR_PASS 0x466EU
-#define LCD_COLOR_FAIL 0xEACBU
-#define LCD_COLOR_READY 0xEDA8U
-#define LCD_COLOR_DISABLED 0x52EDU
+#define LCD_COLOR_BACKGROUND 0x0882U /* #0C1116 */
+#define LCD_COLOR_PANEL 0x10C4U      /* #141B21 */
+#define LCD_COLOR_PANEL_ALT 0x1905U  /* #192229 */
+#define LCD_COLOR_HEADER LCD_COLOR_BACKGROUND
+#define LCD_COLOR_DIVIDER 0x29A7U    /* #29343D */
+#define LCD_COLOR_ACCENT 0x1E5AU     /* #18C8D4 */
+#define LCD_COLOR_HIGHLIGHT 0xEF9EU  /* #EDF2F7 */
+#define LCD_COLOR_TEXT 0xEF9EU       /* #EDF2F7 */
+#define LCD_COLOR_MUTED 0x8CB4U      /* #8996A3 */
+#define LCD_COLOR_WEAK 0x530DU       /* #56616C */
+#define LCD_COLOR_PASS 0x468FU       /* #44D17A */
+#define LCD_COLOR_FAIL 0xF2CCU       /* #F05B61 */
+#define LCD_COLOR_READY 0xF5C8U      /* #F5B942 */
+#define LCD_COLOR_DISABLED LCD_COLOR_WEAK
 #define LCD_BATTERY_BAR_X 12U
 #define LCD_BATTERY_BAR_Y 88U
 #define LCD_BATTERY_BAR_WIDTH 288U
@@ -184,7 +185,7 @@ static uint16_t LcdValueColor(BspLcdValueState state)
     case BSP_LCD_VALUE_DISABLED:
       return LCD_COLOR_DISABLED;
     default:
-      return LCD_COLOR_READY;
+      return LCD_COLOR_PASS;
   }
 }
 
@@ -343,6 +344,18 @@ static void LcdFormatVoltage(char *buffer, size_t buffer_size,
                  (unsigned long)((millivolts % 1000U) / 10U));
 }
 
+static uint16_t LcdCenteredTextX(const char *text, uint16_t start_x,
+                                 uint16_t width, uint8_t scale)
+{
+  const size_t length = strlen(text);
+  const uint16_t text_width = length == 0U
+                                  ? 0U
+                                  : (uint16_t)(length * 6U * scale - scale);
+
+  return text_width >= width ? start_x
+                             : (uint16_t)(start_x + (width - text_width) / 2U);
+}
+
 static void LcdPrepareOverviewPage(void)
 {
   if (lcd_status_data.supply_state == BSP_LCD_VALUE_PASS) {
@@ -358,11 +371,17 @@ static void LcdPrepareOverviewPage(void)
   (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH, "CONTROL");
   (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH, "%s",
                  LcdControlText(lcd_status_data.control_state));
-  (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH, "CAN %s",
+  (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH, "CAN");
+  (void)snprintf(lcd_text_lines[7], LCD_TEXT_LINE_LENGTH, "%s",
                  LcdValueText(lcd_status_data.can_state));
-  (void)snprintf(lcd_text_lines[7], LCD_TEXT_LINE_LENGTH, "QSPI %s",
+  (void)snprintf(lcd_text_lines[8], LCD_TEXT_LINE_LENGTH, "QSPI");
+  (void)snprintf(lcd_text_lines[9], LCD_TEXT_LINE_LENGTH, "%s",
                  LcdValueText(lcd_status_data.qspi_state));
-  (void)snprintf(lcd_text_lines[8], LCD_TEXT_LINE_LENGTH, "FAULTS %s",
+  (void)snprintf(lcd_text_lines[10], LCD_TEXT_LINE_LENGTH, "IMU");
+  (void)snprintf(lcd_text_lines[11], LCD_TEXT_LINE_LENGTH, "%s",
+                 LcdSensorText(lcd_status_data.imu_state));
+  (void)snprintf(lcd_text_lines[12], LCD_TEXT_LINE_LENGTH, "FAULTS");
+  (void)snprintf(lcd_text_lines[13], LCD_TEXT_LINE_LENGTH, "%s",
                  lcd_status_data.fault_flags == 0U ? "0" : "ERROR");
 
   lcd_text_x[1] = 12U;
@@ -370,41 +389,65 @@ static void LcdPrepareOverviewPage(void)
   lcd_text_scale[1] = 1U;
   lcd_text_colors[1] = LCD_COLOR_MUTED;
   lcd_text_x[2] = 12U;
-  lcd_text_y[2] = 57U;
+  lcd_text_y[2] = 58U;
   lcd_text_scale[2] = 3U;
   lcd_text_colors[2] = lcd_status_data.supply_state == BSP_LCD_VALUE_PASS
                            ? LCD_COLOR_TEXT
                            : LCD_COLOR_FAIL;
-  lcd_text_x[3] = 220U;
-  lcd_text_y[3] = 57U;
-  lcd_text_scale[3] = 3U;
+  lcd_text_x[3] = 236U;
+  lcd_text_y[3] = 61U;
+  lcd_text_scale[3] = 2U;
   lcd_text_colors[3] = LcdBatteryColor();
   lcd_text_x[4] = 12U;
-  lcd_text_y[4] = 122U;
+  lcd_text_y[4] = 124U;
   lcd_text_scale[4] = 1U;
   lcd_text_colors[4] = LCD_COLOR_MUTED;
   lcd_text_x[5] = 12U;
-  lcd_text_y[5] = 139U;
-  lcd_text_scale[5] = 2U;
+  lcd_text_y[5] = 143U;
+  lcd_text_scale[5] = 1U;
   lcd_text_colors[5] = LcdControlColor(lcd_status_data.control_state);
   lcd_text_x[6] = 170U;
-  lcd_text_y[6] = 122U;
+  lcd_text_y[6] = 124U;
   lcd_text_scale[6] = 1U;
-  lcd_text_colors[6] = LcdValueColor(lcd_status_data.can_state);
-  lcd_text_x[7] = 170U;
-  lcd_text_y[7] = 143U;
+  lcd_text_colors[6] = LCD_COLOR_MUTED;
+  lcd_text_x[7] = 232U;
+  lcd_text_y[7] = 124U;
   lcd_text_scale[7] = 1U;
   lcd_text_colors[7] = LcdValueColor(lcd_status_data.qspi_state);
-  lcd_text_x[8] = 12U;
-  lcd_text_y[8] = 181U;
+  lcd_text_colors[7] = LcdValueColor(lcd_status_data.can_state);
+  lcd_text_x[8] = 170U;
+  lcd_text_y[8] = 143U;
   lcd_text_scale[8] = 1U;
-  lcd_text_colors[8] = lcd_status_data.fault_flags == 0U
-                           ? LCD_COLOR_MUTED
+  lcd_text_colors[8] = LCD_COLOR_MUTED;
+  lcd_text_x[9] = 232U;
+  lcd_text_y[9] = 143U;
+  lcd_text_scale[9] = 1U;
+  lcd_text_colors[9] = LcdValueColor(lcd_status_data.qspi_state);
+  lcd_text_x[10] = 170U;
+  lcd_text_y[10] = 162U;
+  lcd_text_scale[10] = 1U;
+  lcd_text_colors[10] = LCD_COLOR_MUTED;
+  lcd_text_x[11] = 232U;
+  lcd_text_y[11] = 162U;
+  lcd_text_scale[11] = 1U;
+  lcd_text_colors[11] = LcdSensorColor(lcd_status_data.imu_state);
+  lcd_text_x[12] = 12U;
+  lcd_text_y[12] = 178U;
+  lcd_text_scale[12] = 1U;
+  lcd_text_colors[12] = LCD_COLOR_WEAK;
+  lcd_text_x[13] = 96U;
+  lcd_text_y[13] = 178U;
+  lcd_text_scale[13] = 1U;
+  lcd_text_colors[13] = lcd_status_data.fault_flags == 0U
+                           ? LCD_COLOR_WEAK
                            : LCD_COLOR_FAIL;
 }
 
 static void LcdPrepareMotorPage(void)
 {
+  uint8_t left_speed_scale;
+  uint8_t right_speed_scale;
+
   (void)snprintf(lcd_text_lines[1], LCD_TEXT_LINE_LENGTH, "LEFT");
   (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH, "%ld",
                  (long)lcd_status_data.left_measurement);
@@ -425,8 +468,7 @@ static void LcdPrepareMotorPage(void)
                  (int)lcd_status_data.right_output);
   (void)snprintf(lcd_text_lines[12], LCD_TEXT_LINE_LENGTH, "ENC %ld",
                  (long)lcd_status_data.right_encoder_delta);
-  (void)snprintf(lcd_text_lines[13], LCD_TEXT_LINE_LENGTH, "POSE %s",
-                 LcdControlText(lcd_status_data.control_state));
+  (void)snprintf(lcd_text_lines[13], LCD_TEXT_LINE_LENGTH, "POSE");
   if (lcd_status_data.odometry_valid) {
     (void)snprintf(lcd_text_lines[14], LCD_TEXT_LINE_LENGTH,
                    "X%ld Y%ld H%ld",
@@ -436,13 +478,23 @@ static void LcdPrepareMotorPage(void)
   } else {
     (void)snprintf(lcd_text_lines[14], LCD_TEXT_LINE_LENGTH, "ODOM N/R");
   }
+  (void)snprintf(lcd_text_lines[15], LCD_TEXT_LINE_LENGTH, "CONTROL");
+  (void)snprintf(lcd_text_lines[16], LCD_TEXT_LINE_LENGTH, "%s",
+                 LcdControlText(lcd_status_data.control_state));
+
+  left_speed_scale = strlen(lcd_text_lines[2]) > 7U ? 2U : 3U;
+  right_speed_scale = strlen(lcd_text_lines[5]) > 7U ? 2U : 3U;
 
   lcd_text_x[1] = 12U; lcd_text_y[1] = 45U; lcd_text_scale[1] = 1U;
-  lcd_text_x[2] = 12U; lcd_text_y[2] = 57U; lcd_text_scale[2] = 3U;
-  lcd_text_x[3] = 70U; lcd_text_y[3] = 78U; lcd_text_scale[3] = 1U;
+  lcd_text_x[2] = LcdCenteredTextX(lcd_text_lines[2], 12U, 136U,
+                                   left_speed_scale);
+  lcd_text_y[2] = 57U; lcd_text_scale[2] = left_speed_scale;
+  lcd_text_x[3] = 108U; lcd_text_y[3] = 79U; lcd_text_scale[3] = 1U;
   lcd_text_x[4] = 170U; lcd_text_y[4] = 45U; lcd_text_scale[4] = 1U;
-  lcd_text_x[5] = 170U; lcd_text_y[5] = 57U; lcd_text_scale[5] = 3U;
-  lcd_text_x[6] = 228U; lcd_text_y[6] = 78U; lcd_text_scale[6] = 1U;
+  lcd_text_x[5] = LcdCenteredTextX(lcd_text_lines[5], 170U, 136U,
+                                   right_speed_scale);
+  lcd_text_y[5] = 57U; lcd_text_scale[5] = right_speed_scale;
+  lcd_text_x[6] = 266U; lcd_text_y[6] = 79U; lcd_text_scale[6] = 1U;
   lcd_text_x[7] = 12U; lcd_text_y[7] = 120U; lcd_text_scale[7] = 1U;
   lcd_text_x[8] = 12U; lcd_text_y[8] = 136U; lcd_text_scale[8] = 1U;
   lcd_text_x[9] = 12U; lcd_text_y[9] = 152U; lcd_text_scale[9] = 1U;
@@ -451,6 +503,8 @@ static void LcdPrepareMotorPage(void)
   lcd_text_x[12] = 170U; lcd_text_y[12] = 152U; lcd_text_scale[12] = 1U;
   lcd_text_x[13] = 12U; lcd_text_y[13] = 174U; lcd_text_scale[13] = 1U;
   lcd_text_x[14] = 12U; lcd_text_y[14] = 188U; lcd_text_scale[14] = 1U;
+  lcd_text_x[15] = 190U; lcd_text_y[15] = 174U; lcd_text_scale[15] = 1U;
+  lcd_text_x[16] = 190U; lcd_text_y[16] = 188U; lcd_text_scale[16] = 1U;
   for (uint8_t line = 1U; line < LCD_TEXT_LINE_COUNT; ++line) {
     lcd_text_colors[line] = LCD_COLOR_TEXT;
   }
@@ -460,8 +514,9 @@ static void LcdPrepareMotorPage(void)
   lcd_text_colors[6] = LCD_COLOR_MUTED;
   lcd_text_colors[7] = LCD_COLOR_MUTED;
   lcd_text_colors[10] = LCD_COLOR_MUTED;
-  lcd_text_colors[13] = LCD_COLOR_ACCENT;
-  lcd_text_colors[13] = LcdControlColor(lcd_status_data.control_state);
+  lcd_text_colors[13] = LCD_COLOR_MUTED;
+  lcd_text_colors[15] = LCD_COLOR_MUTED;
+  lcd_text_colors[16] = LcdControlColor(lcd_status_data.control_state);
 }
 
 static void LcdPrepareSensorsPage(void)
@@ -511,16 +566,16 @@ static void LcdPrepareSensorsPage(void)
 
   lcd_text_x[1] = 12U; lcd_text_y[1] = 45U; lcd_text_scale[1] = 1U;
   lcd_text_x[2] = 12U; lcd_text_y[2] = 60U; lcd_text_scale[2] = 1U;
-  lcd_text_x[3] = 12U; lcd_text_y[3] = 79U; lcd_text_scale[3] = 1U;
-  lcd_text_x[4] = 12U; lcd_text_y[4] = 94U; lcd_text_scale[4] = 1U;
+  lcd_text_x[3] = 12U; lcd_text_y[3] = 80U; lcd_text_scale[3] = 1U;
+  lcd_text_x[4] = 12U; lcd_text_y[4] = 96U; lcd_text_scale[4] = 1U;
   lcd_text_x[5] = 170U; lcd_text_y[5] = 45U; lcd_text_scale[5] = 1U;
   lcd_text_x[6] = 170U; lcd_text_y[6] = 60U; lcd_text_scale[6] = 1U;
-  lcd_text_x[7] = 170U; lcd_text_y[7] = 79U; lcd_text_scale[7] = 1U;
-  lcd_text_x[8] = 170U; lcd_text_y[8] = 94U; lcd_text_scale[8] = 1U;
-  lcd_text_x[9] = 12U; lcd_text_y[9] = 127U; lcd_text_scale[9] = 1U;
-  lcd_text_x[10] = 12U; lcd_text_y[10] = 145U; lcd_text_scale[10] = 2U;
-  lcd_text_x[11] = 170U; lcd_text_y[11] = 127U; lcd_text_scale[11] = 1U;
-  lcd_text_x[12] = 170U; lcd_text_y[12] = 145U; lcd_text_scale[12] = 2U;
+  lcd_text_x[7] = 170U; lcd_text_y[7] = 80U; lcd_text_scale[7] = 1U;
+  lcd_text_x[8] = 170U; lcd_text_y[8] = 96U; lcd_text_scale[8] = 1U;
+  lcd_text_x[9] = 12U; lcd_text_y[9] = 124U; lcd_text_scale[9] = 1U;
+  lcd_text_x[10] = 12U; lcd_text_y[10] = 142U; lcd_text_scale[10] = 2U;
+  lcd_text_x[11] = 170U; lcd_text_y[11] = 124U; lcd_text_scale[11] = 1U;
+  lcd_text_x[12] = 170U; lcd_text_y[12] = 142U; lcd_text_scale[12] = 2U;
   for (uint8_t line = 1U; line < LCD_TEXT_LINE_COUNT; ++line) {
     lcd_text_colors[line] = LCD_COLOR_TEXT;
   }
@@ -532,9 +587,7 @@ static void LcdPrepareSensorsPage(void)
   lcd_text_colors[4] = lcd_text_colors[3];
   lcd_text_colors[5] = LCD_COLOR_MUTED;
   lcd_text_colors[6] = LcdSensorColor(lcd_status_data.sr501_state);
-  lcd_text_colors[7] = lcd_status_data.sr501_motion
-                           ? LCD_COLOR_READY
-                           : LCD_COLOR_TEXT;
+  lcd_text_colors[7] = LCD_COLOR_TEXT;
   lcd_text_colors[9] = LCD_COLOR_MUTED;
   lcd_text_colors[11] = LCD_COLOR_MUTED;
 }
@@ -547,48 +600,59 @@ static void LcdPrepareSystemPage(void)
   (void)snprintf(lcd_text_lines[2], LCD_TEXT_LINE_LENGTH, "%s",
                  lcd_status_data.critical_tasks_healthy ? "OK" : "FAIL");
   (void)snprintf(lcd_text_lines[3], LCD_TEXT_LINE_LENGTH, "STORAGE");
-  (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH, "QSPI %uM %s",
-                 (unsigned int)lcd_status_data.qspi_capacity_mib,
+  (void)snprintf(lcd_text_lines[4], LCD_TEXT_LINE_LENGTH, "QSPI %uM",
+                 (unsigned int)lcd_status_data.qspi_capacity_mib);
+  (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH, "%s",
                  LcdValueText(lcd_status_data.qspi_state));
-  (void)snprintf(lcd_text_lines[5], LCD_TEXT_LINE_LENGTH, "TASKS");
-  (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH, "SVC %s CTRL %s",
-                 lcd_status_data.service_task_healthy ? "RUN" : "FAIL",
+  (void)snprintf(lcd_text_lines[6], LCD_TEXT_LINE_LENGTH, "TASKS");
+  (void)snprintf(lcd_text_lines[7], LCD_TEXT_LINE_LENGTH, "SERVICE");
+  (void)snprintf(lcd_text_lines[8], LCD_TEXT_LINE_LENGTH, "%s",
+                 lcd_status_data.service_task_healthy ? "RUN" : "FAIL");
+  (void)snprintf(lcd_text_lines[9], LCD_TEXT_LINE_LENGTH, "CONTROL");
+  (void)snprintf(lcd_text_lines[10], LCD_TEXT_LINE_LENGTH, "%s",
                  lcd_status_data.control_task_healthy ? "RUN" : "FAIL");
-  (void)snprintf(lcd_text_lines[7], LCD_TEXT_LINE_LENGTH, "DIAG %s LCD %s",
-                 lcd_status_data.diagnostics_task_healthy ? "RUN" : "FAIL",
+  (void)snprintf(lcd_text_lines[11], LCD_TEXT_LINE_LENGTH, "DIAG");
+  (void)snprintf(lcd_text_lines[12], LCD_TEXT_LINE_LENGTH, "%s",
+                 lcd_status_data.diagnostics_task_healthy ? "RUN" : "FAIL");
+  (void)snprintf(lcd_text_lines[13], LCD_TEXT_LINE_LENGTH, "DISPLAY");
+  (void)snprintf(lcd_text_lines[14], LCD_TEXT_LINE_LENGTH, "%s",
                  lcd_status_data.display_task_healthy ? "RUN" : "FAIL");
-  (void)snprintf(lcd_text_lines[8], LCD_TEXT_LINE_LENGTH, "STACK FREE");
-  (void)snprintf(lcd_text_lines[9], LCD_TEXT_LINE_LENGTH, "S%lu C%lu",
+  (void)snprintf(lcd_text_lines[15], LCD_TEXT_LINE_LENGTH, "STACK FREE");
+  (void)snprintf(lcd_text_lines[16], LCD_TEXT_LINE_LENGTH, "SVC %lu CTRL %lu",
                  (unsigned long)lcd_status_data.service_stack_free_words,
                  (unsigned long)lcd_status_data.control_stack_free_words);
-  (void)snprintf(lcd_text_lines[10], LCD_TEXT_LINE_LENGTH, "D%lu L%lu",
+  (void)snprintf(lcd_text_lines[17], LCD_TEXT_LINE_LENGTH, "DIAG %lu LCD %lu",
                  (unsigned long)lcd_status_data.diagnostics_stack_free_words,
                  (unsigned long)lcd_status_data.display_stack_free_words);
-  (void)snprintf(lcd_text_lines[11], LCD_TEXT_LINE_LENGTH, "UPTIME");
-  (void)snprintf(lcd_text_lines[12], LCD_TEXT_LINE_LENGTH, "%02lu:%02lu:%02lu",
+  (void)snprintf(lcd_text_lines[18], LCD_TEXT_LINE_LENGTH, "UPTIME");
+  (void)snprintf(lcd_text_lines[19], LCD_TEXT_LINE_LENGTH, "%02lu:%02lu:%02lu",
                  (unsigned long)(uptime_seconds / 3600U),
                  (unsigned long)((uptime_seconds / 60U) % 60U),
                  (unsigned long)(uptime_seconds % 60U));
-  (void)snprintf(lcd_text_lines[13], LCD_TEXT_LINE_LENGTH, "RESET");
-  (void)snprintf(lcd_text_lines[14], LCD_TEXT_LINE_LENGTH, "%s",
+  (void)snprintf(lcd_text_lines[20], LCD_TEXT_LINE_LENGTH, "RESET");
+  (void)snprintf(lcd_text_lines[21], LCD_TEXT_LINE_LENGTH, "%s",
                  LcdResetText(lcd_status_data.reset_cause));
-  (void)snprintf(lcd_text_lines[15], LCD_TEXT_LINE_LENGTH, "FW V%s B%s",
-                 CHASSIS_FIRMWARE_VERSION, CHASSIS_FIRMWARE_BUILD_STRING);
   lcd_text_x[1] = 12U; lcd_text_y[1] = 44U; lcd_text_scale[1] = 1U;
   lcd_text_x[2] = 90U; lcd_text_y[2] = 44U; lcd_text_scale[2] = 1U;
   lcd_text_x[3] = 170U; lcd_text_y[3] = 44U; lcd_text_scale[3] = 1U;
   lcd_text_x[4] = 170U; lcd_text_y[4] = 61U; lcd_text_scale[4] = 1U;
-  lcd_text_x[5] = 12U; lcd_text_y[5] = 84U; lcd_text_scale[5] = 1U;
-  lcd_text_x[6] = 12U; lcd_text_y[6] = 101U; lcd_text_scale[6] = 1U;
-  lcd_text_x[7] = 12U; lcd_text_y[7] = 117U; lcd_text_scale[7] = 1U;
-  lcd_text_x[8] = 170U; lcd_text_y[8] = 84U; lcd_text_scale[8] = 1U;
-  lcd_text_x[9] = 170U; lcd_text_y[9] = 101U; lcd_text_scale[9] = 1U;
-  lcd_text_x[10] = 170U; lcd_text_y[10] = 117U; lcd_text_scale[10] = 1U;
-  lcd_text_x[11] = 12U; lcd_text_y[11] = 154U; lcd_text_scale[11] = 1U;
-  lcd_text_x[12] = 12U; lcd_text_y[12] = 171U; lcd_text_scale[12] = 2U;
-  lcd_text_x[13] = 190U; lcd_text_y[13] = 154U; lcd_text_scale[13] = 1U;
-  lcd_text_x[14] = 190U; lcd_text_y[14] = 175U; lcd_text_scale[14] = 1U;
-  lcd_text_x[15] = 12U; lcd_text_y[15] = 220U; lcd_text_scale[15] = 1U;
+  lcd_text_x[5] = 260U; lcd_text_y[5] = 61U; lcd_text_scale[5] = 1U;
+  lcd_text_x[6] = 12U; lcd_text_y[6] = 82U; lcd_text_scale[6] = 1U;
+  lcd_text_x[7] = 12U; lcd_text_y[7] = 98U; lcd_text_scale[7] = 1U;
+  lcd_text_x[8] = 104U; lcd_text_y[8] = 98U; lcd_text_scale[8] = 1U;
+  lcd_text_x[9] = 12U; lcd_text_y[9] = 114U; lcd_text_scale[9] = 1U;
+  lcd_text_x[10] = 104U; lcd_text_y[10] = 114U; lcd_text_scale[10] = 1U;
+  lcd_text_x[11] = 170U; lcd_text_y[11] = 98U; lcd_text_scale[11] = 1U;
+  lcd_text_x[12] = 250U; lcd_text_y[12] = 98U; lcd_text_scale[12] = 1U;
+  lcd_text_x[13] = 170U; lcd_text_y[13] = 114U; lcd_text_scale[13] = 1U;
+  lcd_text_x[14] = 250U; lcd_text_y[14] = 114U; lcd_text_scale[14] = 1U;
+  lcd_text_x[15] = 12U; lcd_text_y[15] = 140U; lcd_text_scale[15] = 1U;
+  lcd_text_x[16] = 12U; lcd_text_y[16] = 155U; lcd_text_scale[16] = 1U;
+  lcd_text_x[17] = 170U; lcd_text_y[17] = 155U; lcd_text_scale[17] = 1U;
+  lcd_text_x[18] = 12U; lcd_text_y[18] = 174U; lcd_text_scale[18] = 1U;
+  lcd_text_x[19] = 12U; lcd_text_y[19] = 190U; lcd_text_scale[19] = 1U;
+  lcd_text_x[20] = 190U; lcd_text_y[20] = 174U; lcd_text_scale[20] = 1U;
+  lcd_text_x[21] = 190U; lcd_text_y[21] = 190U; lcd_text_scale[21] = 1U;
   for (uint8_t line = 1U; line < LCD_TEXT_LINE_COUNT; ++line) {
     lcd_text_colors[line] = LCD_COLOR_TEXT;
   }
@@ -597,12 +661,23 @@ static void LcdPrepareSystemPage(void)
                            ? LCD_COLOR_PASS
                            : LCD_COLOR_FAIL;
   lcd_text_colors[3] = LCD_COLOR_MUTED;
-  lcd_text_colors[4] = LcdValueColor(lcd_status_data.qspi_state);
-  lcd_text_colors[5] = LCD_COLOR_MUTED;
-  lcd_text_colors[8] = LCD_COLOR_MUTED;
+  lcd_text_colors[5] = LcdValueColor(lcd_status_data.qspi_state);
+  lcd_text_colors[6] = LCD_COLOR_MUTED;
+  lcd_text_colors[7] = LCD_COLOR_MUTED;
+  lcd_text_colors[8] = lcd_status_data.service_task_healthy
+                           ? LCD_COLOR_PASS : LCD_COLOR_FAIL;
+  lcd_text_colors[9] = LCD_COLOR_MUTED;
+  lcd_text_colors[10] = lcd_status_data.control_task_healthy
+                            ? LCD_COLOR_PASS : LCD_COLOR_FAIL;
   lcd_text_colors[11] = LCD_COLOR_MUTED;
+  lcd_text_colors[12] = lcd_status_data.diagnostics_task_healthy
+                            ? LCD_COLOR_PASS : LCD_COLOR_FAIL;
   lcd_text_colors[13] = LCD_COLOR_MUTED;
+  lcd_text_colors[14] = lcd_status_data.display_task_healthy
+                            ? LCD_COLOR_PASS : LCD_COLOR_FAIL;
   lcd_text_colors[15] = LCD_COLOR_MUTED;
+  lcd_text_colors[18] = LCD_COLOR_MUTED;
+  lcd_text_colors[20] = LCD_COLOR_MUTED;
 }
 
 static void LcdPreparePage(BspLcdPage page)
@@ -637,12 +712,12 @@ static void LcdPreparePage(BspLcdPage page)
       LcdPrepareOverviewPage();
       break;
   }
-  (void)snprintf(lcd_text_lines[15], LCD_TEXT_LINE_LENGTH, "FW V%s B%s",
+  (void)snprintf(lcd_text_lines[23], LCD_TEXT_LINE_LENGTH, "FW V%s B%s",
                  CHASSIS_FIRMWARE_VERSION, CHASSIS_FIRMWARE_BUILD_STRING);
-  lcd_text_x[15] = 12U;
-  lcd_text_y[15] = 220U;
-  lcd_text_scale[15] = 1U;
-  lcd_text_colors[15] = LCD_COLOR_MUTED;
+  lcd_text_x[23] = 12U;
+  lcd_text_y[23] = 220U;
+  lcd_text_scale[23] = 1U;
+  lcd_text_colors[23] = LCD_COLOR_WEAK;
 }
 
 static uint16_t LcdBackgroundColor(uint16_t row, uint16_t column)
@@ -677,7 +752,7 @@ static uint16_t LcdBatteryColor(void)
   if (lcd_status_data.battery_percent <= 40U) {
     return LCD_COLOR_READY;
   }
-  return LCD_COLOR_PASS;
+  return LCD_COLOR_ACCENT;
 }
 
 static void LcdDrawBatteryBarOnRow(uint16_t row)

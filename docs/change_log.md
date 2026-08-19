@@ -2,6 +2,26 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-19 - LCD 暗色工业仪表 UI 重构（0.14.0 build1）
+
+### 变更内容
+
+- 重排 Overview、Motor、Sensors、System 四页的卡片和信息层级，统一公共 Header/Footer、页码指示和 32 px 透明 Logo。
+- 普通数据使用白色，青色用于导航和电量重点，绿/黄/红只表达健康、停止/不可用和故障；弱化固件版本和 `FAULTS 0`。
+- 同步 `tools/lcd/render_ui_preview.py` 的坐标、RGB565 颜色、字模和 Logo 缩放，重新生成五张 320x240 预览图。
+
+### 设计决定
+
+- 保留现有 5x7 字模、逐行 SPI DMA、PB8 单键切页和统一 `SystemStatusSnapshot` 数据源，不新增字体库、GUI 框架或硬件依赖。
+- `0.14.0` 保留独立的目标板视觉验收；串口驱动状态不能替代 LCD 人工目视确认。
+
+### 验证结果
+
+- Debug `text=111592 data=120 bss=54736`，Release `text=99500 data=120 bss=54728`，CMake/Ninja 构建通过。
+- Release payload `99628` 字节，CRC32 `0x5BEC2E71`；OTA 包 `99692` 字节；`git diff --check` 和 LCD 预览生成通过。
+- UART OTA 已完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`；
+  四任务运行、故障为零、控制停止、左右 PWM 为零、LCD 驱动 READY。LCD 新视觉仍为 `NOT VERIFIED`。
+
 ## 2026-08-19 - LCD UI 信息层级与布局优化（0.13.0 build1）
 
 ### 变更内容
@@ -510,12 +530,14 @@
 | 当前板上 | `0.11.1 build1` | ICM45686/FIFO/静止 Kalman 上板，UART OTA confirmed |
 | 当前板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
 | 当前板上 | `0.13.0 build1` | LCD UI 信息层级与布局优化，UART OTA confirmed；视觉验收待完成 |
+| 当前板上 | `0.14.0 build1` | 暗色工业仪表 UI 已 UART OTA confirmed；视觉待确认 |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
-- `0.13.0 build1` 的页眉指示、标签层级、配色、文本排版和四页切换人工目视确认。
+- `0.13.0 build1` 的页眉指示、标签层级、配色、文本排版和四页切换人工目视确认仍保留为历史待办。
+- `0.14.0 build1` 的普通复位回归和四页视觉人工确认。
 - ICM45686 正负轴向动作、动态姿态、静止回归和长期漂移；模块固定安装前保持 `DEFERRED`。
 - `0.12.0 build1` 的编码器/ADC/IMU 本地时间字段、轮式里程计方向和 LCD/UART 动态输出上板复核，
   以及落地直线距离、原地旋转角度和轮径/轮距校准。

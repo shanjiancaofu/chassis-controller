@@ -186,11 +186,12 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 | 当前工作树 | 控制安全收尾与低速 PID 响应 | `0.10.0 build1` | 加减速限制、编码器/欠压保护已构建并 OTA；低速短时响应已实测 |
 | 当前板上 | ICM45686/Kalman 静态闭环 | `0.11.1 build1` | UART OTA confirmed；FIFO、timestamp、静止零偏和 Kalman 已上板 |
 | 上一板上 | 统一采样时间戳与轮式里程计 | `0.12.0 build1` | UART OTA confirmed；里程计代码已运行，几何和动态输出尚未验证 |
-| 当前板上 | LCD UI 信息层级与布局优化 | `0.13.0 build1` | UART OTA confirmed；页眉页码指示、分组标签和配色仍待人工目视确认 |
+| 上一板上 | LCD UI 信息层级与布局优化 | `0.13.0 build1` | UART OTA confirmed；旧版视觉验收记录保留 |
+| 当前板上 | LCD 暗色工业仪表 UI 重构 | `0.14.0 build1` | UART OTA confirmed；四任务和零 PWM 已复核，视觉待人工确认 |
 
 ### 阶段 3：LCD 硬件总览
 
-状态：`IMPLEMENTED / HARDWARE PASS`（四页切换、文字、Logo 和电量显示已人工确认）
+状态：`IMPLEMENTED / PARTIALLY VERIFIED`（0.14.0 已上板且 LCD 驱动 READY，新视觉待人工确认）
 
 - 已保留原始 taifei 全屏资源，并生成带透明掩码的 40x40 RGB565 小 Logo；独立封面页已移除，
   Logo 固定显示在功能页右上角，释放一个页面位置。
@@ -209,8 +210,9 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 - 0.7.1 将蓝色标题/分隔横带改为中性深灰背景和内容面板，移除贯穿全屏的青色线；标题仅
   保留短青色下划线，页脚和电机双栏分隔使用低对比灰色。
 - PB8 单键循环、透明 Logo、大号电量显示和四页文字布局已由用户确认正常。
-- `0.13.0` 在既有四页基础上增加页眉页码指示、上下内容区层次、暖色电量强调和更完整的
-  `CONTROL / POSE / MOTION / HEALTH` 标签；本轮不新增页面、不改变数据来源或按键逻辑。
+- `0.14.0` 将四页统一为暗色工业仪表规范：32 px Logo、公共 Header/Footer、卡片层级、白色普通数据、
+  青色导航/电量重点，以及只用于健康/警告/故障语义的绿黄红状态色；预览脚本与 BSP 坐标和 RGB565 保持同步。
+  代码、Debug/Release 构建、OTA 打包和 UART OTA confirmed 已完成，目标板视觉验收后置。
 
 ### 阶段 4：ICM45686 与估计器
 

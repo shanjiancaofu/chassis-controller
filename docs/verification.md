@@ -28,6 +28,7 @@
 | LCD SPI DMA | `HARDWARE PASS` | 封面和动态状态页显示正常 |
 | LCD 四页状态显示 | `HARDWARE PASS` | 0.12.0 build1；四页切换、文字、Logo 和电量显示已由用户确认正常 |
 | LCD UI 0.13.0 | `NOT VERIFIED` | 已随 0.13.0 OTA 上板并由串口确认 `lcd=DRAWING`；页眉页码指示、分组标签、内容区层次和配色仍待人工目视确认 |
+| LCD UI 0.14.0 | `NOT VERIFIED` | 已通过 UART OTA 上板且驱动报告 `READY`；暗色工业仪表四页尚未人工目视确认 |
 | KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；PB8 四页循环已人工确认正常，PD3/PD4 尚未接线 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | ICM45686 SPI/FIFO | `HARDWARE PASS` | 0.11.1；WHO_AM_I=0xE9，普通复位后 224 帧零解析/时间戳错误，100 Hz 周期 10 ms |
@@ -47,10 +48,48 @@
 | 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-19，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1、0.8.0、0.11.1、0.12.0 和 0.13.0 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-19，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1、0.8.0、0.11.1、0.12.0、0.13.0 和 0.14.0 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
+
+### 0.14.0 LCD UI 烧录前构建（2026-08-19）
+
+暗色工业仪表四页、32 px Logo、状态色语义和弱化 Footer 已在 LCD BSP 实现；预览脚本使用同一
+320x240 坐标、5x7 字模、RGB565 常量和 Logo 数据重新生成五张 PNG。执行 CMake Debug/Release
+配置与构建、从最终 Release ELF 重新生成 BIN、OTA 打包和 `git diff --check`：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 111592 | 120 | 54736 | `BUILD PASS` |
+| Release | 99500 | 120 | 54728 | `BUILD PASS` |
+
+```text
+application.bin=99628 bytes
+payload_crc32=0x5BEC2E71
+bin_sha256=a5fedd2be79befb12029050f8c33c85cda7590bb4558ca3b151f732a8e40df02
+app-v0.14.0-b1.ota=99692 bytes
+ota_sha256=b94b573309504fc1bd0c6304a0aaa68e22886cc116aa20cdd5c335b4c74daaaa
+```
+
+随后已执行 UART OTA，结果见下节；本节构建和产物校验值保持不变。
+
+### 0.14.0 build1 UART OTA 与启动复核（2026-08-19）
+
+使用 `/dev/ttyUSB0`、115200 8N1 发送 `build/arm-release/app-v0.14.0-b1.ota`。发送工具完成
+99692 字节传输并收到 `STAGED`，Bootloader 和 Application 依次报告：
+
+```text
+BOOT: INSTALL VERIFIED
+BOOT: TRIAL COMMITTED
+BOOT: TRIAL VERIFIED
+fw=0.14.0 build=1 ota_confirmation=CONFIRMED
+```
+
+健康窗口后执行 `status`，四任务均为 `RUNNING`，`fault=0`、`control=STOPPED`，左右目标、
+速度和 PWM 均为零；LCD 为 `READY`，IMU 为 `READY`、`WHO_AM_I=0xE9`，FIFO 和 timestamp
+错误均为零。该结果证明 OTA 安装、确认和静态安全状态，未执行电机命令，也不构成 0.14.0
+LCD 配色、文字无重叠或四页切换的人工视觉通过。
 
 Application Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
 2026-07-28 的最近结果：
