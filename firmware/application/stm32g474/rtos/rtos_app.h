@@ -47,7 +47,14 @@ typedef struct {
   bool critical_tasks_healthy;
 } RtosAppRuntimeSnapshot;
 
-bool RtosApp_CreateTasks(void);
+typedef struct {
+  void (*run_service_cycle)(void);
+  void (*run_control_cycle)(uint32_t notification_count);
+  void (*run_diagnostics_cycle)(void);
+  void (*run_display_cycle)(void);
+} RtosAppCallbacks;
+
+bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks);
 void RtosApp_ServiceTaskMain(void *argument);
 void RtosApp_DiagnosticsTaskMain(void *argument);
 void RtosApp_DisplayTaskMain(void *argument);

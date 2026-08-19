@@ -2,6 +2,34 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-19 - LCD 与运行边界收敛（0.15.0 build1）
+
+### 变更内容
+
+- 将 LCD 控制器/SPI DMA 留在 `bsp/lcd`，把主题、字模、Logo、DTO、四页布局和逐行渲染移到
+  `ui/lcd`；Motor/System 分区断带和 Pose 极值文本溢出已修复。
+- 预览工具改为主机编译真实 `lcd_ui.c`，Python 只负责 RGB565 转换和 2 倍最近邻 PNG 输出。
+- 新增 `app/system_status_collector`，统一映射 BSP/RTOS 状态到诊断 DTO；公共
+  `SystemStatusSnapshot` 不再暴露按钮、IMU、SR501 和 ADC 的 BSP 快照类型。
+- RTOS 使用 Core 注入的四个 Application 周期回调，移除 `rtos -> app` 反向包含；
+  `wheel_controller` 使用可测试的电机端口，不再直接包含电机 BSP。
+- NMI、HardFault、MemManage、BusFault 和 UsageFault 在停留前调用有界电机紧急停机入口；
+  PB8 显示键的 ISR/消抖下沉到 Button BSP；正式 Application target 不再编译宿主单元测试源码。
+
+### 设计决定
+
+- 已部署的 `0.14.0 build1` 不被同名新源码覆盖；本轮功能和边界变化提升为 `0.15.0 build1`。
+- 保留现有 320x240、5x7 字模、RGB565、Logo、逐行 SPI DMA、四任务和线协议，不增加 GUI 框架
+  或硬件依赖。
+- `chassis_app.c` 只按真实装配/采集职责拆分，不按文件行数机械拆文件。
+
+### 验证结果
+
+- Debug `text=112988 data=120 bss=54544`，Release `text=100712 data=120 bss=54536`。
+- 9 个 Application C 主机测试、13 个 OTA Python 测试和 5 张真实 C LCD 预览生成通过。
+- Release payload `100840` 字节，CRC32 `0x72FEABE4`；OTA 包 `100904` 字节。当前包尚未烧录，
+  不记录 0.15.0 硬件通过。
+
 ## 2026-08-19 - LCD 暗色工业仪表 UI 重构（0.14.0 build1）
 
 ### 变更内容
@@ -13,14 +41,14 @@
 ### 设计决定
 
 - 保留现有 5x7 字模、逐行 SPI DMA、PB8 单键切页和统一 `SystemStatusSnapshot` 数据源，不新增字体库、GUI 框架或硬件依赖。
-- `0.14.0` 保留独立的目标板视觉验收；串口驱动状态不能替代 LCD 人工目视确认。
+- `0.14.0` 保留独立的目标板视觉验收；串口驱动状态与用户人工目视结果分别记录。
 
 ### 验证结果
 
 - Debug `text=111592 data=120 bss=54736`，Release `text=99500 data=120 bss=54728`，CMake/Ninja 构建通过。
 - Release payload `99628` 字节，CRC32 `0x5BEC2E71`；OTA 包 `99692` 字节；`git diff --check` 和 LCD 预览生成通过。
 - UART OTA 已完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`；
-  四任务运行、故障为零、控制停止、左右 PWM 为零、LCD 驱动 READY。LCD 新视觉仍为 `NOT VERIFIED`。
+  四任务运行、故障为零、控制停止、左右 PWM 为零、LCD 驱动 READY。用户已人工确认 LCD 新视觉正常，记录为 `HARDWARE PASS`。
 
 ## 2026-08-19 - LCD UI 信息层级与布局优化（0.13.0 build1）
 
@@ -530,14 +558,15 @@
 | 当前板上 | `0.11.1 build1` | ICM45686/FIFO/静止 Kalman 上板，UART OTA confirmed |
 | 当前板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
 | 当前板上 | `0.13.0 build1` | LCD UI 信息层级与布局优化，UART OTA confirmed；视觉验收待完成 |
-| 当前板上 | `0.14.0 build1` | 暗色工业仪表 UI 已 UART OTA confirmed；视觉待确认 |
+| 当前板上 | `0.14.0 build1` | 暗色工业仪表 UI 已 UART OTA confirmed；视觉人工确认正常 |
+| 当前工作树 | `0.15.0 build1` | LCD/状态/RTOS/轮控边界收敛；软件验证通过，尚未烧录 |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
 - `0.13.0 build1` 的页眉指示、标签层级、配色、文本排版和四页切换人工目视确认仍保留为历史待办。
-- `0.14.0 build1` 的普通复位回归和四页视觉人工确认。
+- `0.14.0 build1` 的普通复位回归。
 - ICM45686 正负轴向动作、动态姿态、静止回归和长期漂移；模块固定安装前保持 `DEFERRED`。
 - `0.12.0 build1` 的编码器/ADC/IMU 本地时间字段、轮式里程计方向和 LCD/UART 动态输出上板复核，
   以及落地直线距离、原地旋转角度和轮径/轮距校准。

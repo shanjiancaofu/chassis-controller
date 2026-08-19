@@ -17,8 +17,10 @@ typedef struct {
 
 void BspButton_Init(void);
 void BspButton_OnInterrupt(uint16_t gpio_pin);
+void BspButton_OnDisplayKeyInterrupt(void);
 void BspButton_Run(uint32_t now_ms);
 bool BspButton_TakePressed(BspButtonId button);
+bool BspButton_TakeDisplayKeyPressed(void);
 void BspButton_GetSnapshot(BspButtonSnapshot *snapshot);
 
 #endif

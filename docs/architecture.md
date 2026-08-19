@@ -78,6 +78,12 @@ chassis-controller/
 │  │     │  ├─ status_display/
 │  │     │  └─ parameter_storage/    # 参数持久化落地时创建
 │  │     │
+│  │     ├─ ui/                      # 产品界面和像素渲染
+│  │     │  └─ lcd/
+│  │     │     ├─ lcd_ui.c
+│  │     │     ├─ lcd_ui.h
+│  │     │     └─ lcd_ui_layout.h
+│  │     │
 │  │     ├─ modules/                 # 底盘产品业务模块
 │  │     │  ├─ chassis/
 │  │     │  │  ├─ command_manager.c
@@ -120,7 +126,9 @@ chassis-controller/
 │  │     │
 │  │     ├─ app/                     # 初始化、组装和调度
 │  │     │  ├─ chassis_app.c
-│  │     │  └─ chassis_app.h
+│  │     │  ├─ chassis_app.h
+│  │     │  ├─ system_status_collector.c
+│  │     │  └─ system_status_collector.h
 │  │     │
 │  │     ├─ config/                  # Application 软件配置和版本信息
 │  │     │  ├─ app_config.h
@@ -191,7 +199,8 @@ chassis-controller/
 
 ### `app`
 
-负责初始化顺序、模块装配和跨模块流程。`chassis_app.c` 不实现寄存器驱动或通用算法。
+负责初始化顺序、模块装配和跨模块流程。`system_status_collector` 集中把 BSP、RTOS 和模块
+快照映射为诊断域 DTO；`chassis_app.c` 不实现寄存器驱动或通用算法。
 
 ### `board`
 
@@ -200,7 +209,8 @@ chassis-controller/
 ### `bsp`
 
 封装一种硬件如何操作，包括电机、编码器、FDCAN、UART、LCD、QSPI、ADC 和复位辅助。
-BSP 不决定是否允许车辆运动，也不持有业务状态机。
+BSP 不决定是否允许车辆运动，也不持有业务状态机。LCD BSP 只负责控制器初始化、帧窗口、
+SPI DMA、片选和背光，不持有页面、字体或产品状态 DTO。
 
 ### `components`
 
@@ -220,6 +230,12 @@ UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提�
 
 提供 Console、诊断文本、遥测和 LCD 状态页。这些能力不得进入实时控制任务。
 
+### `ui`
+
+保存产品界面状态语义和渲染实现。当前 `ui/lcd` 持有四页 DTO、主题颜色、5x7 字模、Logo、
+布局坐标和逐行 RGB565 像素生成，通过 LCD BSP 发送帧；主机预览直接编译同一渲染器，不维护
+第二份页面坐标或颜色实现。
+
 ### `modules`
 
 按 `chassis`、`safety`、`parameters`、`diagnostics` 业务域聚合相关状态和规则。
@@ -227,12 +243,13 @@ UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提�
 BSP/组件能力，姿态结果进入诊断快照；需要上层业务消费时再建立独立业务域。
 
 `modules/diagnostics/system_status` 保存 Application task 组装的统一状态快照。它不读取
-硬件或 FreeRTOS 全局对象；`app` 负责更新，Console/LCD/后续 UART 协议只读取快照，避免
-各显示和输出路径重复采集同一状态。
+硬件或 FreeRTOS 全局对象，也不在公共头中暴露 BSP 快照类型；`app` 负责映射和更新，
+Console/LCD/后续 UART 协议只读取诊断 DTO，避免各输出路径重复采集同一状态。
 
 ### `rtos`
 
-只负责任务创建、优先级、通知和任务健康。业务逻辑仍由 `app` 和 `modules` 提供。
+只负责任务创建、优先级、通知和任务健康。CubeMX `USER CODE` 入口注入四个 Application 周期
+回调，RTOS 层不反向包含 `app`；业务逻辑仍由 `app` 和 `modules` 提供。
 
 ### `config`
 
@@ -263,7 +280,7 @@ Jetson 和主机工具，不属于某个固件工程。LCD 图片素材跟随使
 
 - CubeMX 已使用 `Drivers/` 和 `Middlewares/`，自定义层不再使用同名小写目录。
 - 自定义代码统一使用 `board/`、`bsp/`、`components/`、`communication/`、
-  `infrastructure/`、`modules/`、`rtos/`、`app/` 和 `config/`。
+  `infrastructure/`、`ui/`、`modules/`、`rtos/`、`app/` 和 `config/`。
 - 文件名使用 `snake_case`，目录按业务或设备命名。
 - FreeRTOS 入口使用 `RtosApp_<TaskName>TaskMain()`；任务每次调度调用的 Application 周期函数
   使用 `ChassisApp_Run<TaskName>Cycle()`，不使用含义不清的统一 `Run()`。
@@ -275,9 +292,15 @@ Jetson 和主机工具，不属于某个固件工程。LCD 图片素材跟随使
 ## 依赖方向
 
 ```text
-app / rtos
-  -> modules / infrastructure / communication
-  -> components / bsp
+CubeMX USER CODE composition
+  -> app + rtos callbacks
+app
+  -> modules / infrastructure / communication / ui
+ui / infrastructure / communication
+  -> modules / components / bsp
+modules
+  -> components / bsp / abstract hardware ports
+bsp
   -> board
   -> CubeMX HAL
 ```
@@ -287,6 +310,7 @@ app / rtos
 - `components` 不依赖 HAL、业务模块或 Console。
 - `bsp` 不依赖 `modules`。
 - `modules` 不直接操作 CubeMX 全局句柄。
+- `rtos` 不包含 `app`；由 composition root 注入周期回调。
 - `infrastructure` 可以读取模块快照，但不能决定电机安全状态。
 - Bootloader 与 Application 只共享固定 OTA 数据格式，不共享业务代码。
 

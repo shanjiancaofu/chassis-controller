@@ -133,7 +133,13 @@ void MX_FREERTOS_Init(void) {
                           (osPriority_t)(configMAX_PRIORITIES - 4U)) != osOK) {
     Error_Handler();
   }
-  if (!RtosApp_CreateTasks()) {
+  const RtosAppCallbacks app_callbacks = {
+    .run_service_cycle = ChassisApp_RunServiceCycle,
+    .run_control_cycle = ChassisApp_RunControlCycle,
+    .run_diagnostics_cycle = ChassisApp_RunDiagnosticsCycle,
+    .run_display_cycle = ChassisApp_RunDisplayCycle,
+  };
+  if (!RtosApp_CreateTasks(&app_callbacks)) {
     Error_Handler();
   }
   /* USER CODE END RTOS_THREADS */

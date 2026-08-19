@@ -58,6 +58,7 @@ set(APP_SOURCES
   Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c
   Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c
   app/chassis_app.c
+  app/system_status_collector.c
   bsp/button/bsp_button.c
   bsp/encoder/bsp_encoder.c
   bsp/fdcan/fdcan_bsp.c
@@ -69,6 +70,7 @@ set(APP_SOURCES
   bsp/reset/bsp_reset.c
   bsp/sr501/bsp_sr501.c
   bsp/uart/uart_bsp.c
+  ui/lcd/lcd_ui.c
   communication/can_transport/can_transport.c
   communication/ota_transport/ota_can_transport.c
   communication/ota_transport/ota_confirmation.c
@@ -98,14 +100,7 @@ set(APP_SOURCES
   rtos/rtos_app.c
   tests/target/iwdg_target_test.c
   tests/target/motor_target_test.c
-  tests/target/qspi_target_test.c
-  tests/unit/test_command_manager.c
-  tests/unit/test_icm45686.c
-  tests/unit/test_imu_fusion.c
-  tests/unit/test_odometry.c
-  tests/unit/test_ota_metadata.c
-  tests/unit/test_parameter_record.c
-  tests/unit/test_uart_protocol.c)
+  tests/target/qspi_target_test.c)
 list(TRANSFORM APP_SOURCES PREPEND "${APP_ROOT}/")
 
 add_executable(application ${APP_SOURCES})

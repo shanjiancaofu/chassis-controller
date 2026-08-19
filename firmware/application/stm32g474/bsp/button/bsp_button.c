@@ -18,12 +18,20 @@ static ButtonState buttons[BOARD_BUTTON_COUNT] = {
     [BOARD_BUTTON_2] = {BUTTON_2_GPIO_Port, BUTTON_2_Pin, false, 0U},
 };
 static volatile uint32_t pending_interrupts;
+static volatile bool display_key_interrupt_pending;
+static bool display_key_debounce_pending;
+static bool display_key_pressed_event;
+static uint32_t display_key_debounce_started_ms;
 static uint32_t pressed_events;
 static uint32_t pressed_counts[BOARD_BUTTON_COUNT];
 
 void BspButton_Init(void)
 {
   pending_interrupts = 0U;
+  display_key_interrupt_pending = false;
+  display_key_debounce_pending = false;
+  display_key_pressed_event = false;
+  display_key_debounce_started_ms = 0U;
   pressed_events = 0U;
   for (uint32_t index = 0U; index < BOARD_BUTTON_COUNT; ++index) {
     buttons[index].debounce_pending = false;
@@ -41,6 +49,11 @@ void BspButton_OnInterrupt(uint16_t gpio_pin)
     (void)__atomic_fetch_or(&pending_interrupts, 1UL << BOARD_BUTTON_2,
                             __ATOMIC_RELAXED);
   }
+}
+
+void BspButton_OnDisplayKeyInterrupt(void)
+{
+  __atomic_store_n(&display_key_interrupt_pending, true, __ATOMIC_RELEASE);
 }
 
 void BspButton_Run(uint32_t now_ms)
@@ -65,6 +78,18 @@ void BspButton_Run(uint32_t now_ms)
       }
     }
   }
+  if (__atomic_exchange_n(&display_key_interrupt_pending, false,
+                          __ATOMIC_ACQUIRE)) {
+    display_key_debounce_pending = true;
+    display_key_debounce_started_ms = now_ms;
+  }
+  if (display_key_debounce_pending &&
+      now_ms - display_key_debounce_started_ms >= BUTTON_DEBOUNCE_MS) {
+    display_key_debounce_pending = false;
+    if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET) {
+      display_key_pressed_event = true;
+    }
+  }
 }
 
 bool BspButton_TakePressed(BspButtonId button)
@@ -79,6 +104,15 @@ bool BspButton_TakePressed(BspButtonId button)
     return false;
   }
   pressed_events &= ~mask;
+  return true;
+}
+
+bool BspButton_TakeDisplayKeyPressed(void)
+{
+  if (!display_key_pressed_event) {
+    return false;
+  }
+  display_key_pressed_event = false;
   return true;
 }
 

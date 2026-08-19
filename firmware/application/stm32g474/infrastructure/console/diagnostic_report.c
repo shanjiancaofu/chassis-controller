@@ -3,8 +3,6 @@
 #include <limits.h>
 #include <stdio.h>
 
-#include "bsp/imu/bsp_icm45686.h"
-#include "bsp/sr501/bsp_sr501.h"
 #include "bsp/reset/bsp_reset.h"
 #include "config/build_info.h"
 #include "config/storage_layout.h"
@@ -12,7 +10,6 @@
 #include "infrastructure/telemetry/telemetry.h"
 #include "infrastructure/uart_protocol/uart_protocol.h"
 #include "modules/diagnostics/system_status.h"
-#include "rtos/rtos_app.h"
 #include "tests/target/qspi_target_test.h"
 
 #define SELF_TEST_REPORT_DELAY_MS 100U
@@ -31,12 +28,12 @@ static bool WriteSelfTestReport(uint32_t now_ms);
 static bool WriteQspiTestReport(uint32_t now_ms);
 static void FormatEncoderCount(char *buffer, size_t capacity, int64_t value);
 static int32_t FixedFromFloat(float value, float scale);
-static const char *TaskStateText(uint32_t state);
+static const char *TaskStateText(SystemStatusTaskState state);
 static const char *ResetCauseText(uint32_t flags);
 static const char *ControlStateText(ChassisControlState state);
 static const char *CanStateText(SystemStatusCanState state);
 static const char *LcdStateText(SystemStatusLcdState state);
-static const char *ImuStateText(const BspIcm45686Snapshot *snapshot);
+static const char *ImuStateText(const SystemStatusImuSnapshot *snapshot);
 static const char *OtaConfirmationText(uint32_t state);
 static const char *TelemetryModeText(uint32_t mode);
 
@@ -227,16 +224,17 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       status.imu.kalman_valid ? 1U : 0U,
       (long)(status.imu.kalman_roll_rad * 1000.0f),
       (long)(status.imu.kalman_pitch_rad * 1000.0f),
-      status.sr501.status == BSP_SR501_READY ? "READY" : "WARMING_UP",
+      status.sr501.status == SYSTEM_STATUS_SR501_READY ? "READY"
+                                                       : "WARMING_UP",
       status.sr501.raw_high ? 1U : 0U,
       status.sr501.motion_detected ? 1U : 0U,
       (unsigned long)status.sr501.event_count,
       (unsigned long)status.sr501.last_motion_ms,
       (unsigned long)status.sr501.warmup_remaining_ms,
-      status.buttons.pressed[BOARD_BUTTON_1] ? 1U : 0U,
-      (unsigned long)status.buttons.pressed_count[BOARD_BUTTON_1],
-      status.buttons.pressed[BOARD_BUTTON_2] ? 1U : 0U,
-      (unsigned long)status.buttons.pressed_count[BOARD_BUTTON_2]);
+      status.buttons.pressed[SYSTEM_STATUS_BUTTON_1] ? 1U : 0U,
+      (unsigned long)status.buttons.pressed_count[SYSTEM_STATUS_BUTTON_1],
+      status.buttons.pressed[SYSTEM_STATUS_BUTTON_2] ? 1U : 0U,
+      (unsigned long)status.buttons.pressed_count[SYSTEM_STATUS_BUTTON_2]);
 
   (void)snprintf(
       communication_fields, sizeof(communication_fields),
@@ -315,14 +313,14 @@ static int32_t FixedFromFloat(float value, float scale)
   return (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
 }
 
-static const char *TaskStateText(uint32_t state)
+static const char *TaskStateText(SystemStatusTaskState state)
 {
-  switch ((RtosAppTaskState)state) {
-    case RTOS_APP_TASK_RUNNING:
+  switch (state) {
+    case SYSTEM_STATUS_TASK_RUNNING:
       return "RUNNING";
-    case RTOS_APP_TASK_TIMEOUT:
+    case SYSTEM_STATUS_TASK_TIMEOUT:
       return "TIMEOUT";
-    case RTOS_APP_TASK_NOT_STARTED:
+    case SYSTEM_STATUS_TASK_NOT_STARTED:
     default:
       return "NOT_STARTED";
   }
@@ -401,19 +399,19 @@ static const char *LcdStateText(SystemStatusLcdState state)
   }
 }
 
-static const char *ImuStateText(const BspIcm45686Snapshot *snapshot)
+static const char *ImuStateText(const SystemStatusImuSnapshot *snapshot)
 {
   if (snapshot == NULL) {
     return "UNINITIALIZED";
   }
   switch (snapshot->status) {
-    case BSP_ICM45686_NOT_FOUND:
+    case SYSTEM_STATUS_IMU_NOT_FOUND:
       return "NOT_FOUND";
-    case BSP_ICM45686_READY:
+    case SYSTEM_STATUS_IMU_READY:
       return snapshot->orientation_valid ? "READY" : "STARTING";
-    case BSP_ICM45686_DEGRADED:
+    case SYSTEM_STATUS_IMU_DEGRADED:
       return "DEGRADED";
-    case BSP_ICM45686_UNINITIALIZED:
+    case SYSTEM_STATUS_IMU_UNINITIALIZED:
     default:
       return "UNINITIALIZED";
   }

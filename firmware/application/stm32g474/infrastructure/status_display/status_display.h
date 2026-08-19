@@ -6,6 +6,5 @@
 
 bool StatusDisplay_Init(void);
 void StatusDisplay_Run(uint32_t now_ms);
-void StatusDisplay_OnKeyInterrupt(void);
 
 #endif

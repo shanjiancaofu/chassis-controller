@@ -1,17 +1,14 @@
 #include "infrastructure/status_display/status_display.h"
 
-#include "bsp/lcd/bsp_lcd.h"
-#include "bsp/reset/bsp_reset.h"
 #include "board/board_config.h"
-#include "main.h"
+#include "bsp/button/bsp_button.h"
+#include "bsp/reset/bsp_reset.h"
 #include "modules/diagnostics/system_status.h"
+#include "ui/lcd/lcd_ui.h"
 
-#define KEY_DEBOUNCE_MS 20U
 #define KEY_LOCKOUT_MS 100U
 #define STATUS_DISPLAY_REFRESH_MS 1000U
 
-static volatile bool key_edge_pending;
-static volatile uint32_t key_edge_ms;
 static uint32_t last_key_press_ms;
 static uint32_t last_refresh_ms;
 
@@ -56,90 +53,90 @@ static int32_t MilliFromFloat(float value)
   return (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
 }
 
-static BspLcdControlState MapControlState(ChassisControlState state)
+static LcdUiControlState MapControlState(ChassisControlState state)
 {
   switch (state) {
     case CHASSIS_CONTROL_RUNNING:
-      return BSP_LCD_CONTROL_RUNNING;
+      return LCD_UI_CONTROL_RUNNING;
     case CHASSIS_CONTROL_COMMAND_TIMEOUT:
-      return BSP_LCD_CONTROL_TIMEOUT;
+      return LCD_UI_CONTROL_TIMEOUT;
     case CHASSIS_CONTROL_EMERGENCY_STOP:
-      return BSP_LCD_CONTROL_EMERGENCY_STOP;
+      return LCD_UI_CONTROL_EMERGENCY_STOP;
     case CHASSIS_CONTROL_INTERNAL_FAULT:
-      return BSP_LCD_CONTROL_FAULT;
+      return LCD_UI_CONTROL_FAULT;
     case CHASSIS_CONTROL_OPEN_LOOP_TEST:
-      return BSP_LCD_CONTROL_TEST;
+      return LCD_UI_CONTROL_TEST;
     default:
-      return BSP_LCD_CONTROL_STOPPED;
+      return LCD_UI_CONTROL_STOPPED;
   }
 }
 
-static BspLcdSensorState MapImuState(BspIcm45686Status state)
+static LcdUiSensorState MapImuState(SystemStatusImuState state)
 {
   switch (state) {
-    case BSP_ICM45686_READY:
-      return BSP_LCD_SENSOR_READY;
-    case BSP_ICM45686_DEGRADED:
-      return BSP_LCD_SENSOR_DEGRADED;
-    case BSP_ICM45686_NOT_FOUND:
-      return BSP_LCD_SENSOR_FAILED;
+    case SYSTEM_STATUS_IMU_READY:
+      return LCD_UI_SENSOR_READY;
+    case SYSTEM_STATUS_IMU_DEGRADED:
+      return LCD_UI_SENSOR_DEGRADED;
+    case SYSTEM_STATUS_IMU_NOT_FOUND:
+      return LCD_UI_SENSOR_FAILED;
     default:
-      return BSP_LCD_SENSOR_DISABLED;
+      return LCD_UI_SENSOR_DISABLED;
   }
 }
 
-static BspLcdSensorState MapSr501State(BspSr501Status state)
+static LcdUiSensorState MapSr501State(SystemStatusSr501State state)
 {
-  return state == BSP_SR501_READY ? BSP_LCD_SENSOR_READY
-                                  : BSP_LCD_SENSOR_WARMING;
+  return state == SYSTEM_STATUS_SR501_READY ? LCD_UI_SENSOR_READY
+                                             : LCD_UI_SENSOR_WARMING;
 }
 
-static BspLcdResetCause MapResetCause(uint32_t flags)
+static LcdUiResetCause MapResetCause(uint32_t flags)
 {
   if ((flags & BSP_RESET_CAUSE_IWDG) != 0U) {
-    return BSP_LCD_RESET_IWDG;
+    return LCD_UI_RESET_IWDG;
   }
   if ((flags & BSP_RESET_CAUSE_WWDG) != 0U) {
-    return BSP_LCD_RESET_WWDG;
+    return LCD_UI_RESET_WWDG;
   }
   if ((flags & BSP_RESET_CAUSE_SOFTWARE) != 0U) {
-    return BSP_LCD_RESET_SOFTWARE;
+    return LCD_UI_RESET_SOFTWARE;
   }
   if ((flags & BSP_RESET_CAUSE_PIN) != 0U) {
-    return BSP_LCD_RESET_PIN;
+    return LCD_UI_RESET_PIN;
   }
   if ((flags & BSP_RESET_CAUSE_BOR) != 0U) {
-    return BSP_LCD_RESET_BROWNOUT;
+    return LCD_UI_RESET_BROWNOUT;
   }
   if ((flags & BSP_RESET_CAUSE_LOW_POWER) != 0U) {
-    return BSP_LCD_RESET_LOW_POWER;
+    return LCD_UI_RESET_LOW_POWER;
   }
   if ((flags & BSP_RESET_CAUSE_OPTION_BYTE) != 0U) {
-    return BSP_LCD_RESET_OPTION_BYTE;
+    return LCD_UI_RESET_OPTION_BYTE;
   }
-  return BSP_LCD_RESET_NONE;
+  return LCD_UI_RESET_NONE;
 }
 
 static void RefreshLcdData(void)
 {
   SystemStatusSnapshot system_status;
-  BspLcdStatusData lcd_data = {0};
+  LcdUiStatusData lcd_data = {0};
 
   SystemStatus_GetSnapshot(&system_status);
 
   lcd_data.control_state = MapControlState(system_status.control_state);
   lcd_data.can_state = system_status.can_state == SYSTEM_STATUS_CAN_PASSED
-                           ? BSP_LCD_VALUE_PASS
+                           ? LCD_UI_VALUE_PASS
                            : system_status.can_state == SYSTEM_STATUS_CAN_FAILED
-                                 ? BSP_LCD_VALUE_FAIL
-                                 : BSP_LCD_VALUE_READY;
+                                 ? LCD_UI_VALUE_FAIL
+                                 : LCD_UI_VALUE_READY;
   lcd_data.qspi_state = system_status.board_health.qspi_id_valid
-                            ? BSP_LCD_VALUE_PASS
-                            : BSP_LCD_VALUE_FAIL;
-  lcd_data.rtc_state = system_status.rtc_valid ? BSP_LCD_VALUE_PASS
-                                                : BSP_LCD_VALUE_FAIL;
-  lcd_data.supply_state = system_status.supply_valid ? BSP_LCD_VALUE_PASS
-                                                      : BSP_LCD_VALUE_FAIL;
+                            ? LCD_UI_VALUE_PASS
+                            : LCD_UI_VALUE_FAIL;
+  lcd_data.rtc_state = system_status.rtc_valid ? LCD_UI_VALUE_PASS
+                                                : LCD_UI_VALUE_FAIL;
+  lcd_data.supply_state = system_status.supply_valid ? LCD_UI_VALUE_PASS
+                                                      : LCD_UI_VALUE_FAIL;
   lcd_data.imu_state = MapImuState(system_status.imu.status);
   lcd_data.sr501_state = MapSr501State(system_status.sr501.status);
 
@@ -199,33 +196,30 @@ static void RefreshLcdData(void)
   lcd_data.display_stack_free_words =
       system_status.runtime.display_stack_high_water_words;
 
-  BspLcd_SetStatusData(&lcd_data);
+  LcdUi_SetStatusData(&lcd_data);
 }
 
-static BspLcdPage NextPage(BspLcdPage page)
+static LcdUiPage NextPage(LcdUiPage page)
 {
   const uint32_t next_page = (uint32_t)page + 1U;
 
-  return next_page >= BSP_LCD_PAGE_COUNT ? BSP_LCD_PAGE_OVERVIEW
-                                         : (BspLcdPage)next_page;
+  return next_page >= LCD_UI_PAGE_COUNT ? LCD_UI_PAGE_OVERVIEW
+                                         : (LcdUiPage)next_page;
 }
 
 bool StatusDisplay_Init(void)
 {
-  return BspLcd_Init();
+  return LcdUi_Init();
 }
 
 void StatusDisplay_Run(uint32_t now_ms)
 {
-  if (key_edge_pending && now_ms - key_edge_ms >= KEY_DEBOUNCE_MS) {
-    key_edge_pending = false;
-    if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET &&
-        now_ms - last_key_press_ms >= KEY_LOCKOUT_MS) {
-      last_key_press_ms = now_ms;
-      BspLcd_SetPage(NextPage(BspLcd_GetPage()));
-      last_refresh_ms = 0U;
-      BoardHealth_NotifyButtonPressed();
-    }
+  if (BspButton_TakeDisplayKeyPressed() &&
+      now_ms - last_key_press_ms >= KEY_LOCKOUT_MS) {
+    last_key_press_ms = now_ms;
+    LcdUi_SetPage(NextPage(LcdUi_GetPage()));
+    last_refresh_ms = 0U;
+    BoardHealth_NotifyButtonPressed();
   }
 
   if (last_refresh_ms == 0U ||
@@ -234,11 +228,5 @@ void StatusDisplay_Run(uint32_t now_ms)
     RefreshLcdData();
   }
 
-  BspLcd_Run();
-}
-
-void StatusDisplay_OnKeyInterrupt(void)
-{
-  key_edge_ms = HAL_GetTick();
-  key_edge_pending = true;
+  LcdUi_Run();
 }

@@ -1,4 +1,5 @@
 #include "app/chassis_app.h"
+#include "app/system_status_collector.h"
 
 #include <limits.h>
 #include <stdbool.h>
@@ -39,15 +40,17 @@
 #include "modules/parameters/parameter_manager.h"
 #include "modules/safety/fault_manager.h"
 #include "modules/safety/safety_manager.h"
-#include "rtos/rtos_app.h"
 #include "infrastructure/status_display/status_display.h"
-#include "rtc.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/motor_target_test.h"
 #include "tests/target/qspi_target_test.h"
 #include "task.h"
 
 #define OTA_UART_ARM_TIMEOUT_MS 30000U
+
+#if MOTOR_CONTROL_OUTPUT_LIMIT > BSP_MOTOR_COMPARE_MAX
+#error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
+#endif
 
 static uint32_t consecutive_control_overruns;
 static OtaUartArmGuard ota_uart_arm_guard;
@@ -58,6 +61,24 @@ static const OdometryConfig odometry_config = {
     .encoder_counts_per_revolution = MOTOR_ENCODER_COUNTS_PER_REVOLUTION,
     .wheel_diameter_m = CHASSIS_WHEEL_DIAMETER_M,
     .track_width_m = CHASSIS_TRACK_WIDTH_M,
+};
+
+static int16_t GetLeftMotorAppliedDuty(void)
+{
+  return BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT);
+}
+
+static int16_t GetRightMotorAppliedDuty(void)
+{
+  return BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT);
+}
+
+static const WheelControllerMotorPort wheel_controller_motor_port = {
+    .coast_all = BspMotor_CoastAll,
+    .emergency_stop = BspMotor_EmergencyStop,
+    .set_signed_duty_both = BspMotor_SetSignedDutyBoth,
+    .get_left_applied_duty = GetLeftMotorAppliedDuty,
+    .get_right_applied_duty = GetRightMotorAppliedDuty,
 };
 
 static void ProcessConsoleCommand(const ConsoleCommand *command,
@@ -172,7 +193,9 @@ void ChassisApp_Init(void)
   BoardHealth_Init();
   parameters_loaded = ParameterStorage_Init(&initial_parameters);
   ParameterManager_Init(parameters_loaded ? &initial_parameters : NULL);
-  WheelController_Init();
+  if (!WheelController_Init(&wheel_controller_motor_port)) {
+    Error_Handler();
+  }
   ParameterManager_GetActive(&initial_parameters);
   WheelController_ApplyPidGains(
       WHEEL_CONTROLLER_LEFT, initial_parameters.left_pid.kp,
@@ -468,104 +491,7 @@ void ChassisApp_RunDiagnosticsCycle(void)
 #if ENABLE_ICM45686
   BspIcm45686_Run(now_ms);
 #endif
-
-  {
-    RtosAppRuntimeSnapshot runtime;
-    SystemStatusSnapshot status = {0};
-    MotorTargetTestSnapshot motor_test;
-    RTC_TimeTypeDef time = {0};
-    RTC_DateTypeDef date = {0};
-
-    BoardHealth_GetSnapshot(&status.board_health);
-    RtosApp_GetRuntimeSnapshot(&runtime);
-    status.runtime.uptime_ms = runtime.uptime_ms;
-    status.runtime.service_heartbeat_age_ms =
-        runtime.service_heartbeat_age_ms;
-    status.runtime.control_heartbeat_age_ms =
-        runtime.control_heartbeat_age_ms;
-    status.runtime.diagnostics_heartbeat_age_ms =
-        runtime.diagnostics_heartbeat_age_ms;
-    status.runtime.display_heartbeat_age_ms =
-        runtime.display_heartbeat_age_ms;
-    status.runtime.service_stack_high_water_words =
-        runtime.service_stack_high_water_words;
-    status.runtime.control_stack_high_water_words =
-        runtime.control_stack_high_water_words;
-    status.runtime.diagnostics_stack_high_water_words =
-        runtime.diagnostics_stack_high_water_words;
-    status.runtime.display_stack_high_water_words =
-        runtime.display_stack_high_water_words;
-    status.runtime.service_task_healthy = runtime.service_task_healthy;
-    status.runtime.control_task_healthy = runtime.control_task_healthy;
-    status.runtime.diagnostics_task_healthy = runtime.diagnostics_task_healthy;
-    status.runtime.display_task_healthy = runtime.display_task_healthy;
-    status.runtime.critical_tasks_healthy = runtime.critical_tasks_healthy;
-    status.runtime.service_period_ms = runtime.service_period_ms;
-    status.runtime.control_period_ms = runtime.control_period_ms;
-    status.runtime.diagnostics_period_ms = runtime.diagnostics_period_ms;
-    status.runtime.display_period_ms = runtime.display_period_ms;
-    status.runtime.service_expected_period_ms =
-        runtime.service_expected_period_ms;
-    status.runtime.control_expected_period_ms =
-        runtime.control_expected_period_ms;
-    status.runtime.diagnostics_expected_period_ms =
-        runtime.diagnostics_expected_period_ms;
-    status.runtime.display_expected_period_ms =
-        runtime.display_expected_period_ms;
-    status.runtime.service_timeout_ms = runtime.service_timeout_ms;
-    status.runtime.control_timeout_ms = runtime.control_timeout_ms;
-    status.runtime.diagnostics_timeout_ms = runtime.diagnostics_timeout_ms;
-    status.runtime.display_timeout_ms = runtime.display_timeout_ms;
-    status.runtime.service_run_count = runtime.service_run_count;
-    status.runtime.control_run_count = runtime.control_run_count;
-    status.runtime.diagnostics_run_count = runtime.diagnostics_run_count;
-    status.runtime.display_run_count = runtime.display_run_count;
-    status.runtime.service_task_state = (uint32_t)runtime.service_task_state;
-    status.runtime.control_task_state = (uint32_t)runtime.control_task_state;
-    status.runtime.diagnostics_task_state =
-        (uint32_t)runtime.diagnostics_task_state;
-    status.runtime.display_task_state = (uint32_t)runtime.display_task_state;
-    BspButton_GetSnapshot(&status.buttons);
-    BspIcm45686_GetSnapshot(&status.imu);
-    BspSr501_GetSnapshot(&status.sr501);
-    status.can_state =
-        (SystemStatusCanState)CanTransport_GetLinkStatus();
-    status.lcd_state = (SystemStatusLcdState)BspLcd_GetStatus();
-    status.supply_valid = BspPowerSample_ReadMillivolts(&status.supply_mv);
-    BspPowerSample_GetSnapshot(now_ms, &status.power_sample);
-    status.fault_flags = FaultManager_GetFlags();
-    status.qspi_test_state = (uint32_t)QspiTargetTest_GetStatus();
-    status.ota_confirmation_state = (uint32_t)OtaConfirmation_GetStatus();
-    status.ota_source = (uint32_t)OtaSession_GetSource();
-    status.ota_state = (uint32_t)OtaSession_GetState();
-    status.ota_next_offset = OtaSession_GetNextOffset();
-    status.uart_error_count = OtaUartTransport_GetErrorCount();
-    status.can_drop_count = OtaCanTransport_GetDroppedCount();
-    status.telemetry_mode = (uint32_t)Telemetry_GetMode();
-    taskENTER_CRITICAL();
-    WheelController_GetSnapshot(&status.wheels);
-    Odometry_GetSnapshot(now_ms, &status.odometry);
-    MotorTargetTest_GetSnapshot(&motor_test);
-    status.motor_test.running = motor_test.running;
-    status.motor_test.left_duty = motor_test.left_duty;
-    status.motor_test.right_duty = motor_test.right_duty;
-    ParameterManager_GetActive(&status.parameters);
-    status.control_state = SafetyManager_GetState();
-    taskEXIT_CRITICAL();
-    status.rtc_valid =
-        HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN) == HAL_OK &&
-        HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN) == HAL_OK &&
-        time.Hours <= 23U && time.Minutes <= 59U && time.Seconds <= 59U &&
-        date.Month >= 1U && date.Month <= 12U && date.Date >= 1U &&
-        date.Date <= 31U;
-    status.rtc_year = date.Year;
-    status.rtc_month = date.Month;
-    status.rtc_date = date.Date;
-    status.rtc_hours = time.Hours;
-    status.rtc_minutes = time.Minutes;
-    status.rtc_seconds = time.Seconds;
-    SystemStatus_Update(&status);
-  }
+  SystemStatusCollector_Update(now_ms);
 
   if (now_ms - last_heartbeat_ms >= 500U) {
     last_heartbeat_ms = now_ms;
@@ -1358,6 +1284,13 @@ void ChassisApp_FatalError(void)
   LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
 }
 
+void ChassisApp_PanicStopFromException(void)
+{
+  __disable_irq();
+  BspMotor_EmergencyStop();
+  __disable_irq();
+}
+
 bool ChassisApp_ClearEmergencyStop(void)
 {
   uint32_t primask;
@@ -1389,7 +1322,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin)
     BspIcm45686_OnDataReadyInterrupt();
   }
   if (gpio_pin == KEY_Pin) {
-    StatusDisplay_OnKeyInterrupt();
+    BspButton_OnDisplayKeyInterrupt();
   }
   if (gpio_pin == E_STOP_Pin &&
       HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET) {

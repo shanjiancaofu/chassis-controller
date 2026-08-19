@@ -95,7 +95,7 @@ b16 payload 为 186076 字节，CRC32 `0x995BF0B5`；该包已通过打包校验
 | 历史工作树 | `0.9.0`--`0.10.0` | PID 持久化、电机启动复核和控制安全收尾 |
 | 历史工作树 | `0.11.1` | ICM45686 FIFO、静止 Kalman 和 UART OTA confirmed |
 | 当前板上 | `0.13.0 build1` | LCD UI 信息层级、页眉指示和配色优化，UART OTA confirmed；动态 UI 目视确认待完成 |
-| 当前板上 | `0.14.0 build1` | 暗色工业仪表 UI，已 UART OTA confirmed；视觉待确认 |
+| 当前板上 | `0.14.0 build1` | 暗色工业仪表 UI，已 UART OTA confirmed；视觉人工确认正常 |
 | 上一板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
 
 这些映射用于描述源码演进，不改写历史文件中已经固化的镜像头、文件名或实物证据。目标板
@@ -123,6 +123,8 @@ CubeIDE 当前会更新 ELF，但不保证同步重建 BIN。打包或组合镜�
 
 `archive/` 下的文件不属于发布产物。
 
-当前工作树 `0.14.0 build1` 已在 `build/arm-release/` 生成 `application.bin` 和
-`app-v0.14.0-b1.ota`。payload 为 99628 字节、CRC32 `0x5BEC2E71`，OTA 包为 99692 字节；
-该包已完成 UART OTA confirmed，但尚未复制到 `_output/application/`，也尚未完成人工视觉验收。
+已部署的 `0.14.0 build1` 在 `build/arm-release/` 的历史包已完成 UART OTA confirmed 和人工
+视觉验收。当前工作树已提升为 `0.15.0 build1`，最新 `application.bin` 和
+`app-v0.15.0-b1.ota` 仍只放在 `build/arm-release/`：payload 为 100840 字节、CRC32
+`0x72FEABE4`，OTA 包为 100904 字节。0.15.0 尚未烧录，也未复制到
+`_output/application/`。

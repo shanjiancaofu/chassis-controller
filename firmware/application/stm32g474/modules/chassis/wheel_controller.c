@@ -2,27 +2,34 @@
 
 #include <stddef.h>
 
-#include "bsp/motor/bsp_motor.h"
 #include "components/pid/speed_pid.h"
 #include "config/control_config.h"
-
-#if MOTOR_CONTROL_OUTPUT_LIMIT > BSP_MOTOR_COMPARE_MAX
-#error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
-#endif
 
 static SpeedPid left_pid;
 static SpeedPid right_pid;
 static WheelControllerSnapshot controller_snapshot;
 static int32_t left_ramped_target;
 static int32_t right_ramped_target;
+static WheelControllerMotorPort controller_motor_port;
+static bool controller_motor_port_ready;
 
 static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
                            int32_t measurement, int16_t current_duty);
 static int32_t SlewTarget(int32_t current, int32_t requested,
                           uint32_t elapsed_ticks);
 
-void WheelController_Init(void)
+bool WheelController_Init(const WheelControllerMotorPort *motor_port)
 {
+  controller_motor_port_ready = false;
+  if (motor_port == NULL || motor_port->coast_all == NULL ||
+      motor_port->emergency_stop == NULL ||
+      motor_port->set_signed_duty_both == NULL ||
+      motor_port->get_left_applied_duty == NULL ||
+      motor_port->get_right_applied_duty == NULL) {
+    return false;
+  }
+  controller_motor_port = *motor_port;
+  controller_motor_port_ready = true;
   controller_snapshot = (WheelControllerSnapshot){0};
   left_ramped_target = 0;
   right_ramped_target = 0;
@@ -32,11 +39,14 @@ void WheelController_Init(void)
   SpeedPid_Init(&right_pid, MOTOR_RIGHT_PID_KP, MOTOR_RIGHT_PID_KI,
                 MOTOR_RIGHT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
+  return true;
 }
 
 void WheelController_Stop(void)
 {
-  BspMotor_CoastAll();
+  if (controller_motor_port_ready) {
+    controller_motor_port.coast_all();
+  }
   controller_snapshot.left_target = 0;
   controller_snapshot.right_target = 0;
   controller_snapshot.left_output = 0;
@@ -54,7 +64,9 @@ void WheelController_Reset(void)
 
 void WheelController_EmergencyStop(void)
 {
-  BspMotor_EmergencyStop();
+  if (controller_motor_port_ready) {
+    controller_motor_port.emergency_stop();
+  }
   controller_snapshot.left_target = 0;
   controller_snapshot.right_target = 0;
   controller_snapshot.left_output = 0;
@@ -74,7 +86,8 @@ bool WheelController_Update(int32_t left_target, int32_t right_target,
   int16_t left_duty;
   int16_t right_duty;
 
-  if (left_target < -MOTOR_CONTROL_TARGET_LIMIT ||
+  if (!controller_motor_port_ready ||
+      left_target < -MOTOR_CONTROL_TARGET_LIMIT ||
       left_target > MOTOR_CONTROL_TARGET_LIMIT ||
       right_target < -MOTOR_CONTROL_TARGET_LIMIT ||
       right_target > MOTOR_CONTROL_TARGET_LIMIT) {
@@ -89,11 +102,11 @@ bool WheelController_Update(int32_t left_target, int32_t right_target,
   right_ramped_target = effective_right_target;
 
   left_duty = UpdateWheel(&left_pid, effective_left_target, left_measurement,
-                          BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT));
+                          controller_motor_port.get_left_applied_duty());
   right_duty = UpdateWheel(&right_pid, effective_right_target,
                            right_measurement,
-                           BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT));
-  BspMotor_SetSignedDutyBoth(left_duty, right_duty);
+                           controller_motor_port.get_right_applied_duty());
+  controller_motor_port.set_signed_duty_both(left_duty, right_duty);
   controller_snapshot.left_target = effective_left_target;
   controller_snapshot.right_target = effective_right_target;
   controller_snapshot.left_measurement = left_measurement;

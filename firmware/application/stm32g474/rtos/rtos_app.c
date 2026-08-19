@@ -5,7 +5,6 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "app/chassis_app.h"
 #include "main.h"
 #include "tim.h"
 
@@ -59,6 +58,7 @@ static volatile uint32_t service_run_count;
 static volatile uint32_t control_run_count;
 static volatile uint32_t diagnostics_run_count;
 static volatile uint32_t display_run_count;
+static RtosAppCallbacks app_callbacks;
 
 static void RtosApp_ControlTaskMain(void *argument);
 static uint32_t TicksToMilliseconds(TickType_t ticks);
@@ -70,14 +70,21 @@ static void RecordTaskActivity(volatile bool *started,
                                volatile uint32_t *run_count,
                                volatile TickType_t *period);
 
-bool RtosApp_CreateTasks(void)
+bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
 {
   const TickType_t now = xTaskGetTickCount();
 
+  if (callbacks == NULL || callbacks->run_service_cycle == NULL ||
+      callbacks->run_control_cycle == NULL ||
+      callbacks->run_diagnostics_cycle == NULL ||
+      callbacks->run_display_cycle == NULL) {
+    return false;
+  }
   if (control_task_handle != NULL && diagnostics_task_handle != NULL &&
       display_task_handle != NULL) {
     return true;
   }
+  app_callbacks = *callbacks;
 
   control_task_handle = xTaskCreateStatic(
       RtosApp_ControlTaskMain, "control", CONTROL_TASK_STACK_DEPTH, NULL,
@@ -127,7 +134,7 @@ void RtosApp_ServiceTaskMain(void *argument)
     RecordTaskActivity(&service_task_started, &service_task_heartbeat,
                        &last_service_run_tick, &service_run_count,
                        &service_period_ticks);
-    ChassisApp_RunServiceCycle();
+    app_callbacks.run_service_cycle();
     vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(1U));
   }
 }
@@ -142,7 +149,7 @@ void RtosApp_DiagnosticsTaskMain(void *argument)
     RecordTaskActivity(&diagnostics_task_started, &diagnostics_task_heartbeat,
                        &last_diagnostics_run_tick, &diagnostics_run_count,
                        &diagnostics_period_ticks);
-    ChassisApp_RunDiagnosticsCycle();
+    app_callbacks.run_diagnostics_cycle();
     vTaskDelayUntil(&last_wake_time,
                     pdMS_TO_TICKS(DIAGNOSTICS_TASK_EXPECTED_PERIOD_MS));
   }
@@ -158,7 +165,7 @@ void RtosApp_DisplayTaskMain(void *argument)
     RecordTaskActivity(&display_task_started, &display_task_heartbeat,
                        &last_display_run_tick, &display_run_count,
                        &display_period_ticks);
-    ChassisApp_RunDisplayCycle();
+    app_callbacks.run_display_cycle();
     vTaskDelayUntil(&last_wake_time,
                     pdMS_TO_TICKS(DISPLAY_TASK_EXPECTED_PERIOD_MS));
   }
@@ -303,7 +310,7 @@ static void RtosApp_ControlTaskMain(void *argument)
     RecordTaskActivity(&control_task_started, &control_task_heartbeat,
                        &last_control_run_tick, &control_run_count,
                        &control_period_ticks);
-    ChassisApp_RunControlCycle(notification_count);
+    app_callbacks.run_control_cycle(notification_count);
   }
 }
 

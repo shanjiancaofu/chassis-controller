@@ -10,6 +10,7 @@ void ChassisApp_RunDiagnosticsCycle(void);
 void ChassisApp_RunDisplayCycle(void);
 void ChassisApp_RunControlCycle(uint32_t notification_count);
 void ChassisApp_FatalError(void);
+void ChassisApp_PanicStopFromException(void);
 bool ChassisApp_ClearEmergencyStop(void);
 
 #endif

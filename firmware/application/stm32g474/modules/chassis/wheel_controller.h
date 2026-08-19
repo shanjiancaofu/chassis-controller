@@ -18,7 +18,15 @@ typedef struct {
   int16_t right_output;
 } WheelControllerSnapshot;
 
-void WheelController_Init(void);
+typedef struct {
+  void (*coast_all)(void);
+  void (*emergency_stop)(void);
+  void (*set_signed_duty_both)(int16_t left_duty, int16_t right_duty);
+  int16_t (*get_left_applied_duty)(void);
+  int16_t (*get_right_applied_duty)(void);
+} WheelControllerMotorPort;
+
+bool WheelController_Init(const WheelControllerMotorPort *motor_port);
 void WheelController_Stop(void);
 void WheelController_Reset(void);
 void WheelController_EmergencyStop(void);

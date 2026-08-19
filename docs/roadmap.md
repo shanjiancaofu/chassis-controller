@@ -13,6 +13,7 @@
 - FDCAN error-passive、bus-off 处理与会话撤销
 - 关键任务健康汇总和条件喂狗
 - `chassis`、`safety`、`parameters`、`diagnostics` 业务域
+- LCD 硬件传输与 UI 渲染分离、Application 状态采集器、RTOS 回调装配和轮控电机端口
 
 Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重新 clean build。
 构建尺寸和未完成的实物回归见 `verification.md`。
@@ -29,6 +30,8 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 | `infrastructure/` | 保留现有命名，后续增加参数存储 | 参数持久化实现时 |
 | `modules/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
 | `rtos/rtos_app.c/h` 四任务职责模型 | 继续按真实阻塞或周期需求演进，不按硬件数量增加任务 | 已完成首版迁移 |
+| `ui/lcd/` 与 `bsp/lcd/` | UI 持有布局/像素，BSP 持有控制器/SPI DMA | 0.15.0 已完成拆分 |
+| `app/system_status_collector.c` | 统一组装 BSP/RTOS 到诊断 DTO | 0.15.0 已完成拆分 |
 | `tests/target/` 和 `tests/unit/` | 按风险补目标板测试和无 HAL 主机测试 | CommandManager 首批主机测试已落地 |
 | 独立 Bootloader 工程 | 继续与 Application 保持独立 CubeMX、链接脚本和构建配置 | 已完成首版 |
 
@@ -187,11 +190,12 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 | 当前板上 | ICM45686/Kalman 静态闭环 | `0.11.1 build1` | UART OTA confirmed；FIFO、timestamp、静止零偏和 Kalman 已上板 |
 | 上一板上 | 统一采样时间戳与轮式里程计 | `0.12.0 build1` | UART OTA confirmed；里程计代码已运行，几何和动态输出尚未验证 |
 | 上一板上 | LCD UI 信息层级与布局优化 | `0.13.0 build1` | UART OTA confirmed；旧版视觉验收记录保留 |
-| 当前板上 | LCD 暗色工业仪表 UI 重构 | `0.14.0 build1` | UART OTA confirmed；四任务和零 PWM 已复核，视觉待人工确认 |
+| 当前板上 | LCD 暗色工业仪表 UI 重构 | `0.14.0 build1` | UART OTA confirmed；四任务、零 PWM 和视觉已复核 |
+| 当前工作树 | LCD/状态/RTOS/轮控边界收敛 | `0.15.0 build1` | 构建、主机测试和 OTA 打包通过；尚未烧录 |
 
 ### 阶段 3：LCD 硬件总览
 
-状态：`IMPLEMENTED / PARTIALLY VERIFIED`（0.14.0 已上板且 LCD 驱动 READY，新视觉待人工确认）
+状态：`IMPLEMENTED / PARTIALLY VERIFIED`（0.14.0 已通过硬件验收；0.15.0 分层重构尚未上板）
 
 - 已保留原始 taifei 全屏资源，并生成带透明掩码的 40x40 RGB565 小 Logo；独立封面页已移除，
   Logo 固定显示在功能页右上角，释放一个页面位置。
@@ -212,7 +216,11 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 - PB8 单键循环、透明 Logo、大号电量显示和四页文字布局已由用户确认正常。
 - `0.14.0` 将四页统一为暗色工业仪表规范：32 px Logo、公共 Header/Footer、卡片层级、白色普通数据、
   青色导航/电量重点，以及只用于健康/警告/故障语义的绿黄红状态色；预览脚本与 BSP 坐标和 RGB565 保持同步。
-  代码、Debug/Release 构建、OTA 打包和 UART OTA confirmed 已完成，目标板视觉验收后置。
+  代码、Debug/Release 构建、OTA 打包、UART OTA confirmed 和目标板视觉验收均已完成。
+- `0.15.0` 将主题、字模、Logo、布局、DTO 和逐行渲染移入 `ui/lcd`，LCD BSP 只保留控制器命令、
+  SPI DMA、片选和背光。Python 预览器直接编译同一 C 渲染器并只负责 RGB565 转换与 2 倍最近邻
+  输出；Motor/System 分区断带和 Pose 极值溢出已修复。软件验证完成，目标板结果仍为
+  `NOT VERIFIED`。
 
 ### 阶段 4：ICM45686 与估计器
 

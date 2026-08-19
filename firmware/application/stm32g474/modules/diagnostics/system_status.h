@@ -4,10 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "bsp/button/bsp_button.h"
-#include "bsp/imu/bsp_icm45686.h"
-#include "bsp/power_monitor/bsp_power_sample.h"
-#include "bsp/sr501/bsp_sr501.h"
 #include "modules/chassis/odometry.h"
 #include "modules/chassis/wheel_controller.h"
 #include "modules/diagnostics/board_health.h"
@@ -26,6 +22,70 @@ typedef enum {
   SYSTEM_STATUS_LCD_READY,
   SYSTEM_STATUS_LCD_FAILED
 } SystemStatusLcdState;
+
+typedef enum {
+  SYSTEM_STATUS_TASK_NOT_STARTED = 0,
+  SYSTEM_STATUS_TASK_RUNNING,
+  SYSTEM_STATUS_TASK_TIMEOUT
+} SystemStatusTaskState;
+
+typedef enum {
+  SYSTEM_STATUS_IMU_UNINITIALIZED = 0,
+  SYSTEM_STATUS_IMU_NOT_FOUND,
+  SYSTEM_STATUS_IMU_READY,
+  SYSTEM_STATUS_IMU_DEGRADED
+} SystemStatusImuState;
+
+typedef enum {
+  SYSTEM_STATUS_SR501_WARMING_UP = 0,
+  SYSTEM_STATUS_SR501_READY
+} SystemStatusSr501State;
+
+typedef enum {
+  SYSTEM_STATUS_BUTTON_1 = 0,
+  SYSTEM_STATUS_BUTTON_2,
+  SYSTEM_STATUS_BUTTON_COUNT
+} SystemStatusButtonId;
+
+typedef struct {
+  bool pressed[SYSTEM_STATUS_BUTTON_COUNT];
+  uint32_t pressed_count[SYSTEM_STATUS_BUTTON_COUNT];
+} SystemStatusButtonSnapshot;
+
+typedef struct {
+  SystemStatusImuState status;
+  uint8_t who_am_i;
+  bool sample_valid;
+  bool orientation_valid;
+  bool kalman_valid;
+  uint16_t fifo_timestamp;
+  float roll_rad;
+  float pitch_rad;
+  float yaw_rad;
+  float kalman_roll_rad;
+  float kalman_pitch_rad;
+  uint32_t last_sample_ms;
+  uint32_t sample_count;
+  uint32_t fifo_frame_count;
+  uint32_t fifo_parse_error_count;
+  uint32_t timestamp_error_count;
+} SystemStatusImuSnapshot;
+
+typedef struct {
+  SystemStatusSr501State status;
+  bool raw_high;
+  bool motion_detected;
+  uint32_t event_count;
+  uint32_t last_motion_ms;
+  uint32_t warmup_remaining_ms;
+} SystemStatusSr501Snapshot;
+
+typedef struct {
+  bool valid;
+  uint32_t millivolts;
+  uint32_t sample_timestamp_ms;
+  uint32_t sample_age_ms;
+} SystemStatusPowerSampleSnapshot;
 
 typedef struct {
   bool running;
@@ -59,10 +119,10 @@ typedef struct {
   uint32_t control_stack_high_water_words;
   uint32_t diagnostics_stack_high_water_words;
   uint32_t display_stack_high_water_words;
-  uint32_t service_task_state;
-  uint32_t control_task_state;
-  uint32_t diagnostics_task_state;
-  uint32_t display_task_state;
+  SystemStatusTaskState service_task_state;
+  SystemStatusTaskState control_task_state;
+  SystemStatusTaskState diagnostics_task_state;
+  SystemStatusTaskState display_task_state;
   bool service_task_healthy;
   bool control_task_healthy;
   bool diagnostics_task_healthy;
@@ -73,9 +133,9 @@ typedef struct {
 typedef struct {
   BoardHealthSnapshot board_health;
   SystemRuntimeSnapshot runtime;
-  BspButtonSnapshot buttons;
-  BspIcm45686Snapshot imu;
-  BspSr501Snapshot sr501;
+  SystemStatusButtonSnapshot buttons;
+  SystemStatusImuSnapshot imu;
+  SystemStatusSr501Snapshot sr501;
   WheelControllerSnapshot wheels;
   OdometrySnapshot odometry;
   SystemMotorTestSnapshot motor_test;
@@ -92,7 +152,7 @@ typedef struct {
   uint8_t rtc_seconds;
   bool supply_valid;
   uint32_t supply_mv;
-  BspPowerSampleSnapshot power_sample;
+  SystemStatusPowerSampleSnapshot power_sample;
   uint32_t fault_flags;
   uint32_t qspi_test_state;
   uint32_t ota_confirmation_state;

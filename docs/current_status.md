@@ -5,7 +5,7 @@
 
 ## 代码基线
 
-- Application 工作树和板上 confirmed 镜像：`0.14.0 build1`。
+- Application 工作树：`0.15.0 build1`；板上 confirmed 镜像：`0.14.0 build1`。
 - Bootloader：`0.1.0 build22`。
 - 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.14.0 build1`；Bootloader 仍为
   build22，b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.10.0`
@@ -16,17 +16,19 @@
   `0x4659F611`；OTA 包共 `98328` 字节，已通过 UART OTA 写入并确认。
 - 当前 UI Release `build/arm-release/app-v0.14.0-b1.ota` 的 payload 为 `99628` 字节、CRC32 为
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
+- 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `100840` 字节、
+  CRC32 为 `0x72FEABE4`；OTA 包共 `100904` 字节。该包只完成构建、打包和主机验证，尚未烧录。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
   调参已后置；当前代码主线已完成 FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
-  LCD 四页代码与 DMA 调度修复已完成；0.14.0 已按暗色工业仪表规范重排层级、状态颜色、卡片和页脚，预览脚本与 BSP 已同步，目标板视觉仍待人工确认。
+  LCD 四页代码与 DMA 调度修复已完成；0.14.0 已按暗色工业仪表规范重排层级、状态颜色、卡片和页脚，目标板视觉已人工确认正常。0.15.0 将页面渲染从 LCD BSP 拆到 `ui/lcd`，预览工具直接编译同一 C 渲染器，当前重构尚未上板。
   ICM45686 已读取 `WHO_AM_I=0xE9`，FIFO/DMA、10 ms timestamp、静止零偏、Mahony 和 Kalman
   静态输出已上板通过；因模块安装位置和方向尚未固定，安装轴向和动态姿态验证已 `DEFERRED`。
   目标加减速限制、
   编码器异常保护和欠压保护代码已实现，带负载阶跃、异常脉冲和欠压注入仍待实测；SR501
   高电平闭环继续后置。`0.12.0` 已完成 UART OTA confirmed，统一采样时间戳和差速轮式里程计
-  已运行；`0.14.0` 已完成 UART OTA confirmed，新版 LCD UI 视觉和文字排版仍待人工目视确认。
+  已运行；`0.14.0` 已完成 UART OTA confirmed，新版 LCD UI 视觉、文字排版和四页切换已人工确认正常。
 
 ## 当前实现
 
@@ -81,6 +83,10 @@
   和 LCD 四页读取同一快照；正式 `[RSP]`、`[LOG]`、`[TEL]` UART emitter 已实现。VOFA 数字流
   保留为显式兼容模式。`display_task` 以 1 ms 周期推进 LCD 逐行 DMA，保持页面 1 s 刷新。总览页新增
   9.0--12.6 V 电压窗口估算百分比和电量条；该值不是电池 SOC，阈值需按最终电池规格校准。
+- 0.15.0 已收敛实际依赖边界：`ui/lcd` 持有主题、字模、Logo、四页布局和逐行像素生成，
+  `bsp/lcd` 只持有控制器命令、SPI DMA、片选和背光；`app/system_status_collector` 负责 BSP/RTOS
+  状态到诊断 DTO 的组装；RTOS 通过 Core 注入的周期回调调用 Application，不再反向包含 `app`；
+  `wheel_controller` 通过电机端口装配，不再直接依赖电机 BSP。
 - UART v1 的消息外壳和已有字段语义保持兼容，字段及分区集合不冻结。四分区只承担当前完整
   诊断，不要求所有新功能都往其中堆字段；周期遥测按实际观察需求保持精简。
 - 编码器在 100 Hz 控制采样点记录本地单调时间和实际累计周期，ADC 记录转换完成时间，IMU
@@ -88,7 +94,7 @@
 - 差速里程计使用 `1320 counts/rev`、`65 mm` 轮胎有效直径和 `220 mm` 轮距，输出左右累计
   距离、`x/y/heading`、线速度和角速度，并接入统一快照、UART、文本遥测和 LCD 电机页；
   `odometry reset` 可在停止状态清零。IMU 安装固定前不进行陀螺 Z 轴航向融合。
-- LCD UI `0.14.0` 统一公共 Header/Footer、32 px Logo、状态语义和 RGB565 颜色；普通数据使用白色，青色用于导航/电量重点，
+- LCD UI `0.15.0` 统一公共 Header/Footer、32 px Logo、状态语义和 RGB565 颜色；普通数据使用白色，青色用于导航/电量重点，
   绿黄红只表达健康、停止/不可用和故障，四页改为明确的仪表层级；保留 PB8 单键切页、透明 Logo 和统一快照数据源。
 - PID 参数已加入 QSPI 双副本持久化，修改后立即在 RAM 生效，由 `service_task` 异步保存；当前
   左侧参数已实测保存为 `210/310/1`，返回 `persistence=STORED sequence=1`。
@@ -121,7 +127,10 @@
 - 2026-08-19 `0.14.0 build1` 已通过 `/dev/ttyUSB0` 完成 UART OTA 的 `STAGED -> INSTALL
   VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。稳定状态报告四任务均为
   `RUNNING`、`fault=0`、`control=STOPPED`、左右目标/速度/PWM 均为零、`lcd=READY`、IMU
-  `READY` 且 FIFO/timestamp 错误为零；新版 LCD 视觉仍待人工目视确认。
+  `READY` 且 FIFO/timestamp 错误为零；新版 LCD 视觉已由用户人工确认正常。
+- 2026-08-19 `0.15.0 build1` 完成 Debug/Release 构建、9 个 Application C 主机测试、13 个
+  OTA Python 测试、真实 C LCD 预览生成和 OTA 打包。Debug 为 `text=112988 data=120 bss=54544`，
+  Release 为 `text=100712 data=120 bss=54536`。这些是软件证据，不构成目标板通过。
 - ICM45686 实测 `WHO_AM_I=0xE9`。修正端序配置后，调试快照连续 588 帧无解析、timestamp、
   DMA 或传输错误，采样周期为 `10 ms`；200 个静止样本后零偏标定、Mahony 和 Kalman 均有效。
   普通复位后的 UART `status` 再次报告 224 帧、`imu_fifo_errors=0`、
@@ -216,7 +225,9 @@
 
 - confirmed `0.12.0 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；此前完成普通
   复位和 UART OTA 确认，未执行断电测试。
-- `0.14.0 build1` LCD 新布局已上板且驱动报告 `READY`；状态颜色、文字排版和四页切换仍需人工目视验证。
+- `0.14.0 build1` LCD 新布局已上板且驱动报告 `READY`；状态颜色、文字排版和四页切换已人工目视确认正常。
+- `0.15.0 build1` 尚未烧录；LCD 四页、PB8 切页、四任务状态、异常零 PWM 和 UART OTA 安装均需
+  在本版上重新复核，当前为 `NOT VERIFIED`。
 - `0.12.0 build1` 的里程计方向、直线距离、原地旋转角度、时间对齐误差和 LCD 里程计动态显示
   尚未验证；当前只确认固件启动快照中的静态零位输出。
 - CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
@@ -229,13 +240,15 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 在安全停止状态下目视确认 `0.14.0 build1` 四页 Header、Logo、电量条、文字排版和状态颜色；
-   随后再检查编码器增量、里程计方向、采样时间戳/年龄和
+1. 通过 UART OTA 安装 `build/arm-release/app-v0.15.0-b1.ota`，复核
+   `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`、四任务、
+   `fault=0`、`control=STOPPED`、左右 PWM 为零和 LCD 四页。
+2. 检查编码器增量、里程计方向、采样时间戳/年龄和
    `odometry reset`。
-2. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
+3. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
    固定前不接入航向融合。
-3. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
-4. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
+4. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
+5. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
    欠压注入验证；方向不重复测试。
 
 当前路线：

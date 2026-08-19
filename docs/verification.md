@@ -28,7 +28,8 @@
 | LCD SPI DMA | `HARDWARE PASS` | 封面和动态状态页显示正常 |
 | LCD 四页状态显示 | `HARDWARE PASS` | 0.12.0 build1；四页切换、文字、Logo 和电量显示已由用户确认正常 |
 | LCD UI 0.13.0 | `NOT VERIFIED` | 已随 0.13.0 OTA 上板并由串口确认 `lcd=DRAWING`；页眉页码指示、分组标签、内容区层次和配色仍待人工目视确认 |
-| LCD UI 0.14.0 | `NOT VERIFIED` | 已通过 UART OTA 上板且驱动报告 `READY`；暗色工业仪表四页尚未人工目视确认 |
+| LCD UI 0.14.0 | `HARDWARE PASS` | UART OTA confirmed；LCD 驱动 `READY`，暗色工业仪表四页、颜色、文字和切页已由用户人工确认正常 |
+| LCD/UI 分层 0.15.0 | `NOT VERIFIED` | Debug/Release、主机测试和同源 C 预览通过；尚未烧录目标板 |
 | KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；PB8 四页循环已人工确认正常，PD3/PD4 尚未接线 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | ICM45686 SPI/FIFO | `HARDWARE PASS` | 0.11.1；WHO_AM_I=0xE9，普通复位后 224 帧零解析/时间戳错误，100 Hz 周期 10 ms |
@@ -53,7 +54,34 @@
 
 ## 构建基线
 
-### 0.14.0 LCD UI 烧录前构建（2026-08-19）
+### 0.15.0 分层重构构建与产物（2026-08-19）
+
+本轮拆分 LCD UI/BSP、Application 状态采集、RTOS 回调和轮控电机端口，并加入异常入口零 PWM。
+预览器以主机 `cc -Wall -Wextra -Werror` 编译真实 `lcd_ui.c`，生成四页和汇总 PNG。执行
+Debug/Release 配置与构建、从最终 Release ELF 重新生成 BIN 和 OTA：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 112988 | 120 | 54544 | `BUILD PASS` |
+| Release | 100712 | 120 | 54536 | `BUILD PASS` |
+
+```text
+application.bin=100840 bytes
+payload_crc32=0x72FEABE4
+bin_sha256=fa9d47b50557b7dee7e5dffcddf7bf00d0feb9c5c3be4b41f3dca16b55591ef1
+app-v0.15.0-b1.ota=100904 bytes
+ota_sha256=29bbce931676256c6f174b7cb03dd2f68ce7155c68d89c8583461a49db23bbd9
+```
+
+Application C 主机测试共 9 个，均以 `-std=c11 -Wall -Wextra -Werror` 编译运行通过；覆盖
+CommandManager、ICM45686、IMU fusion、odometry、OTA metadata、UART arm guard、parameter
+record、UART protocol 和新增的 wheel controller 假电机端口。OTA Python 13 项通过。
+`git diff --check` 通过，未生成需跟踪的 Python 缓存或宿主测试可执行文件。
+
+该版本尚未烧录；不能从构建、主机测试或 PNG 预览推断 LCD、四任务、OTA 安装或异常零 PWM
+已在目标板通过。
+
+### 0.14.0 LCD UI 构建与产物（2026-08-19）
 
 暗色工业仪表四页、32 px Logo、状态色语义和弱化 Footer 已在 LCD BSP 实现；预览脚本使用同一
 320x240 坐标、5x7 字模、RGB565 常量和 Logo 数据重新生成五张 PNG。执行 CMake Debug/Release
@@ -88,8 +116,8 @@ fw=0.14.0 build=1 ota_confirmation=CONFIRMED
 
 健康窗口后执行 `status`，四任务均为 `RUNNING`，`fault=0`、`control=STOPPED`，左右目标、
 速度和 PWM 均为零；LCD 为 `READY`，IMU 为 `READY`、`WHO_AM_I=0xE9`，FIFO 和 timestamp
-错误均为零。该结果证明 OTA 安装、确认和静态安全状态，未执行电机命令，也不构成 0.14.0
-LCD 配色、文字无重叠或四页切换的人工视觉通过。
+错误均为零。未执行电机命令。随后用户人工确认 0.14.0 LCD 暗色工业仪表四页的配色、文字排版、
+Logo、电量条和页面切换正常，因此 LCD UI 0.14.0 记录为 `HARDWARE PASS`。
 
 Application Release 于 2026-08-13 使用 CubeIDE 2.2.0 GCC clean build；Debug 行保留
 2026-07-28 的最近结果：
