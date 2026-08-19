@@ -5,11 +5,13 @@
 #include "board/board_config.h"
 
 static volatile uint32_t latest_millivolts;
+static volatile uint32_t latest_sample_timestamp_ms;
 static volatile bool latest_valid;
 
 bool BspPowerSample_Init(void)
 {
   latest_millivolts = 0U;
+  latest_sample_timestamp_ms = 0U;
   latest_valid = false;
   return HAL_ADCEx_Calibration_Start(&BOARD_POWER_ADC, ADC_SINGLE_ENDED) ==
          HAL_OK;
@@ -47,6 +49,7 @@ bool BspPowerSample_ReadMillivolts(uint32_t *vin_mv)
            BOARD_POWER_DIVIDER_RATIO;
   *vin_mv = (uint32_t)(scaled / BOARD_POWER_ADC_MAX);
   latest_millivolts = *vin_mv;
+  latest_sample_timestamp_ms = HAL_GetTick();
   latest_valid = true;
   return true;
 }
@@ -58,4 +61,16 @@ bool BspPowerSample_GetLatestMillivolts(uint32_t *vin_mv)
   }
   *vin_mv = latest_millivolts;
   return true;
+}
+
+void BspPowerSample_GetSnapshot(uint32_t now_ms,
+                                BspPowerSampleSnapshot *snapshot)
+{
+  if (snapshot != NULL) {
+    snapshot->valid = latest_valid;
+    snapshot->millivolts = latest_millivolts;
+    snapshot->sample_timestamp_ms = latest_sample_timestamp_ms;
+    snapshot->sample_age_ms =
+        snapshot->valid ? now_ms - snapshot->sample_timestamp_ms : 0U;
+  }
 }

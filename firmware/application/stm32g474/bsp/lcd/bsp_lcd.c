@@ -378,10 +378,21 @@ static void LcdPrepareMotorPage(void)
                  "ENC L%ld R%ld",
                  (long)lcd_status_data.left_encoder_delta,
                  (long)lcd_status_data.right_encoder_delta);
-  (void)snprintf(lcd_text_lines[7], LCD_TEXT_LINE_LENGTH, "PID %s",
-                 lcd_status_data.control_state == BSP_LCD_CONTROL_RUNNING
-                     ? "ACTIVE"
-                     : "READY");
+  if (lcd_status_data.odometry_valid) {
+    (void)snprintf(lcd_text_lines[7], LCD_TEXT_LINE_LENGTH, "ODOM X%ld Y%ld",
+                   (long)lcd_status_data.odometry_x_mm,
+                   (long)lcd_status_data.odometry_y_mm);
+    (void)snprintf(lcd_text_lines[8], LCD_TEXT_LINE_LENGTH,
+                   "H%ld V%ld PID %s",
+                   (long)lcd_status_data.odometry_heading_mrad,
+                   (long)lcd_status_data.odometry_linear_mm_s,
+                   lcd_status_data.control_state == BSP_LCD_CONTROL_RUNNING
+                       ? "ON"
+                       : "RDY");
+  } else {
+    (void)snprintf(lcd_text_lines[7], LCD_TEXT_LINE_LENGTH,
+                   "ODOM NOT READY");
+  }
   (void)snprintf(lcd_text_lines[9], LCD_TEXT_LINE_LENGTH, "CTRL %s",
                  LcdControlText(lcd_status_data.control_state));
 
@@ -391,7 +402,8 @@ static void LcdPrepareMotorPage(void)
   lcd_text_x[4] = 170U; lcd_text_y[4] = 60U; lcd_text_scale[4] = 2U;
   lcd_text_x[5] = 12U; lcd_text_y[5] = 120U; lcd_text_scale[5] = 2U;
   lcd_text_x[6] = 12U; lcd_text_y[6] = 150U; lcd_text_scale[6] = 2U;
-  lcd_text_x[7] = 12U; lcd_text_y[7] = 181U; lcd_text_scale[7] = 2U;
+  lcd_text_x[7] = 12U; lcd_text_y[7] = 181U; lcd_text_scale[7] = 1U;
+  lcd_text_x[8] = 12U; lcd_text_y[8] = 197U; lcd_text_scale[8] = 1U;
   lcd_text_x[9] = 12U; lcd_text_y[9] = 220U; lcd_text_scale[9] = 1U;
   lcd_text_colors[1] = LCD_COLOR_MUTED;
   lcd_text_colors[2] = LCD_COLOR_TEXT;
@@ -400,6 +412,7 @@ static void LcdPrepareMotorPage(void)
   lcd_text_colors[5] = LCD_COLOR_TEXT;
   lcd_text_colors[6] = LCD_COLOR_TEXT;
   lcd_text_colors[7] = LCD_COLOR_READY;
+  lcd_text_colors[8] = LCD_COLOR_MUTED;
   lcd_text_colors[9] = LcdControlColor(lcd_status_data.control_state);
 }
 

@@ -10,6 +10,8 @@
 #define MOTOR_ENCODER_MAX_DELTA_PER_TICK 500
 #define MOTOR_CONTROL_MIN_SUPPLY_MV 9000U
 #define MOTOR_ENCODER_COUNTS_PER_REVOLUTION 1320
+#define CHASSIS_WHEEL_DIAMETER_M 0.065f
+#define CHASSIS_TRACK_WIDTH_M 0.220f
 
 /* Initial values; finish tuning with the drive wheels suspended. */
 #define MOTOR_LEFT_PID_KP 200.0f

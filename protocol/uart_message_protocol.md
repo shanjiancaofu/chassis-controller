@@ -1,7 +1,10 @@
 # UART 消息协议（阶段 2）
 
-本文定义 Application 文本 UART 的正式消息格式。协议版本 1 已实现并冻结字段顺序、错误码和换行规则；
-OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文本。
+本文定义 Application 文本 UART 的正式消息格式。协议版本 1 已实现，但字段集合和分区集合不
+冻结。v1 保持 `[RSP]`、`[LOG]`、`[TEL]` 外壳及已有字段语义兼容；增加字段、增加分区或增加
+命令不提升协议版本。接收端按标签、`section` 和字段名解析，必须忽略未知字段及未知分区。
+只有改变消息外壳或已有字段含义等破坏性变化才提升协议版本。OTA 二进制帧不属于本文，进入
+OTA 二进制模式后禁止混入文本。
 
 ## 通用规则
 
@@ -12,7 +15,8 @@ OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文�
 - 时间戳统一为 `ts_ms`，取 Application 启动后的毫秒 uptime，使用无符号十进制。
 - 协议版本统一为 `v=1`；固件产品版本使用 `fw=`，构建号单独使用 `build=`，两者都不替代协议版本。
 - 字段名称使用小写 ASCII；枚举和错误码使用大写下划线命名。
-- 接收端必须按整行处理，未知字段可忽略，未知命令或缺少必需字段返回 `[RSP] result=ERROR`。
+- 接收端必须按整行处理，不依赖字段位置、字段总数或固定分区总数；未知字段和未知分区可忽略，
+  未知命令或缺少必需字段返回 `[RSP] result=ERROR`。
 
 ## 命令响应
 
@@ -44,6 +48,7 @@ OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文�
 | `pid stop` | `pid_stop` | `state=STOPPED` | - |
 | `encoder zero` | `encoder_zero` | `state=RESET` | `SAFETY_STOP` |
 | `encoder result` | `encoder_result` | `left_total`、`right_total` | - |
+| `odometry reset` | `odometry_reset` | `state=RESET` | `SAFETY_STOP` |
 | `ota uart confirm` | `ota_uart` | `mode=BINARY` | `BUSY` |
 | `qspi test confirm` | `qspi_test` | `state=STARTED` | `BUSY` |
 | `iwdg reset confirm` | `iwdg_reset_test` | `state=ARMED` | `BUSY` |
@@ -88,7 +93,8 @@ OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文�
 | `board` | `FDCAN_READY`、`FDCAN_INIT_FAILED`、`MOTION_IO_READY`、`MOTION_IO_INIT_FAILED` |
 | `motor` | `INIT_FAILED` |
 | `sr501` | `WARMING_UP` |
-| `imu` | `INITIALIZED` |
+| `imu` | `READY`、`NOT_FOUND`、`INIT_FAILED` |
+| `odometry` | `READY`、`INIT_FAILED` |
 | `application` | `READY` |
 | `ota` | `UART_ARM_TIMEOUT` |
 | `iwdg` | `RESET_TEST_ARMED` |
@@ -102,14 +108,19 @@ OTA 二进制帧不属于本文，进入 OTA 二进制模式后禁止混入文�
 [TEL] v=1 ts_ms=1000 seq=42 section=system fw=0.3.0 build=1 control=RUNNING left_target=0 right_target=0 fault=0
 ```
 
-同一遥测流的字段顺序固定；没有有效值时使用 `valid=0` 和约定的零值，不使用 `UNKNOWN` 混合
-类型。`status` 命令返回 `system`、`motor`、`sensors`、`communication` 四行，这四行共享同一
-`seq`，便于上位机组装一次完整快照。VOFA 数字流仅在显式 `telemetry vofa` 命令下启用，属于
-兼容模式，不与正式 `[TEL]` 字段混用。
+没有有效值时使用 `valid=0` 和约定的零值，不使用 `UNKNOWN` 混合类型。当前 `status` 命令返回
+`system`、`motor`、`sensors`、`communication` 四行，这四行共享同一 `seq`，便于上位机组装
+一次完整快照。四分区只是当前完整诊断视图，不是所有功能都必须扩充的固定容器：新字段只有在
+确有长期诊断价值且职责归属明确时才加入；独立领域会使现有分区明显膨胀时，可在 v1 增加新的
+`section` 或专用命令结果。不得为同一含义创建不同字段别名。
+
+周期 `telemetry text` 是面向连续观察的精简视图，不要求复制完整 `status`。字段只按实际观察
+需求选择；完整诊断仍由 `status` 提供。VOFA 数字流仅在显式 `telemetry vofa` 命令下启用，
+属于兼容模式，不与正式 `[TEL]` 字段混用。
 
 ### 遥测字段注册表
 
-四分区 `status` 的版本 1 字段和顺序固定如下：
+当前四分区 `status` 字段如下。该表记录已实现线格式，不表示字段集合冻结：
 
 ```text
 system: fw build uptime_ms supply_valid supply_mv control fault reset reset_flags critical_tasks
@@ -121,18 +132,27 @@ system: fw build uptime_ms supply_valid supply_mv control fault reset reset_flag
         display_expected_ms display_timeout_ms display_age_ms display_runs display_stack_free_words
 motor: control left_target left_speed left_pwm right_target right_speed right_pwm left_encoder
        right_encoder left_kp left_ki left_kd right_kp right_ki right_kd motor_test overrun missed
-sensors: rtc_valid rtc adc_valid adc_mv imu imu_whoami imu_samples imu_fifo_frames imu_fifo_errors
-         imu_timestamp_errors imu_kalman imu_kalman_roll_mrad imu_kalman_pitch_mrad sr501
+       odom_valid odom_ts_ms odom_period_ms odom_age_ms odom_x_mm odom_y_mm
+       odom_heading_mrad odom_linear_mm_s odom_angular_mrad_s
+sensors: rtc_valid rtc adc_valid adc_mv adc_ts_ms adc_age_ms imu imu_whoami imu_samples
+         imu_fifo_frames imu_fifo_errors imu_timestamp_errors imu_fifo_ts imu_ts_ms imu_age_ms
+         imu_kalman imu_kalman_roll_mrad imu_kalman_pitch_mrad sr501
          sr501_raw sr501_motion sr501_count sr501_last_ms sr501_warmup_ms button1_pressed
          button1_count button2_pressed button2_count
 communication: can can_drops uart_errors qspi_read qspi_id qspi_jedec qspi_capacity_bytes
                qspi_test ota_confirmation ota_source ota_state ota_offset lcd telemetry iwdg_test
 ```
 
+`odom_ts_ms` 是编码器控制采样点的本地单调毫秒时间；`imu_fifo_ts` 是 ICM45686 设备时间戳，
+`imu_ts_ms` 是按 FIFO 队列深度映射后的本地单调时间；`adc_ts_ms` 是 ADC 转换完成时间。所有
+`*_age_ms` 均使用无符号时间差计算并支持 32 位 uptime 回绕。里程计输出单位固定为毫米、毫弧度、
+毫米每秒和毫弧度每秒。
+
 周期 `telemetry text` 使用 `section=motor`，字段依次为 `supply_mv`、`left_target`、
 `left_delta`、`left_rpm_x10`、`left_total`、`left_pwm`、`right_target`、`right_delta`、
-`right_rpm_x10`、`right_total`、`right_pwm`、`control` 和 `fault`。协议版本 1 内不复用已有
-字段表达不同含义。
+`right_rpm_x10`、`right_total`、`right_pwm`、`control`、`fault`、`odom_valid`、`odom_ts_ms`、
+`odom_age_ms`、`odom_x_mm`、`odom_y_mm`、`odom_heading_mrad`、`odom_linear_mm_s` 和
+`odom_angular_mrad_s`。协议版本 1 内不复用已有字段表达不同含义。
 
 ## OTA 隔离
 

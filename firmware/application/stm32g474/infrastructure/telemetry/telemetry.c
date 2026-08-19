@@ -1,5 +1,6 @@
 #include "infrastructure/telemetry/telemetry.h"
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -10,7 +11,23 @@
 
 static TelemetryMode telemetry_mode;
 static uint32_t last_transmit_ms;
-static char transmit_buffer[512];
+static char transmit_buffer[768];
+
+static int32_t FixedFromFloat(float value, float scale)
+{
+  const float scaled = value * scale;
+
+  if (!(scaled == scaled)) {
+    return 0;
+  }
+  if (scaled >= 2147483647.0f) {
+    return INT32_MAX;
+  }
+  if (scaled <= -2147483648.0f) {
+    return INT32_MIN;
+  }
+  return (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
+}
 
 void Telemetry_Init(void)
 {
@@ -79,7 +96,9 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
         "supply_mv=%ld left_target=%ld left_delta=%ld left_rpm_x10=%ld "
         "left_total=%s left_pwm=%d right_target=%ld right_delta=%ld "
         "right_rpm_x10=%ld right_total=%s right_pwm=%d control=%lu "
-        "fault=0x%08lx",
+        "fault=0x%08lx odom_valid=%u odom_ts_ms=%lu odom_age_ms=%lu "
+        "odom_x_mm=%ld odom_y_mm=%ld odom_heading_mrad=%ld "
+        "odom_linear_mm_s=%ld odom_angular_mrad_s=%ld",
         (long)snapshot->supply_mv, (long)snapshot->left_target,
         (long)snapshot->left_delta, (long)left_rpm_x10,
         left_total, (int)snapshot->left_output,
@@ -87,7 +106,16 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
         (long)right_rpm_x10, right_total,
         (int)snapshot->right_output,
         (unsigned long)snapshot->control_state,
-        (unsigned long)snapshot->fault_flags);
+        (unsigned long)snapshot->fault_flags,
+        snapshot->odometry_valid ? 1U : 0U,
+        (unsigned long)snapshot->odometry_sample_timestamp_ms,
+        (unsigned long)snapshot->odometry_sample_age_ms,
+        (long)FixedFromFloat(snapshot->odometry_x_m, 1000.0f),
+        (long)FixedFromFloat(snapshot->odometry_y_m, 1000.0f),
+        (long)FixedFromFloat(snapshot->odometry_heading_rad, 1000.0f),
+        (long)FixedFromFloat(snapshot->odometry_linear_velocity_mps, 1000.0f),
+        (long)FixedFromFloat(snapshot->odometry_angular_velocity_rad_s,
+                             1000.0f));
   }
 
   if (telemetry_mode == TELEMETRY_MODE_VOFA) {

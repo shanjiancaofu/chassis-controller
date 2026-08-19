@@ -6,6 +6,7 @@
 
 #include "bsp/button/bsp_button.h"
 #include "bsp/imu/bsp_icm45686.h"
+#include "bsp/power_monitor/bsp_power_sample.h"
 #include "bsp/sr501/bsp_sr501.h"
 #include "modules/chassis/odometry.h"
 #include "modules/chassis/wheel_controller.h"
@@ -91,6 +92,7 @@ typedef struct {
   uint8_t rtc_seconds;
   bool supply_valid;
   uint32_t supply_mv;
+  BspPowerSampleSnapshot power_sample;
   uint32_t fault_flags;
   uint32_t qspi_test_state;
   uint32_t ota_confirmation_state;

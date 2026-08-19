@@ -40,6 +40,22 @@ static int16_t DegreesFromRadians(float radians)
   return (int16_t)(degrees >= 0.0F ? degrees + 0.5F : degrees - 0.5F);
 }
 
+static int32_t MilliFromFloat(float value)
+{
+  const float scaled = value * 1000.0f;
+
+  if (!(scaled == scaled)) {
+    return 0;
+  }
+  if (scaled >= 999999.0f) {
+    return 999999;
+  }
+  if (scaled <= -999999.0f) {
+    return -999999;
+  }
+  return (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
+}
+
 static BspLcdControlState MapControlState(ChassisControlState state)
 {
   switch (state) {
@@ -135,6 +151,13 @@ static void RefreshLcdData(void)
   lcd_data.right_encoder_delta = system_status.odometry.right_delta;
   lcd_data.left_output = system_status.wheels.left_output;
   lcd_data.right_output = system_status.wheels.right_output;
+  lcd_data.odometry_valid = system_status.odometry.valid;
+  lcd_data.odometry_x_mm = MilliFromFloat(system_status.odometry.x_m);
+  lcd_data.odometry_y_mm = MilliFromFloat(system_status.odometry.y_m);
+  lcd_data.odometry_heading_mrad =
+      MilliFromFloat(system_status.odometry.heading_rad);
+  lcd_data.odometry_linear_mm_s =
+      MilliFromFloat(system_status.odometry.linear_velocity_mps);
 
   lcd_data.imu_orientation_valid = system_status.imu.orientation_valid;
   lcd_data.roll_deg = DegreesFromRadians(system_status.imu.roll_rad);

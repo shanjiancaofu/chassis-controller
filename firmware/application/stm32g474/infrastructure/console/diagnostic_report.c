@@ -1,5 +1,6 @@
 #include "infrastructure/console/diagnostic_report.h"
 
+#include <limits.h>
 #include <stdio.h>
 
 #include "bsp/imu/bsp_icm45686.h"
@@ -29,6 +30,7 @@ static char communication_fields[768];
 static bool WriteSelfTestReport(uint32_t now_ms);
 static bool WriteQspiTestReport(uint32_t now_ms);
 static void FormatEncoderCount(char *buffer, size_t capacity, int64_t value);
+static int32_t FixedFromFloat(float value, float scale);
 static const char *TaskStateText(uint32_t state);
 static const char *ResetCauseText(uint32_t flags);
 static const char *ControlStateText(ChassisControlState state);
@@ -158,7 +160,10 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       "control=%s left_target=%ld left_speed=%ld left_pwm=%d "
       "right_target=%ld right_speed=%ld right_pwm=%d left_encoder=%s "
       "right_encoder=%s left_kp=%u left_ki=%u left_kd=%u right_kp=%u "
-      "right_ki=%u right_kd=%u motor_test=%u overrun=%lu missed=%lu",
+      "right_ki=%u right_kd=%u motor_test=%u overrun=%lu missed=%lu "
+      "odom_valid=%u odom_ts_ms=%lu odom_period_ms=%lu odom_age_ms=%lu "
+      "odom_x_mm=%ld odom_y_mm=%ld odom_heading_mrad=%ld "
+      "odom_linear_mm_s=%ld odom_angular_mrad_s=%ld",
       ControlStateText(status.control_state),
       (long)status.wheels.left_target,
       (long)status.wheels.left_measurement,
@@ -176,13 +181,26 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       (unsigned int)status.parameters.right_pid.kd,
       status.motor_test.running ? 1U : 0U,
       (unsigned long)status.board_health.control_overrun_count,
-      (unsigned long)status.board_health.control_missed_tick_count);
+      (unsigned long)status.board_health.control_missed_tick_count,
+      status.odometry.valid ? 1U : 0U,
+      (unsigned long)status.odometry.sample_timestamp_ms,
+      (unsigned long)status.odometry.sample_period_ms,
+      status.odometry.valid
+          ? (unsigned long)(now_ms - status.odometry.sample_timestamp_ms)
+          : 0UL,
+      (long)FixedFromFloat(status.odometry.x_m, 1000.0f),
+      (long)FixedFromFloat(status.odometry.y_m, 1000.0f),
+      (long)FixedFromFloat(status.odometry.heading_rad, 1000.0f),
+      (long)FixedFromFloat(status.odometry.linear_velocity_mps, 1000.0f),
+      (long)FixedFromFloat(status.odometry.angular_velocity_rad_s, 1000.0f));
 
   (void)snprintf(
       sensor_fields, sizeof(sensor_fields),
       "rtc_valid=%u rtc=20%02u-%02u-%02uT%02u:%02u:%02u "
-      "adc_valid=%u adc_mv=%lu imu=%s imu_whoami=0x%02X imu_samples=%lu "
+      "adc_valid=%u adc_mv=%lu adc_ts_ms=%lu adc_age_ms=%lu "
+      "imu=%s imu_whoami=0x%02X imu_samples=%lu "
       "imu_fifo_frames=%lu imu_fifo_errors=%lu imu_timestamp_errors=%lu "
+      "imu_fifo_ts=%u imu_ts_ms=%lu imu_age_ms=%lu "
       "imu_kalman=%u imu_kalman_roll_mrad=%ld imu_kalman_pitch_mrad=%ld "
       "sr501=%s sr501_raw=%u sr501_motion=%u sr501_count=%lu "
       "sr501_last_ms=%lu sr501_warmup_ms=%lu button1_pressed=%u "
@@ -191,11 +209,21 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       (unsigned int)status.rtc_month, (unsigned int)status.rtc_date,
       (unsigned int)status.rtc_hours, (unsigned int)status.rtc_minutes,
       (unsigned int)status.rtc_seconds, status.supply_valid ? 1U : 0U,
-      (unsigned long)status.supply_mv, ImuStateText(&status.imu),
+      (unsigned long)status.supply_mv,
+      (unsigned long)status.power_sample.sample_timestamp_ms,
+      status.power_sample.valid
+          ? (unsigned long)(now_ms - status.power_sample.sample_timestamp_ms)
+          : 0UL,
+      ImuStateText(&status.imu),
       status.imu.who_am_i, (unsigned long)status.imu.sample_count,
       (unsigned long)status.imu.fifo_frame_count,
       (unsigned long)status.imu.fifo_parse_error_count,
       (unsigned long)status.imu.timestamp_error_count,
+      (unsigned int)status.imu.fifo_timestamp,
+      (unsigned long)status.imu.last_sample_ms,
+      status.imu.sample_valid
+          ? (unsigned long)(now_ms - status.imu.last_sample_ms)
+          : 0UL,
       status.imu.kalman_valid ? 1U : 0U,
       (long)(status.imu.kalman_roll_rad * 1000.0f),
       (long)(status.imu.kalman_pitch_rad * 1000.0f),
@@ -269,6 +297,22 @@ static void FormatEncoderCount(char *buffer, size_t capacity, int64_t value)
       buffer[1] = '\0';
     }
   }
+}
+
+static int32_t FixedFromFloat(float value, float scale)
+{
+  const float scaled = value * scale;
+
+  if (!(scaled == scaled)) {
+    return 0;
+  }
+  if (scaled >= 2147483647.0f) {
+    return INT32_MAX;
+  }
+  if (scaled <= -2147483648.0f) {
+    return INT32_MIN;
+  }
+  return (int32_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
 }
 
 static const char *TaskStateText(uint32_t state)

@@ -31,6 +31,7 @@
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | ICM45686 SPI/FIFO | `HARDWARE PASS` | 0.11.1；WHO_AM_I=0xE9，普通复位后 224 帧零解析/时间戳错误，100 Hz 周期 10 ms |
 | 双编码器 | `HARDWARE PASS` | 前进同为正、后退同为负 |
+| 轮式里程计 | `NOT VERIFIED` | 0.12.0 已实现时间戳、位姿和速度输出并通过宿主机测试；尚未上板和落地校准 |
 | 双电机开环 | `HARDWARE PASS` | 方向沿用历史验收；0.9.1 运行期占空比测试确认自动停止 |
 | 开环启动下限 | `HARDWARE PASS` | 约 12.22 V、架空轮；左右可靠下限约 3500/8499（41.2%） |
 | 目标加减速限制 | `NOT VERIFIED` | 0.10.0 已实现每 10 ms 最多 5 counts/tick；尚未完成带负载阶跃验收 |
@@ -1234,3 +1235,24 @@ roll/pitch 为 `[-69, 8] mrad`；用户保持车体左侧抬高后读数为 `[-5
 Release BIN 为 `95876` 字节，CRC32 `0x88BB01DD`；OTA 包为 `95940` 字节。ICM45686 与
 IMU fusion C 宿主机测试均使用 `-std=c11 -Wall -Wextra -Werror` 编译运行通过，OTA Python
 13 项通过，`git diff --check` 通过。
+
+## 2026-08-19 统一采样时间戳与轮式里程计（0.12.0 build1）
+
+编码器控制采样、ADC 转换完成和 ICM45686 FIFO 数据均增加本地单调采样时刻与数据年龄。
+轮式里程计使用 `1320 counts/rev`、`65 mm` 轮径和 `220 mm` 轮距，采用差速圆弧积分输出
+`x/y/heading`、左右累计距离、线速度和角速度；UART/LCD 接入和 `odometry reset` 已实现。
+
+宿主机里程计测试使用 `-std=c11 -Wall -Wextra -Werror` 编译执行，覆盖初始化参数、直行、
+原地旋转、圆弧积分、航向归一化、时间戳/年龄和复位，结果通过。CMake/Ninja
+构建结果：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 110024 | 120 | 54144 | `BUILD PASS` |
+| Release | 97960 | 120 | 54136 | `BUILD PASS` |
+
+Release BIN/payload 为 `98088` 字节，CRC32 `0x124D4C30`，SHA-256
+`e91540cf5cb93cce6c6876d66c1553aee0bc6ade7ad6b1f3227949a557e8ad20`；OTA 包为 `98152`
+字节，SHA-256 `d7c8a0cf85f085bf1d9d82c44745942818f6b1d1f22d3c8aa7a98f66255df993`。OTA Python
+13 项通过，`git diff --check` 通过。本批未烧录目标板，时间对齐、里程计符号、直线距离和
+原地旋转角度均保持 `NOT VERIFIED`。

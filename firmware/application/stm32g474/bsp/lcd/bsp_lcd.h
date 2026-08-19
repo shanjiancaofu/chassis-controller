@@ -78,6 +78,11 @@ typedef struct
   int32_t right_encoder_delta;
   int16_t left_output;
   int16_t right_output;
+  bool odometry_valid;
+  int32_t odometry_x_mm;
+  int32_t odometry_y_mm;
+  int32_t odometry_heading_mrad;
+  int32_t odometry_linear_mm_s;
 
   int16_t roll_deg;
   int16_t pitch_deg;

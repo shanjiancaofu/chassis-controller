@@ -148,6 +148,8 @@ static ConsoleCommand ParseCommand(const char *line)
     command.type = CONSOLE_COMMAND_ENCODER_ZERO;
   } else if (strcmp(line, "encoder result") == 0) {
     command.type = CONSOLE_COMMAND_ENCODER_RESULT;
+  } else if (strcmp(line, "odometry reset") == 0) {
+    command.type = CONSOLE_COMMAND_ODOMETRY_RESET;
   } else if (strcmp(line, "ota uart confirm") == 0) {
     command.type = CONSOLE_COMMAND_OTA_UART;
   } else if (strcmp(line, "qspi test confirm") == 0) {

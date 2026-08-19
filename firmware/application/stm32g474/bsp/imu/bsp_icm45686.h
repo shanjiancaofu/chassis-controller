@@ -35,6 +35,7 @@ typedef struct {
   float kalman_roll_rad;
   float kalman_pitch_rad;
   uint32_t last_sample_ms;
+  uint16_t fifo_timestamp;
   uint32_t sample_count;
   uint32_t interrupt_count;
   uint32_t fifo_frame_count;

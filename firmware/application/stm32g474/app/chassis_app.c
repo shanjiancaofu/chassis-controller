@@ -1,5 +1,6 @@
 #include "app/chassis_app.h"
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -53,6 +54,11 @@ static OtaUartArmGuard ota_uart_arm_guard;
 static bool ota_terminal_cleaned;
 static bool ota_response_waiting;
 static OtaResponse ota_response;
+static const OdometryConfig odometry_config = {
+    .encoder_counts_per_revolution = MOTOR_ENCODER_COUNTS_PER_REVOLUTION,
+    .wheel_diameter_m = CHASSIS_WHEEL_DIAMETER_M,
+    .track_width_m = CHASSIS_TRACK_WIDTH_M,
+};
 
 static void ProcessConsoleCommand(const ConsoleCommand *command,
                                   uint32_t now_ms);
@@ -196,7 +202,15 @@ void ChassisApp_Init(void)
             : UART_PROTOCOL_LOG_INFO,
         "parameters", parameters_loaded ? "LOADED" : "DEFAULTS", fields);
   }
-  Odometry_Init();
+  if (!Odometry_Init(&odometry_config)) {
+    (void)UartProtocol_SendLog(HAL_GetTick(), UART_PROTOCOL_LOG_ERROR,
+                               "odometry", "INIT_FAILED",
+                               "code=INVALID_GEOMETRY");
+    Error_Handler();
+  }
+  (void)UartProtocol_SendLog(
+      HAL_GetTick(), UART_PROTOCOL_LOG_INFO, "odometry", "READY",
+      "counts_per_rev=1320 wheel_diameter_mm=65 track_width_mm=220");
   SystemStatus_Init();
   OtaConfirmation_Init();
   QspiTargetTest_Init();
@@ -412,7 +426,7 @@ void ChassisApp_RunServiceCycle(void)
     taskENTER_CRITICAL();
     WheelController_GetSnapshot(&wheel_snapshot);
     MotorTargetTest_GetSnapshot(&motor_test_snapshot);
-    Odometry_GetSnapshot(&odometry_snapshot);
+    Odometry_GetSnapshot(now_ms, &odometry_snapshot);
     taskEXIT_CRITICAL();
     snapshot.left_target = wheel_snapshot.left_target;
     snapshot.left_delta = odometry_snapshot.left_delta;
@@ -426,6 +440,17 @@ void ChassisApp_RunServiceCycle(void)
     snapshot.right_output = motor_test_snapshot.running
                                 ? motor_test_snapshot.right_duty
                                 : wheel_snapshot.right_output;
+    snapshot.odometry_valid = odometry_snapshot.valid;
+    snapshot.odometry_sample_timestamp_ms =
+        odometry_snapshot.sample_timestamp_ms;
+    snapshot.odometry_sample_age_ms = odometry_snapshot.sample_age_ms;
+    snapshot.odometry_x_m = odometry_snapshot.x_m;
+    snapshot.odometry_y_m = odometry_snapshot.y_m;
+    snapshot.odometry_heading_rad = odometry_snapshot.heading_rad;
+    snapshot.odometry_linear_velocity_mps =
+        odometry_snapshot.linear_velocity_mps;
+    snapshot.odometry_angular_velocity_rad_s =
+        odometry_snapshot.angular_velocity_rad_s;
     snapshot.supply_mv = supply_valid ? (int32_t)supply_mv : -1;
     snapshot.control_state = (uint32_t)SafetyManager_GetState();
     snapshot.fault_flags = FaultManager_GetFlags();
@@ -507,6 +532,7 @@ void ChassisApp_RunDiagnosticsCycle(void)
         (SystemStatusCanState)CanTransport_GetLinkStatus();
     status.lcd_state = (SystemStatusLcdState)BspLcd_GetStatus();
     status.supply_valid = BspPowerSample_ReadMillivolts(&status.supply_mv);
+    BspPowerSample_GetSnapshot(now_ms, &status.power_sample);
     status.fault_flags = FaultManager_GetFlags();
     status.qspi_test_state = (uint32_t)QspiTargetTest_GetStatus();
     status.ota_confirmation_state = (uint32_t)OtaConfirmation_GetStatus();
@@ -518,7 +544,7 @@ void ChassisApp_RunDiagnosticsCycle(void)
     status.telemetry_mode = (uint32_t)Telemetry_GetMode();
     taskENTER_CRITICAL();
     WheelController_GetSnapshot(&status.wheels);
-    Odometry_GetSnapshot(&status.odometry);
+    Odometry_GetSnapshot(now_ms, &status.odometry);
     MotorTargetTest_GetSnapshot(&motor_test);
     status.motor_test.running = motor_test.running;
     status.motor_test.left_duty = motor_test.left_duty;
@@ -678,6 +704,15 @@ static void ProcessConsoleCommand(const ConsoleCommand *command,
     case CONSOLE_COMMAND_ENCODER_RESULT:
       SendEncoderResult(now_ms);
       break;
+    case CONSOLE_COMMAND_ODOMETRY_RESET:
+      if (ResetWheelOdometry()) {
+        (void)UartProtocol_SendResponse(now_ms, "odometry_reset", true,
+                                        "state=RESET");
+      } else {
+        (void)UartProtocol_SendResponse(now_ms, "odometry_reset", false,
+                                        "code=SAFETY_STOP");
+      }
+      break;
     case CONSOLE_COMMAND_OTA_UART:
       if (AcquireOtaMaintenanceLock()) {
         Telemetry_SetMode(TELEMETRY_MODE_OFF);
@@ -834,7 +869,7 @@ static void SendEncoderResult(uint32_t now_ms)
   char right_total[24];
 
   taskENTER_CRITICAL();
-  Odometry_GetSnapshot(&snapshot);
+  Odometry_GetSnapshot(now_ms, &snapshot);
   taskEXIT_CRITICAL();
   (void)UartProtocol_FormatSigned64(left_total, sizeof(left_total),
                                     snapshot.left_total);
@@ -884,7 +919,7 @@ static void SendConsoleHelp(uint32_t now_ms)
 {
   const char *commands =
       "commands=help,ping,status,telemetry,can_status,can_tx,pid_show,pid_set," \
-      "pid_target,pid_stop,encoder_zero,encoder_result,ota_uart,qspi_test," \
+      "pid_target,pid_stop,encoder_zero,encoder_result,odometry_reset,ota_uart,qspi_test," \
       "iwdg_reset_test,motor_duty,motor_stop,motor_left_forward,motor_left_reverse," \
       "motor_right_forward,motor_right_reverse";
 
@@ -999,7 +1034,11 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     LatchChassisInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
     return;
   }
-  Odometry_Update(left_delta, right_delta);
+  if (!Odometry_Update(left_delta, right_delta, now_ms,
+                       MOTOR_CONTROL_PERIOD_MS * notification_count)) {
+    LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
+    return;
+  }
   left_measurement = left_delta / (int32_t)notification_count;
   right_measurement = right_delta / (int32_t)notification_count;
   ApplyPendingControlParameters();

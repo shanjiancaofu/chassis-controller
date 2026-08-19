@@ -19,6 +19,14 @@ typedef struct {
   int32_t right_delta;
   int64_t right_total;
   int16_t right_output;
+  bool odometry_valid;
+  uint32_t odometry_sample_timestamp_ms;
+  uint32_t odometry_sample_age_ms;
+  float odometry_x_m;
+  float odometry_y_m;
+  float odometry_heading_rad;
+  float odometry_linear_velocity_mps;
+  float odometry_angular_velocity_rad_s;
   int32_t supply_mv;
   uint32_t control_state;
   uint32_t fault_flags;

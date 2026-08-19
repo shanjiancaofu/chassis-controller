@@ -102,6 +102,7 @@ set(APP_SOURCES
   tests/unit/test_command_manager.c
   tests/unit/test_icm45686.c
   tests/unit/test_imu_fusion.c
+  tests/unit/test_odometry.c
   tests/unit/test_ota_metadata.c
   tests/unit/test_parameter_record.c
   tests/unit/test_uart_protocol.c)

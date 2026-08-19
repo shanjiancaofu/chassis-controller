@@ -63,6 +63,7 @@ static volatile DmaState dma_state;
 static uint8_t dma_tx[ICM45686_FIFO_TRANSFER_SIZE];
 static uint8_t dma_rx[ICM45686_FIFO_TRANSFER_SIZE];
 static uint16_t dma_frame_count;
+static uint16_t dma_remaining_frame_count;
 static bool drain_pending;
 static uint32_t dma_started_ms;
 static uint32_t ready_after_ms;
@@ -96,6 +97,7 @@ void BspIcm45686_Init(uint32_t now_ms)
   interrupt_count = 0U;
   dma_state = DMA_IDLE;
   dma_frame_count = 0U;
+  dma_remaining_frame_count = 0U;
   drain_pending = false;
   ready_after_ms = now_ms;
   last_attempt_ms = now_ms;
@@ -316,6 +318,7 @@ static bool StartFifoDma(uint32_t now_ms)
   dma_frame_count = available_frames > ICM45686_FIFO_BATCH_FRAMES
                         ? ICM45686_FIFO_BATCH_FRAMES
                         : available_frames;
+  dma_remaining_frame_count = available_frames - dma_frame_count;
   drain_pending = available_frames > dma_frame_count;
   transfer_length =
       (uint16_t)(1U + dma_frame_count * ICM45686_FIFO_FRAME_SIZE);
@@ -339,6 +342,7 @@ static void ProcessDmaFrames(uint32_t now_ms)
   bool parse_error = false;
   bool recovery_failed = false;
   uint16_t valid_frames = 0U;
+  uint32_t sample_delay_ms;
 
   for (uint16_t index = 0U; index < dma_frame_count; ++index) {
     Icm45686FifoSample fifo_sample;
@@ -354,6 +358,7 @@ static void ProcessDmaFrames(uint32_t now_ms)
     }
     Icm45686_ConvertSample(&imu_device, &fifo_sample.raw, &sample);
     imu_snapshot.sample_period_s = GetSamplePeriod(fifo_sample.timestamp);
+    imu_snapshot.fifo_timestamp = fifo_sample.timestamp;
     ImuFusion_Update(&imu_fusion, sample.accel_mps2, sample.gyro_rad_s,
                      imu_snapshot.sample_period_s);
     memcpy(imu_snapshot.accel, fifo_sample.raw.accel,
@@ -374,7 +379,13 @@ static void ProcessDmaFrames(uint32_t now_ms)
     recovery_failed = !FlushFifo();
   }
   if (valid_frames > 0U) {
-    imu_snapshot.last_sample_ms = now_ms;
+    sample_delay_ms =
+        (uint32_t)((float)dma_remaining_frame_count *
+                       imu_snapshot.sample_period_s * 1000.0f +
+                   0.5f);
+    imu_snapshot.last_sample_ms =
+        sample_delay_ms <= dma_started_ms ? dma_started_ms - sample_delay_ms
+                                          : 0U;
     imu_snapshot.sample_valid = true;
     if (!parse_error) {
       consecutive_errors = 0U;
