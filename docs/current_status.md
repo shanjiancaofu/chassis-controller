@@ -5,13 +5,15 @@
 
 ## 代码基线
 
-- Application 工作树和板上 confirmed 镜像：`0.12.0 build1`。
+- Application 工作树：`0.13.0 build1`；板上 confirmed 镜像：`0.13.0 build1`。
 - Bootloader：`0.1.0 build22`。
-- 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.12.0 build1`；Bootloader 仍为
+- 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.13.0 build1`；Bootloader 仍为
   build22，b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.10.0`
   和 `0.11.0` 的既有验证记录继续保留；`0.11.1` 和 `0.12.0` 已完成 UART OTA 和普通复位回归。
 - 最新 Release `build/arm-release/app-v0.12.0-b1.ota` 的 payload 为 `98088` 字节、CRC32 为
   `0x124D4C30`；OTA 包共 `98152` 字节，已通过 UART OTA 写入并确认。
+- 当前 UI Release `build/arm-release/app-v0.13.0-b1.ota` 的 payload 为 `98264` 字节、CRC32 为
+  `0x4659F611`；OTA 包共 `98328` 字节，已通过 UART OTA 写入并确认。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
@@ -22,7 +24,7 @@
   目标加减速限制、
   编码器异常保护和欠压保护代码已实现，带负载阶跃、异常脉冲和欠压注入仍待实测；SR501
   高电平闭环继续后置。`0.12.0` 已完成 UART OTA confirmed，统一采样时间戳和差速轮式里程计
-  已运行，当前等待架空轮与落地校准。
+  已运行；`0.13.0` 已完成 UART OTA confirmed，LCD UI 视觉、文字不重叠和四页切换仍待人工目视确认。
 
 ## 当前实现
 
@@ -84,6 +86,8 @@
 - 差速里程计使用 `1320 counts/rev`、`65 mm` 轮胎有效直径和 `220 mm` 轮距，输出左右累计
   距离、`x/y/heading`、线速度和角速度，并接入统一快照、UART、文本遥测和 LCD 电机页；
   `odometry reset` 可在停止状态清零。IMU 安装固定前不进行陀螺 Z 轴航向融合。
+- LCD UI `0.13.0` 增加页眉四页位置指示、上下内容区对比、暖色电量强调，并将电机、传感器、
+  系统页的长串缩写改为分组标签；保留 PB8 单键切页、透明 Logo、四页结构和统一快照数据源。
 - PID 参数已加入 QSPI 双副本持久化，修改后立即在 RAM 生效，由 `service_task` 异步保存；当前
   左侧参数已实测保存为 `210/310/1`，返回 `persistence=STORED sequence=1`。
 - 电机开环测试支持运行期命令 `motor duty <0..8499>`，默认值仍为 `6500`，测试运行中
@@ -108,6 +112,10 @@
   `ota_confirmation=CONFIRMED`、四任务 `RUNNING`、`fault=0`、`control=STOPPED`、左右 PWM 为零，
   供电约 `12.188 V`，`odom_valid=1`，LCD 为 `READY`，IMU `WHO_AM_I=0xE9` 且无 FIFO/时间戳
   错误。此次未驱动车轮。
+- 2026-08-19 `0.13.0 build1` 已通过 `/dev/ttyUSB0` 完成 UART OTA 的 `STAGED -> INSTALL
+  VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。在线复核报告四任务
+  `RUNNING`、`fault=0`、`control=STOPPED`、左右 PWM 为零、`lcd=DRAWING`、IMU `READY` 和
+  里程计静态零位；本轮未驱动车轮，LCD 新布局仍待人工目视确认。
 - ICM45686 实测 `WHO_AM_I=0xE9`。修正端序配置后，调试快照连续 588 帧无解析、timestamp、
   DMA 或传输错误，采样周期为 `10 ms`；200 个静止样本后零偏标定、Mahony 和 Kalman 均有效。
   普通复位后的 UART `status` 再次报告 224 帧、`imu_fifo_errors=0`、
@@ -140,10 +148,10 @@
 - 2026-08-18 Application `0.3.0` build `1` 已在目标板确认四任务均为 `RUNNING`，周期、栈余量、heartbeat age、运行次数
   和复位原因可通过同一 `SystemStatusSnapshot` 读取；`critical_tasks=1`、`control=STOPPED`、
   `fault=0`、`overrun=0`、`missed=0`。
-- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前 `0.12.0 build1` 工作树构建通过：
-  Application Debug `text=110024 data=120 bss=54144`，Release
-  `text=97960 data=120 bss=54136`。里程计 C 宿主机测试和 OTA Python 13 项通过；构建阶段未烧录，
-  后续 UART OTA 和启动复核证据保留在 `verification.md`。
+- CMake 3.22 + Ninja + GNU Arm Embedded 14.3.rel1 当前 `0.13.0 build1` 工作树构建通过：
+  Application Debug `text=110292 data=120 bss=54144`，Release
+  `text=98136 data=120 bss=54136`。里程计 C 宿主机测试和 OTA Python 13 项通过；本批 UI
+  产物已烧录并完成串口启动复核，LCD 视觉效果等待人工确认。
 - build1 已实测结构化启动 `[LOG]`、命令 `[RSP]`、同序号四分区 `[TEL]`、错误响应、PID 参数读取、
   100 ms 文本遥测、CRLF 换行和 `encoder_result`。nano printf 不支持 `%lld` 导致的编码器及后续
   变参错位已改为独立 64 位十进制格式化，并在目标板确认编码器、PID、overrun/missed 字段正确。
@@ -201,8 +209,9 @@
   `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
   OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
 
-- confirmed `0.12.0 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；本轮完成普通
+- confirmed `0.12.0 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；此前完成普通
   复位和 UART OTA 确认，未执行断电测试。
+- `0.13.0 build1` LCD 页眉指示、标签层级、配色和文本排版已上板但尚未人工目视验证。
 - `0.12.0 build1` 的里程计方向、直线距离、原地旋转角度、时间对齐误差和 LCD 里程计动态显示
   尚未验证；当前只确认固件启动快照中的静态零位输出。
 - CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
@@ -215,7 +224,8 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 在车轮架空、PWM 归零可控的条件下检查编码器增量、里程计方向、采样时间戳/年龄和
+1. 在安全停止状态下目视确认 `0.13.0 build1` 四页页眉指示、Logo、电量条、文字排版和状态颜色；
+   随后再检查编码器增量、里程计方向、采样时间戳/年龄和
    `odometry reset`。
 2. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
    固定前不接入航向融合。

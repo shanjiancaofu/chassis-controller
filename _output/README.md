@@ -94,10 +94,11 @@ b16 payload 为 186076 字节，CRC32 `0x995BF0B5`；该包已通过打包校验
 | 历史工作树 | `0.8.0` | ICM45686 正式启用与真实启动状态日志 |
 | 历史工作树 | `0.9.0`--`0.10.0` | PID 持久化、电机启动复核和控制安全收尾 |
 | 历史工作树 | `0.11.1` | ICM45686 FIFO、静止 Kalman 和 UART OTA confirmed |
-| 当前板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
+| 当前板上 | `0.13.0 build1` | LCD UI 信息层级、页眉指示和配色优化，UART OTA confirmed；动态 UI 目视确认待完成 |
+| 上一板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
 
 这些映射用于描述源码演进，不改写历史文件中已经固化的镜像头、文件名或实物证据。目标板
-confirmed 版本已于 2026-08-19 通过 UART OTA 更新为 `0.12.0 build1`；匹配 OTA 包仍保留在
+confirmed 版本已于 2026-08-19 通过 UART OTA 更新为 `0.13.0 build1`；匹配 OTA 包仍保留在
 `build/arm-release/`，尚未向 `_output/application/` 存放正式产物。后续整理产物时不得覆盖
 b12 factory 文件。
 

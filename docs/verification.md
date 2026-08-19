@@ -26,7 +26,8 @@
 | QSPI JEDEC | `HARDWARE PASS` | `EF4017`，识别 8 MiB |
 | QSPI 擦写 | `HARDWARE PASS` | 保留扇区 1 KiB DMA 写入和回读 |
 | LCD SPI DMA | `HARDWARE PASS` | 封面和动态状态页显示正常 |
-| LCD 四页状态显示 | `HARDWARE PASS` | 0.9.1 build1；四页切换、文字、Logo 和电量显示已由用户确认正常 |
+| LCD 四页状态显示 | `HARDWARE PASS` | 0.12.0 build1；四页切换、文字、Logo 和电量显示已由用户确认正常 |
+| LCD UI 0.13.0 | `NOT VERIFIED` | 已随 0.13.0 OTA 上板并由串口确认 `lcd=DRAWING`；页眉页码指示、分组标签、内容区层次和配色仍待人工目视确认 |
 | KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；PB8 四页循环已人工确认正常，PD3/PD4 尚未接线 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | ICM45686 SPI/FIFO | `HARDWARE PASS` | 0.11.1；WHO_AM_I=0xE9，普通复位后 224 帧零解析/时间戳错误，100 Hz 周期 10 ms |
@@ -46,7 +47,7 @@
 | 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
 | HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
-| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-19，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1、0.8.0、0.11.1 和 0.12.0 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
+| UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-19，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1、0.8.0、0.11.1、0.12.0 和 0.13.0 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
@@ -1282,3 +1283,47 @@ imu=READY imu_whoami=0xE9 imu_fifo_errors=0 imu_timestamp_errors=0 lcd=READY
 
 供电约 `12.188 V`。本轮只做 OTA、启动和静态安全状态复核，没有驱动车轮；断电恢复、里程计
 方向/距离/旋转角度和 LCD 动态里程计显示仍保持 `NOT VERIFIED`。
+
+## 2026-08-19 0.13.0 build1 LCD UI 构建
+
+本轮仅调整 LCD 绘制层和产品版本：增加四页页眉位置指示、上下内容区对比、暖色电量强调，
+并将电机、传感器、系统页的长串缩写改为分组标签；保留四页、PB8 单键切换、透明 Logo、
+电量条和 `SystemStatusSnapshot` 数据来源。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 110292 | 120 | 54144 | `BUILD PASS` |
+| Release | 98136 | 120 | 54136 | `BUILD PASS` |
+
+Release BIN/payload 为 `98264` 字节，CRC32 `0x4659F611`，SHA-256
+`ccf30f044accaf61975bf12217df38dc8932d795d35d84561ae43e135cc2367b`；OTA 包为 `98328`
+字节，SHA-256 `c894baa29d541d1ecd711f7afffd66c48521d837b818ba45adb0418d5676946e`。OTA Python
+13 项和 `git diff --check` 通过。随后已完成 UART OTA，UI 视觉、文字不重叠和四页切换仍需
+目标板人工目视确认。
+
+## 2026-08-19 0.13.0 build1 UART OTA 与启动复核
+
+使用 `/dev/ttyUSB0`、115200 8N1 发送
+`build/arm-release/app-v0.13.0-b1.ota`（98328 字节，payload CRC32 `0x4659F611`）。OTA 链路完成：
+
+```text
+STAGED
+INSTALL VERIFIED
+TRIAL COMMITTED
+TRIAL VERIFIED
+CONFIRMED
+```
+
+烧录后的在线 `status` 复核报告：
+
+```text
+fw=0.13.0 build=1 ota_confirmation=CONFIRMED
+control=STOPPED fault=0x00000000 left_pwm=0 right_pwm=0
+service_task=RUNNING control_task=RUNNING diagnostics_task=RUNNING display_task=RUNNING
+lcd=DRAWING imu=READY imu_whoami=0xE9 imu_fifo_errors=0 imu_timestamp_errors=0
+odom_valid=1 odom_x_mm=0 odom_y_mm=0 odom_heading_mrad=0
+```
+
+`lcd=DRAWING` 是在线读取时的逐行 DMA 刷新状态，证明显示任务在运行，不证明画面布局正确。
+本轮没有发送电机命令，控制保持停止且左右 PWM 软件状态为零；四页切换、文字、Logo、电量条
+和新配色仍为 `NOT VERIFIED`，等待人工目视确认。

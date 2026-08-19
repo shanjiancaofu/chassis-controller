@@ -2,6 +2,29 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-19 - LCD UI 信息层级与布局优化（0.13.0 build1）
+
+### 变更内容
+
+- 增加四页页眉位置指示，保留 PB8 单键循环和透明 taifei Logo。
+- 调整背景、内容区和分隔色的层次，使用暖色突出电量数值，降低整页单一蓝色观感。
+- 将电机、传感器和系统页面的长串缩写改为 `CONTROL`、`POSE`、`MOTION`、`HEALTH` 等分组标签，
+  不改变字段来源和页面数量。
+
+### 设计决定
+
+- UI 只读取既有 `SystemStatusSnapshot`，不在 LCD 任务中拼接业务状态。
+- 本轮提升产品版本为 `0.13.0 build1`；UI 代码通过 UART OTA 更新到目标板，视觉验收仍单独记录。
+
+### 验证结果
+
+- Debug `text=110292 data=120 bss=54144`，Release `text=98136 data=120 bss=54136`，
+  两套构建通过；OTA Python 13 项和 `git diff --check` 通过。
+- Release payload `98264` 字节，CRC32 `0x4659F611`，OTA 包 `98328` 字节。
+- OTA 包已完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`；
+  串口启动复核报告四任务运行、故障为零、控制停止和左右 PWM 为零。页眉指示、文字排版、Logo、
+  电量条和四页切换仍待人工目视确认。
+
 ## 2026-08-19 - 统一采样时间戳与轮式里程计（0.12.0 build1）
 
 ### 变更内容
@@ -486,11 +509,13 @@
 | 历史工作树 | `0.10.0 build1` | 控制安全收尾和低速 PID 响应 |
 | 当前板上 | `0.11.1 build1` | ICM45686/FIFO/静止 Kalman 上板，UART OTA confirmed |
 | 当前板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
+| 当前板上 | `0.13.0 build1` | LCD UI 信息层级与布局优化，UART OTA confirmed；视觉验收待完成 |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
+- `0.13.0 build1` 的页眉指示、标签层级、配色、文本排版和四页切换人工目视确认。
 - ICM45686 正负轴向动作、动态姿态、静止回归和长期漂移；模块固定安装前保持 `DEFERRED`。
 - `0.12.0 build1` 的编码器/ADC/IMU 本地时间字段、轮式里程计方向和 LCD/UART 动态输出上板复核，
   以及落地直线距离、原地旋转角度和轮径/轮距校准。
