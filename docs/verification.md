@@ -43,11 +43,11 @@
 | 急停 | `HARDWARE PASS` | PD2 触发故障并清零 PWM |
 | IWDG 受控复位 | `HARDWARE PASS` | 复位后报告测试通过 |
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
-| 低速 PID 闭环 | `DEFERRED` | 参数持久化和 6500 开环启动已验证；低速闭环、停车和稳定性仍后置 |
+| 低速 PID 闭环 | `NOT VERIFIED` | 参数持久化和 6500 开环启动已验证；低速闭环、停车和稳定性重新纳入当前验收 |
 | PID 参数持久化 | `HARDWARE PASS` | 0.9.0 build1，`pid left 210 310 1` 返回 SAVED/STORED sequence=1 |
 | FreeRTOS 四任务运行字段 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 四任务均为 `RUNNING`，周期、栈余量、heartbeat 和运行次数可读 |
 | 正式 UART 文本协议 | `HARDWARE PASS` | 2026-08-18，0.3.0 build1 的 `[LOG]`、`[RSP]`、四分区 `[TEL]`、错误响应、遥测和 CRLF 已实测 |
-| HC-SR501 输入 | `DEFERRED` | b16 已验证 60 秒预热和低电平零误计数；模块指示灯未亮，高电平和事件计数后置 |
+| HC-SR501 输入 | `NOT VERIFIED` | b16 已验证 60 秒预热和低电平零误计数；高电平、事件计数和不重复计数重新纳入当前验收 |
 | Bootloader factory 启动 | `HARDWARE PASS` | DFU 烧录并校验组合镜像，普通复位后 LCD 进入 Application |
 | UART OTA 主升级链路 | `HARDWARE PASS` | 2026-08-19，build22 已完成到 0.3.0、0.6.0、0.7.0、0.7.1、0.8.0、0.11.1、0.12.0、0.13.0 和 0.14.0 的真实 UART 传输、安装、TRIAL 和 CONFIRMED 确认 |
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
@@ -84,7 +84,7 @@ Debug/Release 构建通过，13 项 OTA Python 测试通过。此项只验证主
 ### Architecture boundary checker（2026-08-20）
 
 新增 `tools/build/check_architecture.py`，在 CMake configure 阶段扫描 `app/`、`modules/`、
-`communication/`、`infrastructure/`、`ui/` 和 `rtos/`，禁止直接包含 CubeMX/HAL 外设头、调用
+`communication/`、`subsys/`、`ui/` 和 `rtos/`，禁止直接包含 CubeMX/HAL 外设头、调用
 `HAL_*`、使用 `*_HandleTypeDef` 或暴露 `hfdcan*`、`hspi*`、`htim*` 等硬件句柄。当前源码扫描
 通过；架构检查单元测试 2 项、Debug/Release 构建和 OTA Python 测试 13 项通过。本轮没有目标板
 硬件结论。
@@ -129,10 +129,10 @@ Release ELF 已重新生成 Application BIN 和 OTA 包：
 
 ```text
 application.bin=103408 bytes
-payload_crc32=0xEF8A4A2D
-application.bin sha256=63fbb4eaf1c94c92a0acff4ea302f4fcdc796e380bfb91d0b8ccf668cf2907e7
+payload_crc32=0xBE2FB66E
+application.bin sha256=96dab554f276c97ef9a88a7ffcc4debca118d3ad6f118906b35077b5d2606b80
 app-v0.15.0-b1.ota=103472 bytes
-ota sha256=0de85c99190db2059350af60e9d058aa7c54be54b1c7659c71e68056a8e1b96a
+ota sha256=126cba9f2ea9badcb0bc4cd2c480594305661966e9dc3cde47212dbad446005e
 ```
 
 该 OTA 包只完成主机打包和格式校验，尚未烧录，不能记录硬件 `PASS`。
@@ -156,7 +156,7 @@ DTS 单元测试 2 项、Kconfig 单元测试 4 项、Debug/Release 构建和 OT
 本轮在 0.15.0 首版基础上继续移除 CAN ISR 协议解析和上层 HAL/CubeMX 依赖，拆分 Console、
 OTA 维护、IMU orientation 与 LCD presenter。FDCAN ISR 仅执行一次有界 HAL 收帧、固定队列写入
 和原子计数；握手、运动命令与 OTA 解码均由 `service_task` 推进。依赖扫描确认
-Application 的 `app/communication/components/infrastructure/modules/rtos/ui` 不再直接包含
+Application 的 `app/communication/components/subsys/modules/rtos/ui` 不再直接包含
 `main.h`/CubeMX 外设头、调用 HAL 或定义 HAL 回调。
 
 | 配置 | text | data | bss | 结果 |
@@ -688,22 +688,22 @@ cansend can0 720##15041535301000000
 | 顺序 | 项目 | 当前状态 | 通过条件 |
 | ---: | --- | --- | --- |
 | 1 | 普通启动 | `HARDWARE PASS` | 2026-08-17，confirmed b13 经 ST-Link 普通复位后正常运行；断电启动仍需单独验收 |
-| 2 | 上电零 PWM | `DEFERRED` | 四路 PWM 在进入控制前保持为零 |
+| 2 | 上电零 PWM | `NOT VERIFIED` | 四路 PWM 在进入控制前保持为零 |
 | 3 | UART OTA | `HARDWARE PASS` | 2026-08-17，b12 -> b13 完整 `STAGED -> INSTALLING -> TRIAL -> CONFIRMED` |
-| 4 | CAN FD OTA | `DEFERRED` | 当前后置；启用 Jetson OTA 前再用 SocketCAN 完成同一闭环 |
-| 5 | Application 安装中断电 | `DEFERRED` | 重启后继续或安全恢复，不跳入半写镜像 |
-| 6 | TRIAL 不确认 | `DEFERRED` | 超过试运行限制后自动恢复 confirmed |
-| 7 | rollback 安装中断电 | `DEFERRED` | 重启后继续恢复 confirmed，不无限破坏性重装 |
+| 4 | CAN FD OTA | `NOT VERIFIED` | 用 SocketCAN 完成与 UART 对等的 OTA 闭环 |
+| 5 | Application 安装中断电 | `NOT VERIFIED` | 重启后继续或安全恢复，不跳入半写镜像 |
+| 6 | TRIAL 不确认 | `NOT VERIFIED` | 超过试运行限制后自动恢复 confirmed |
+| 7 | rollback 安装中断电 | `NOT VERIFIED` | 重启后继续恢复 confirmed，不无限破坏性重装 |
 
-2026-08-17 决定冻结 OTA V1 代码基线并推进功能主线。CAN FD OTA、断电启动、四路 PWM
-电气零输出和三个故障注入项目统一后置为 `DEFERRED`；它们不构成已通过证据，在启用对应
-发布能力或收尾验收前仍需执行。除实测发现的 P0/P1 外不再增加 recovery 细节；固件签名、
-防回滚和 Bootloader CAN Recovery 作为 OTA V2 工作。
+2026-08-17 的冻结决定作为历史记录保留。2026-08-20 已解除该冻结：CAN FD OTA、断电启动、
+四路 PWM 电气零输出和三个故障注入项目重新纳入当前验收；它们仍不构成已通过证据，必须在
+实际测试后才能更新为 `HARDWARE PASS`。固件签名、防回滚和 Bootloader CAN Recovery 仍属于
+OTA V2 设计范围。
 
 每次传输都应保存发送工具输出和复位后的 `status`。只有看到完整
 `STAGED -> TRIAL -> CONFIRMED` 且新 Application 正常启动，才可记录
 `HARDWARE PASS`。当前 factory 普通启动和 UART OTA 的传输、安装、TRIAL、确认已通过；
-CAN FD OTA 为 `DEFERRED`，回滚和断电恢复仍为 `NOT VERIFIED`。
+CAN FD OTA、回滚、断电恢复和零 PWM 电气验收当前均为 `NOT VERIFIED`，已重新进入活动清单。
 
 ## Bootloader 单元测试
 

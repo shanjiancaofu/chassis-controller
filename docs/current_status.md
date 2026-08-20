@@ -19,19 +19,20 @@
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
 - 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于最终 driver relocation、模块化 CMake
-  和 ChassisApp 装配收口后的 ELF 重新打包：payload `103408` 字节、CRC32 `0xEF8A4A2D`，OTA 包
+  和 subsys 目录收口后的 ELF 重新打包：payload `103408` 字节、CRC32 `0xBE2FB66E`，OTA 包
   `103472` 字节；仅完成构建和
   主机格式校验，尚未烧录。
-- 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
-  `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
-  均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
-  调参已后置；当前代码主线已完成 FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
+- 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
+  CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
+  目标板条件。上述硬件项目继续按机会单独验收，未实测内容保持 `NOT VERIFIED`。SR501 代码、
+  接线、60 秒预热和低电平零误计数已有上板证据；模块指示灯和 OUT 高电平仍需实测。当前代码主线已完成
+  FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
   LCD 四页代码与 DMA 调度修复已完成；0.14.0 已按暗色工业仪表规范重排层级、状态颜色、卡片和页脚，目标板视觉已人工确认正常。0.15.0 将页面渲染从 LCD BSP 拆到 `ui/lcd`，预览工具直接编译同一 C 渲染器，当前重构尚未上板。
   ICM45686 已读取 `WHO_AM_I=0xE9`，FIFO/DMA、10 ms timestamp、静止零偏、Mahony 和 Kalman
-  静态输出已上板通过；因模块安装位置和方向尚未固定，安装轴向和动态姿态验证已 `DEFERRED`。
+  静态输出已上板通过；因模块安装位置和方向尚未固定，安装轴向和动态姿态验证标记为 `NOT VERIFIED`。
   目标加减速限制、
   编码器异常保护和欠压保护代码已实现，带负载阶跃、异常脉冲和欠压注入仍待实测；SR501
-  高电平闭环继续后置。`0.12.0` 已完成 UART OTA confirmed，统一采样时间戳和差速轮式里程计
+  高电平闭环继续标记为 `NOT VERIFIED`，但不阻塞后续软件开发。`0.12.0` 已完成 UART OTA confirmed，统一采样时间戳和差速轮式里程计
   已运行；`0.14.0` 已完成 UART OTA confirmed，新版 LCD UI 视觉、文字排版和四页切换已人工确认正常。
 
 ## 当前实现
@@ -94,7 +95,7 @@
 - 2026-08-20 继续完成全仓库边界收敛：FDCAN ISR 只把原始帧写入 drivers/can 固定队列，握手、运动命令和
   OTA 解码均在 service task 执行；上层新增 UART、Flash、watchdog、time、RTC 通用 driver API，
   UART 通过 device/DTS chosen 接入，QSPI/watchdog/RTC/time 的 HAL 实现已移动到 STM32 driver；
-  `app/modules/communication/infrastructure/ui/rtos` 不再直接包含 UART/QSPI/RTC/watchdog/time 的
+  `app/modules/communication/subsys/ui/rtos` 不再直接包含 UART/QSPI/RTC/watchdog/time 的
   旧 BSP 头文件；Application CMake 已拆为 vendor、drivers、components、communication、subsys、
   modules、ui、kernel、app、rtos 和 target-tests 静态目标。
   头文件。
@@ -151,7 +152,8 @@
 - ICM45686 实测 `WHO_AM_I=0xE9`。修正端序配置后，调试快照连续 588 帧无解析、timestamp、
   DMA 或传输错误，采样周期为 `10 ms`；200 个静止样本后零偏标定、Mahony 和 Kalman 均有效。
   普通复位后的 UART `status` 再次报告 224 帧、`imu_fifo_errors=0`、
-  `imu_timestamp_errors=0`、`imu_kalman=1`。安装位置和方向未固定，动态姿态验证已 `DEFERRED`。
+  `imu_timestamp_errors=0`、`imu_kalman=1`。安装位置和方向未固定，动态姿态验证为 `NOT VERIFIED`，
+  已重新纳入当前验收。
 - 同日通过 `/dev/ttyUSB0` 对 `0.8.0 build1` 做其他硬件在线复核：供电 `12.206--12.215 V`、
   RTC 有效、四任务 `RUNNING`、LCD 驱动 `READY`、CAN 无 bus-off/protocol error、编码器静止
   读数 `left_total=1/right_total=-2`；QSPI 保留区 1024 字节擦写回读自检通过（地址
@@ -229,7 +231,7 @@
 
 - ICM45686 SPI3、`WHO_AM_I=0xE9`、FIFO/DMA 连续性、10 ms timestamp、静止零偏和
   roll/pitch Kalman 静态输出已上板通过；模块安装位置和方向尚未固定，正负 roll/pitch/yaw
-  动态轴向、安装方向、运动恢复和长时间漂移均为 `DEFERRED`。两个预留按钮的机械消抖也尚未
+  动态轴向、安装方向、运动恢复和长时间漂移均为 `NOT VERIFIED`。两个预留按钮的机械消抖也尚未
   上板验证。
 
 - `0.7.1` 当前可见页面的中性配色已由用户确认可接受；LCD
@@ -238,43 +240,47 @@
 
 - SR501 已按 5 V、共地、OUT 接 PD5 完成接线。b16 实测 `warmup_ms` 递减并在 60 秒后进入
   `READY`，预热期间和 READY 后持续低电平均保持 `motion=0 raw=0 count=0`。模块指示灯未亮，
-  OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `DEFERRED`。
+  OUT 高电平、50 ms 稳定滤波、单次上升沿计数和持续高电平不重复计数均为 `NOT VERIFIED`。
 
-- confirmed `0.12.0 build1` 真实断电重上电和四路 PWM 电气零输出：`DEFERRED`；此前完成普通
+- confirmed `0.12.0 build1` 真实断电重上电和四路 PWM 电气零输出：`NOT VERIFIED`；此前完成普通
   复位和 UART OTA 确认，未执行断电测试。
 - `0.14.0 build1` LCD 新布局已上板且驱动报告 `READY`；状态颜色、文字排版和四页切换已人工目视确认正常。
 - `0.15.0 build1` 尚未烧录；LCD 四页、PB8 切页、四任务状态、异常零 PWM 和 UART OTA 安装均需
   在本版上重新复核，当前为 `NOT VERIFIED`。
 - `0.12.0 build1` 的里程计方向、直线距离、原地旋转角度、时间对齐误差和 LCD 里程计动态显示
   尚未验证；当前只确认固件启动快照中的静态零位输出。
-- CAN FD OTA：`DEFERRED`，后续在启用 Jetson OTA 前单独验收。
-- Application 安装过程中断电恢复、TRIAL 不确认自动回滚和 rollback 安装中断电：`DEFERRED`。
+- CAN FD OTA：`NOT VERIFIED`，纳入当前 UART/CAN OTA 同批验收。
+- Application 安装过程中断电恢复、TRIAL 不确认自动回滚和 rollback 安装中断电：`NOT VERIFIED`。
 
 - 完整低速 PID 稳定性、带负载停车和长时间运行保护仍未验证；本轮只完成架空轮短时响应。
 
-confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不属于当前冻结门槛；仅在
-上述实测暴露 P0/P1 时处理。
+confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角也重新纳入故障注入和恢复验收，
+不再以冻结范围排除。
 
 ## 下一步
 
-1. 基于当前 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前仅记录构建结果，不写
+1. 继续推进 Device Model、driver API、CMake ownership、UART/QSPI/RTC/watchdog 和模块边界，
+   不等待目标板验收。
+2. 并行补齐 UART/CAN OTA、断电恢复、TRIAL 回滚、rollback 中断恢复和确认失败清理的主机测试矩阵。
+3. 在危险目标板测试前先完成主机故障注入、日志断言、维护锁和四路零 PWM 断言。
+4. 基于当前 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前仅记录构建结果，不写
    硬件 PASS。
-2. 通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
+5. 在用户明确确认后，通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
    `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`、四任务、
    `fault=0`、`control=STOPPED`、左右 PWM 为零和 LCD 四页。
-3. 检查编码器增量、里程计方向、采样时间戳/年龄和 `odometry reset`。
-4. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
+6. 有硬件条件时检查编码器增量、里程计方向、采样时间戳/年龄和 `odometry reset`。
+7. 有硬件条件时进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
    固定前不接入航向融合。
-5. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
-6. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
+8. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口；软件估算和测试工具不等待实物。
+9. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
    欠压注入验证；方向不重复测试。
 
 当前路线：
 
 ```text
 架构检查 -> UART/QSPI/watchdog/RTC/time device boundary
--> OTA 实物验证 -> OTA V1 冻结 -> FreeRTOS 快照 -> 四任务调度
--> 正式 UART 消息 -> LCD 四页 -> ICM45686/Kalman -> SR501 UI/后置实物验证
+-> OTA/CAN/断电/回滚验收 -> FreeRTOS 快照 -> 四任务调度
+-> 正式 UART 消息 -> LCD 四页 -> ICM45686/Kalman -> SR501 UI/动态实物验证 -> 完整 OTA/保护故障注入
 -> 里程计/安全保护实测 -> 目标加减速实测 -> 正式 CAN FD 协议
 ```
 

@@ -43,7 +43,7 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 
 ## 当前阶段：Bootloader 与 OTA
 
-状态：`FROZEN`（2026-08-17，build22 + b13 UART/安装/TRIAL/CONFIRMED 主链；剩余硬件回归后置）
+状态：`ACTIVE / NOT VERIFIED`（2026-08-20 解除冻结；build22 + b13 UART/安装/TRIAL/CONFIRMED 主链已通过，剩余故障注入和硬件回归重新纳入当前路线）
 
 已完成：
 
@@ -112,9 +112,8 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - Bootloader `.ioc` 有意保留 IWDG；生成的 `MX_IWDG_Init()` 继续在 USER CODE 中提前返回，
   从而保留 CubeMX 工程结构但不在 Bootloader 主动启动或重配置 IWDG
 
-OTA V1 代码基线已冻结，不再继续扩展 recovery 边角。冻结依据是 build22 + b13 已完成
-UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下项目保留为后置回归，
-不阻塞当前功能主线，也不得在未实测时标记为通过：
+OTA V1 的 UART 主链已通过，但代码和验收范围不再冻结。以下项目全部重新纳入当前回归，
+仍不得在未实测时标记为通过：
 
 - confirmed 0.8.0 build1 真实断电启动和四路 PWM 电气零输出（普通复位已回归通过）
 - Application 安装过程中断电恢复
@@ -228,7 +227,7 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 
 ### 阶段 4：ICM45686 与估计器
 
-状态：`IMPLEMENTED / PARTIALLY VERIFIED`（SPI/FIFO/静止滤波已通过，动态轴向 `DEFERRED`）
+状态：`IMPLEMENTED / PARTIALLY VERIFIED`（SPI/FIFO/静止滤波已通过，动态轴向 `NOT VERIFIED`）
 
 - `0.8.0` 已打开 `ENABLE_ICM45686`，完整执行 WHO_AM_I、寄存器配置、FIFO/DMA、零偏标定和
   Mahony 融合路径；启动日志按真实结果输出 `READY / NOT_FOUND / INIT_FAILED`。
@@ -241,13 +240,13 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
   不使用任务开始处理数据的时间替代样本采集时间。
 - 保留现有 Mahony 作为对照，不直接删除；`0.11.1` 已实现独立 roll/pitch 角度+陀螺零偏两状态
   Kalman 输出。静止 200 样本零偏标定和 Kalman 有效状态已上板通过；正负轴向动作、动态响应、
-  静止回归和参数效果需要在模块安装位置和方向固定后验证，当前统一 `DEFERRED`。
+  静止回归和参数效果需要在模块安装位置和方向固定后验证，当前统一 `NOT VERIFIED`，不再后置。
 - yaw 没有磁力计时只能约束短期变化，不能消除长期漂移；底盘航向后续采用轮式里程计和陀螺
   Z 轴融合。
 
 ### 阶段 5：SR501 状态展示与硬件收尾
 
-状态：`DEFERRED`
+状态：`IMPLEMENTED / NOT VERIFIED`
 
 - SR501 已接入统一 `SystemStatusSnapshot`、正式 UART `sensors` 字段和 LCD `SENSORS` 页，
   不绑定电机或安全逻辑。
@@ -273,19 +272,19 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 阶段 5/6 进入底盘功能收尾后，按以下详细项推进：
 
 1. SR501 接线、GPIO/BSP 和诊断已 `IMPLEMENTED`；b16 已完成 UART OTA/确认、60 秒预热和
-   低电平零误计数。模块指示灯和 OUT 均未观察到高电平，剩余实物验证 `DEFERRED`。
+   低电平零误计数。模块指示灯和 OUT 均未观察到高电平，剩余实物验证 `NOT VERIFIED`。
 2. PID、100 Hz 双轮控制、串口调参、遥测和 QSPI 参数持久化已 `IMPLEMENTED`；方向沿用历史
-   实物验收结论，6500 开环启动及编码器变化已通过；低速闭环和稳定性实物验收 `DEFERRED`。
-3. 目标加减速限制代码已完成；带负载阶跃和左右轮实物标定后置。
+   实物验收结论，6500 开环启动及编码器变化已通过；低速闭环和稳定性实物验收 `NOT VERIFIED`。
+3. 目标加减速限制代码已完成；带负载阶跃和左右轮实物标定 `NOT VERIFIED`。
 4. 里程计代码已实现；先在架空轮通过 UART 核对左右增量、时间戳和输出符号，再落地完成直线
    距离、原地旋转角度及轮径/轮距校准。
-5. 堵转、编码器异常和电压保护代码已完成；故障注入和阈值实测后置。
+5. 堵转、编码器异常和电压保护代码已完成；故障注入和阈值实测 `NOT VERIFIED`。
 6. Fault、Health 和 Reset 诊断闭环。
 7. 在已验证行为基础上完善并冻结正式 CAN FD 底盘协议。
 
 ### 发布安全
 
-以下内容属于 OTA V2，不进入 OTA V1 冻结范围：
+以下内容属于 OTA V2，不影响当前 OTA V1 故障注入和恢复验收：
 
 - 固件数字签名
 - 防回滚计数
@@ -298,7 +297,7 @@ UART 传输、QSPI 暂存、安装、TRIAL 和 CONFIRMED 实物闭环。以下�
 ICM45686 已进入阶段 4：SPI3/DMA、16 字节 FIFO、timestamp、掉线恢复、RAM 零偏标定、
 Mahony 和 roll/pitch 两状态 Kalman 均已实现。`WHO_AM_I`、连续采样、timestamp、静止零偏和
 Kalman 静态输出已上板通过。临时安装下的左右倾斜不能形成最终轴映射结论，安装轴向、动态响应
-和静止回归已后置到模块位置和方向固定之后；20-bit、压缩 FIFO 和自检仍不属于当前上板门槛。
+和静止回归当前为 `NOT VERIFIED`，重新纳入活动验收；20-bit、压缩 FIFO 和自检也解除“当前门槛外”标记，列入后续传感器能力测试。
 
 统一单调时间轴和 STM32 轮式里程计已在 `0.12.0 build1` 实现并完成 UART OTA confirmed，当前
 等待架空轮 UART 符号/时间检查和落地几何校准。Jetson 后续消费轮式里程计和 IMU 输出并负责 ROS 2 定位融合，不在 STM32
