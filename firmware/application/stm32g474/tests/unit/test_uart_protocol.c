@@ -4,17 +4,17 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "bsp/uart/uart_bsp.h"
+#include "drivers/uart.h"
 #include "infrastructure/uart_protocol/uart_protocol.h"
 
-bool BspUart_Write(const void *data, size_t length)
+bool uart_write(const void *data, size_t length)
 {
   (void)data;
   (void)length;
   return false;
 }
 
-uint8_t BspUart_GetTxSlotsAvailable(void)
+uint8_t uart_get_tx_slots_available(void)
 {
   return 0U;
 }

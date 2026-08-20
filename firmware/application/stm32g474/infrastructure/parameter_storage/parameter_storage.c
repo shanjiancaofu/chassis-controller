@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "bsp/qspi/bsp_qspi_flash.h"
+#include "drivers/flash.h"
 #include "config/storage_layout.h"
 #include "infrastructure/parameter_storage/parameter_record.h"
 
@@ -66,9 +66,9 @@ bool ParameterStorage_Init(ParameterSnapshot *restored_parameters)
   ParameterRecord record_a;
   ParameterRecord record_b;
   ParameterRecordSelection selection;
-  const bool read_a = BspQspiFlash_Read(PARAMETER_COPY_A_START,
+  const bool read_a = flash_read(PARAMETER_COPY_A_START,
                                         (uint8_t *)&record_a, sizeof(record_a));
-  const bool read_b = BspQspiFlash_Read(PARAMETER_COPY_B_START,
+  const bool read_b = flash_read(PARAMETER_COPY_B_START,
                                         (uint8_t *)&record_b, sizeof(record_b));
 
   state = STORAGE_IDLE;
@@ -130,7 +130,7 @@ bool ParameterStorage_RequestSave(const ParameterSnapshot *parameters)
 
 void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
 {
-  BspQspiTransferStatus transfer_status;
+  FlashTransferStatus transfer_status;
   bool flash_busy;
 
   switch (state) {
@@ -140,7 +140,7 @@ void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
       }
       break;
     case STORAGE_ERASE_START:
-      if (BspQspiFlash_EraseSector(target_address)) {
+      if (flash_erase_sector(target_address)) {
         deadline_ms = now_ms + PARAMETER_ERASE_TIMEOUT_MS;
         state = STORAGE_ERASE_WAIT;
       } else {
@@ -148,7 +148,7 @@ void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
       }
       break;
     case STORAGE_ERASE_WAIT:
-      if (!BspQspiFlash_IsBusy(&flash_busy)) {
+      if (!flash_is_busy(&flash_busy)) {
         FailSave(now_ms);
       } else if (!flash_busy) {
         state = STORAGE_PROGRAM_START;
@@ -157,7 +157,7 @@ void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
       }
       break;
     case STORAGE_PROGRAM_START:
-      if (BspQspiFlash_ProgramPageDma(target_address,
+      if (flash_program_page_dma(target_address,
                                       (const uint8_t *)&save_record,
                                       sizeof(save_record))) {
         deadline_ms = now_ms + PARAMETER_DMA_TIMEOUT_MS;
@@ -167,18 +167,18 @@ void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
       }
       break;
     case STORAGE_PROGRAM_DMA_WAIT:
-      transfer_status = BspQspiFlash_GetTransferStatus();
-      if (transfer_status == BSP_QSPI_TRANSFER_COMPLETE) {
+      transfer_status = flash_get_transfer_status();
+      if (transfer_status == FLASH_TRANSFER_COMPLETE) {
         deadline_ms = now_ms + PARAMETER_PROGRAM_TIMEOUT_MS;
         state = STORAGE_PROGRAM_FLASH_WAIT;
-      } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
+      } else if (transfer_status == FLASH_TRANSFER_FAILED ||
                  DeadlineReached(now_ms, deadline_ms)) {
-        BspQspiFlash_Abort();
+        flash_abort();
         FailSave(now_ms);
       }
       break;
     case STORAGE_PROGRAM_FLASH_WAIT:
-      if (!BspQspiFlash_IsBusy(&flash_busy)) {
+      if (!flash_is_busy(&flash_busy)) {
         FailSave(now_ms);
       } else if (!flash_busy) {
         state = STORAGE_VERIFY_READ_START;
@@ -187,7 +187,7 @@ void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
       }
       break;
     case STORAGE_VERIFY_READ_START:
-      if (BspQspiFlash_ReadDma(target_address, (uint8_t *)&verify_record,
+      if (flash_read_dma(target_address, (uint8_t *)&verify_record,
                                sizeof(verify_record))) {
         deadline_ms = now_ms + PARAMETER_DMA_TIMEOUT_MS;
         state = STORAGE_VERIFY_READ_WAIT;
@@ -196,12 +196,12 @@ void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
       }
       break;
     case STORAGE_VERIFY_READ_WAIT:
-      transfer_status = BspQspiFlash_GetTransferStatus();
-      if (transfer_status == BSP_QSPI_TRANSFER_COMPLETE) {
+      transfer_status = flash_get_transfer_status();
+      if (transfer_status == FLASH_TRANSFER_COMPLETE) {
         state = STORAGE_VERIFY;
-      } else if (transfer_status == BSP_QSPI_TRANSFER_FAILED ||
+      } else if (transfer_status == FLASH_TRANSFER_FAILED ||
                  DeadlineReached(now_ms, deadline_ms)) {
-        BspQspiFlash_Abort();
+        flash_abort();
         FailSave(now_ms);
       }
       break;
@@ -214,10 +214,10 @@ void ParameterStorage_Run(uint32_t now_ms, bool qspi_available)
       }
       break;
     case STORAGE_TERMINAL_WAIT:
-      if (BspQspiFlash_GetTransferStatus() == BSP_QSPI_TRANSFER_BUSY) {
-        BspQspiFlash_Abort();
+      if (flash_get_transfer_status() == FLASH_TRANSFER_BUSY) {
+        flash_abort();
       }
-      if (BspQspiFlash_IsBusy(&flash_busy) && !flash_busy) {
+      if (flash_is_busy(&flash_busy) && !flash_busy) {
         FinishFailure(now_ms);
       } else if (DeadlineReached(now_ms, terminal_deadline_ms)) {
         if (storage_snapshot.status != PARAMETER_STORAGE_ERROR) {
@@ -307,13 +307,13 @@ static void FailSave(uint32_t now_ms)
 {
   bool flash_busy = false;
 
-  if (BspQspiFlash_GetTransferStatus() == BSP_QSPI_TRANSFER_BUSY) {
-    BspQspiFlash_Abort();
+  if (flash_get_transfer_status() == FLASH_TRANSFER_BUSY) {
+    flash_abort();
   }
   ++storage_snapshot.error_count;
   ++retry_count;
   terminal_deadline_ms = now_ms + PARAMETER_TERMINAL_TIMEOUT_MS;
-  if (!BspQspiFlash_IsBusy(&flash_busy) || flash_busy) {
+  if (!flash_is_busy(&flash_busy) || flash_busy) {
     state = STORAGE_TERMINAL_WAIT;
   } else {
     FinishFailure(now_ms);

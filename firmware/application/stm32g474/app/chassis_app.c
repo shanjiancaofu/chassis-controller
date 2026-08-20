@@ -19,9 +19,8 @@
 #include "bsp/power_monitor/bsp_power_sample.h"
 #include "bsp/reset/bsp_reset.h"
 #include "bsp/sr501/bsp_sr501.h"
-#include "bsp/time/bsp_time.h"
-#include "bsp/uart/uart_bsp.h"
-#include "bsp/watchdog/bsp_watchdog.h"
+#include "drivers/time.h"
+#include "drivers/watchdog.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
 #include "communication/ota_transport/ota_confirmation.h"
@@ -46,6 +45,7 @@
 #include "modules/sensors/imu_orientation.h"
 #include "devicetree_generated.h"
 #include "device.h"
+#include "drivers/uart.h"
 #include "ui/lcd/lcd_status_presenter.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/motor_target_test.h"
@@ -132,12 +132,12 @@ static uint32_t demo_stage_started_ms;
 bool ChassisApp_Init(void)
 {
   const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_CAN);
-  const uint32_t now_ms = BspTime_GetUptimeMs();
+  const uint32_t now_ms = time_uptime_ms();
   ParameterSnapshot initial_parameters;
   ParameterStorageSnapshot parameter_storage;
   bool parameters_loaded;
 
-  if (!BspUart_Start()) {
+  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_UART))) {
     return false;
   }
   UartProtocol_Init();
@@ -147,11 +147,11 @@ bool ChassisApp_Init(void)
                              "STARTED", "fw=" CHASSIS_FIRMWARE_VERSION
                              " build=" CHASSIS_FIRMWARE_BUILD_STRING);
   if (CanTransport_Init(can_device) < 0) {
-    (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_ERROR, "board",
+    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "board",
                                "FDCAN_INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
-  (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO, "board",
+  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
                              "FDCAN_READY", NULL);
   OtaCanTransport_Init(can_device);
   OtaUartTransport_Init();
@@ -165,21 +165,21 @@ bool ChassisApp_Init(void)
 
   BspMotor_Init();
   if (!BspMotor_Start()) {
-    (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_ERROR, "motor",
+    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "motor",
                                "INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
   BspEncoder_Init();
   if (!BspEncoder_Start() || !BspPowerSample_Init()) {
-    (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_ERROR, "board",
+    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "board",
                                "MOTION_IO_INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
-  (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO, "board",
+  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
                              "MOTION_IO_READY", NULL);
   BspButton_Init();
-  BspSr501_Init(BspTime_GetUptimeMs());
-  (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO, "sr501",
+  BspSr501_Init(time_uptime_ms());
+  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
 #if CONFIG_ICM45686
   {
@@ -190,19 +190,19 @@ bool ChassisApp_Init(void)
     if (!BspIcm45686_SetSampleSink(&imu_sample_sink)) {
       return false;
     }
-    BspIcm45686_Init(BspTime_GetUptimeMs());
+    BspIcm45686_Init(time_uptime_ms());
     BspIcm45686_GetSnapshot(&imu);
     (void)snprintf(fields, sizeof(fields),
                    "device=ICM45686 who_am_i=0x%02X",
                    (unsigned int)imu.who_am_i);
     if (imu.status == BSP_ICM45686_READY) {
-      (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO, "imu",
+      (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "imu",
                                  "READY", fields);
     } else if (imu.status == BSP_ICM45686_NOT_FOUND) {
-      (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_WARN, "imu",
+      (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_WARN, "imu",
                                  "NOT_FOUND", fields);
     } else {
-      (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_ERROR, "imu",
+      (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "imu",
                                  "INIT_FAILED", fields);
     }
   }
@@ -242,28 +242,28 @@ bool ChassisApp_Init(void)
         (unsigned int)initial_parameters.right_pid.ki,
         (unsigned int)initial_parameters.right_pid.kd);
     (void)UartProtocol_SendLog(
-        BspTime_GetUptimeMs(),
+        time_uptime_ms(),
         parameter_storage.status == PARAMETER_STORAGE_ERROR
             ? UART_PROTOCOL_LOG_ERROR
             : UART_PROTOCOL_LOG_INFO,
         "parameters", parameters_loaded ? "LOADED" : "DEFAULTS", fields);
   }
   if (!Odometry_Init(&odometry_config)) {
-    (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_ERROR,
+    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
                                "odometry", "INIT_FAILED",
                                "code=INVALID_GEOMETRY");
     return false;
   }
   (void)UartProtocol_SendLog(
-      BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO, "odometry", "READY",
+      time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "odometry", "READY",
       "counts_per_rev=1320 wheel_diameter_mm=65 track_width_mm=220");
   SystemStatus_Init();
   OtaConfirmation_Init();
   QspiTargetTest_Init();
   IwdgTargetTest_Init();
   MotorTargetTest_Init();
-  DiagnosticReport_Init(BspTime_GetUptimeMs());
-  (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO,
+  DiagnosticReport_Init(time_uptime_ms());
+  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO,
                              "application", "READY", "tasks=4");
   consecutive_control_overruns = 0U;
   if (SafetyManager_IsEmergencyStopLatched()) {
@@ -271,7 +271,7 @@ bool ChassisApp_Init(void)
   }
 #if CONFIG_MOTOR_DEMO
   demo_stage = 0U;
-  demo_stage_started_ms = BspTime_GetUptimeMs();
+  demo_stage_started_ms = time_uptime_ms();
   if (SubmitMotionCommand(0, 0, COMMAND_SOURCE_TARGET_TEST,
                           demo_stage_started_ms, false, 0U) !=
           COMMAND_SUBMIT_ACCEPTED ||
@@ -286,9 +286,9 @@ void ChassisApp_RunServiceCycle(void)
 {
   ConsoleCommand console_command;
   CanTransportControlCommand control_command;
-  const uint32_t now_ms = BspTime_GetUptimeMs();
+  const uint32_t now_ms = time_uptime_ms();
 
-  BspUart_Run();
+  uart_run();
   if (OtaUartTransport_IsEnabled()) {
     OtaUartTransport_Run();
   } else {
@@ -456,7 +456,7 @@ void ChassisApp_RunServiceCycle(void)
         OtaCanTransport_IsTxIdle()))) {
     StopControl();
     BspMotor_CoastAll();
-    if (BspWatchdog_PrepareForBootloader()) {
+    if (watchdog_prepare_for_bootloader()) {
       BspReset_RequestSystemReset();
     }
   }
@@ -509,7 +509,7 @@ void ChassisApp_RunServiceCycle(void)
 void ChassisApp_RunDiagnosticsCycle(void)
 {
   static uint32_t last_heartbeat_ms;
-  const uint32_t now_ms = BspTime_GetUptimeMs();
+  const uint32_t now_ms = time_uptime_ms();
 
   BspSr501_Run(now_ms);
 #if CONFIG_ICM45686
@@ -537,14 +537,14 @@ void ChassisApp_RunDiagnosticsCycle(void)
         !FaultManager_HasCritical() &&
         CanTransport_IsOperational() &&
         !IwdgTargetTest_IsResetRequested()) {
-      (void)BspWatchdog_Refresh();
+      (void)watchdog_refresh();
     }
   }
 }
 
 void ChassisApp_RunDisplayCycle(void)
 {
-  const uint32_t now_ms = BspTime_GetUptimeMs();
+  const uint32_t now_ms = time_uptime_ms();
 
   BspButton_Run(now_ms);
   LcdStatusPresenter_Run(now_ms);
@@ -596,7 +596,7 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
   int64_t right_abs_delta;
   bool command_available;
   uint32_t missed_ticks;
-  const uint32_t now_ms = BspTime_GetUptimeMs();
+  const uint32_t now_ms = time_uptime_ms();
 
   if (notification_count == 0U) {
     return;

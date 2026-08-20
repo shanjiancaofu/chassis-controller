@@ -93,6 +93,12 @@ set(APP_SOURCES
   components/pid/speed_pid.c
   drivers/can/can_common.c
   drivers/can/can_stm32_fdcan.c
+  drivers/uart/uart_common.c
+  drivers/uart/uart_stm32.c
+  drivers/flash/flash_qspi.c
+  drivers/watchdog/watchdog_iwdg.c
+  drivers/time/time_stm32.c
+  drivers/rtc/rtc_stm32.c
   infrastructure/console/console.c
   infrastructure/console/diagnostic_report.c
   infrastructure/parameter_storage/parameter_record.c

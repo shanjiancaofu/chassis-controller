@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "bsp/time/bsp_time.h"
+#include "drivers/time.h"
 #include "drivers/can/can_stm32_fdcan.h"
 
 #define OTA_CAN_TX_EVENT_TIMEOUT_MS 100U
@@ -118,7 +118,7 @@ bool OtaCanTransport_SendResponse(const OtaResponse *response)
   }
   last_response_confirmed = false;
   pending_tx_marker = tx_marker;
-  tx_started_ms = BspTime_GetUptimeMs();
+  tx_started_ms = time_uptime_ms();
   response_in_progress = true;
   return false;
 }
@@ -174,7 +174,7 @@ static void PollTxEvent(void)
     }
   }
   if (response_in_progress && can_is_tx_idle(can_device) &&
-      BspTime_GetUptimeMs() - tx_started_ms >= OTA_CAN_TX_EVENT_TIMEOUT_MS) {
+      time_uptime_ms() - tx_started_ms >= OTA_CAN_TX_EVENT_TIMEOUT_MS) {
     response_in_progress = false;
   }
 }

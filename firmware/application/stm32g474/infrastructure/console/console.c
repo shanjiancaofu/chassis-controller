@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/uart/uart_bsp.h"
+#include "drivers/uart.h"
 #include "config/control_config.h"
 #include "config/target_test_config.h"
 
@@ -41,7 +41,7 @@ void Console_Run(void)
   size_t index;
 
   do {
-    count = BspUart_Read(bytes, sizeof(bytes));
+    count = uart_read(bytes, sizeof(bytes));
     for (index = 0U; index < count; ++index) {
       const uint8_t value = bytes[index];
 

@@ -88,6 +88,10 @@
   状态到诊断 DTO 的组装；RTOS 通过 Core 注入的周期回调调用 Application，不再反向包含 `app`；
   `wheel_controller` 通过电机端口装配，不再直接依赖电机 BSP。
 - 2026-08-20 继续完成全仓库边界收敛：FDCAN ISR 只把原始帧写入 BSP 固定队列，握手、运动命令和
+  OTA 解码均在 service task 执行；上层新增 UART、Flash、watchdog、time、RTC 通用 driver API，
+  UART 通过 device/DTS chosen 接入，QSPI/watchdog/RTC/time 由 STM32 BSP adapter 承载；
+  `app/modules/communication/infrastructure/ui/rtos` 不再直接包含 UART/QSPI/RTC/watchdog/time BSP
+  头文件。
   OTA 解码全部在 `service_task` 执行；communication 公共接口不再暴露 HAL。RTC、单调时间、LED、
   E-STOP、IWDG、SPI/GPIO 回调和复位已通过 BSP/Core 边界访问；TIM6 启动由 Core 回调注入 RTOS。
   IMU SPI/FIFO/DMA 保留在 BSP，Mahony/Kalman 状态迁入 `modules/sensors/imu_orientation`；Console
@@ -247,9 +251,9 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 完成 UART 设备边界迁移：CubeMX `huart1` 只在 board/driver 适配层可见，上层保留现有 UART
-   协议、Console、Telemetry 和 OTA 状态机。
-2. UART 迁移后重新运行 Debug/Release、架构检查、主机测试和 `git diff --check`。
+1. 将 QSPI、watchdog、RTC/time 的 BSP adapter 继续下沉到具体 STM32 driver/device 实例；保持
+   现有参数存储、OTA metadata、IWDG 和 RTC 行为不变。
+2. 完成上述 adapter 下沉后重新运行 Debug/Release、架构检查、主机测试和 `git diff --check`。
 3. 基于恢复 CubeMX 初始化入口后的 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前
    仅记录构建结果，不写硬件 PASS。
 4. 通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核

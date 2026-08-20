@@ -89,6 +89,26 @@ Debug/Release 构建通过，13 项 OTA Python 测试通过。此项只验证主
 通过；架构检查单元测试 2 项、Debug/Release 构建和 OTA Python 测试 13 项通过。本轮没有目标板
 硬件结论。
 
+### UART / QSPI / watchdog / RTC-time driver boundary（2026-08-20）
+
+新增通用 driver API：
+
+```text
+include/drivers/uart.h
+include/drivers/flash.h
+include/drivers/watchdog.h
+include/drivers/time.h
+include/drivers/rtc.h
+```
+
+UART 已通过 `struct device`、DTS chosen 节点和 STM32 adapter 接入；CubeMX `huart1` 只在
+`boards/chassis_g474/board_devices.c` 与 UART STM32 adapter 可见。UART protocol、Console、
+Telemetry、OTA UART transport 已移除对 `bsp/uart` 的直接依赖。QSPI、watchdog、RTC/time 的上层
+调用也已改为通用 driver API，底层暂由现有 BSP adapter 承载，协议和安全行为未改写。
+
+Debug/Release 构建、架构检查、Kconfig/DTS/architecture 单元测试和 OTA Python 测试均通过；
+本轮没有烧录或目标板硬件结论。
+
 ### Native Devicetree metadata and bindings（2026-08-20）
 
 `tools/dts/generate_devicetree.py` 现已生成 `chosen`、`aliases`、`__symbols__` 节点标签和

@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "bsp/uart/uart_bsp.h"
+#include "drivers/uart.h"
 #include "components/crc/crc32.h"
 
 #define UART_OTA_READ_CHUNK_SIZE 32U
@@ -56,7 +56,7 @@ void OtaUartTransport_Run(void)
     return;
   }
   do {
-    count = BspUart_Read(bytes, sizeof(bytes));
+    count = uart_read(bytes, sizeof(bytes));
     for (index = 0U; index < count; ++index) {
       ConsumeByte(bytes[index]);
     }
@@ -90,8 +90,8 @@ bool OtaUartTransport_SendResponse(const OtaResponse *response)
     return false;
   }
   if (response_tx_token != 0U) {
-    if (!BspUart_GetTrackedCompletion(response_tx_token, &completed,
-                                      &success) || !completed) {
+    if (!uart_get_tracked_completion(response_tx_token, &completed,
+                                     &success) || !completed) {
       return false;
     }
     response_tx_token = 0U;
@@ -111,13 +111,13 @@ bool OtaUartTransport_SendResponse(const OtaResponse *response)
   frame[13] = (uint8_t)response->state;
   crc = Crc32_Calculate(frame, sizeof(frame) - OTA_UART_CRC_SIZE);
   WriteU32(&frame[sizeof(frame) - OTA_UART_CRC_SIZE], crc);
-  (void)BspUart_WriteTracked(frame, sizeof(frame), &response_tx_token);
+  (void)uart_write_tracked(frame, sizeof(frame), &response_tx_token);
   return false;
 }
 
 bool OtaUartTransport_IsTxIdle(void)
 {
-  return BspUart_IsTxIdle();
+  return uart_is_tx_idle();
 }
 
 uint32_t OtaUartTransport_GetErrorCount(void)

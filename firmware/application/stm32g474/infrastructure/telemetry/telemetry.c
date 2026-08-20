@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "bsp/uart/uart_bsp.h"
+#include "drivers/uart.h"
 #include "config/control_config.h"
 #include "config/protocol_config.h"
 #include "infrastructure/uart_protocol/uart_protocol.h"
@@ -120,7 +120,7 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
 
   if (telemetry_mode == TELEMETRY_MODE_VOFA) {
     if (length > 0 && (size_t)length < sizeof(transmit_buffer) &&
-        BspUart_Write(transmit_buffer, (size_t)length)) {
+        uart_write(transmit_buffer, (size_t)length)) {
       last_transmit_ms = now_ms;
     }
   } else if (length > 0 && (size_t)length < sizeof(transmit_buffer)) {

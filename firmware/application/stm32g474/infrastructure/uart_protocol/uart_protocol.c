@@ -4,10 +4,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/uart/uart_bsp.h"
+#include "drivers/uart.h"
 
 static uint32_t next_telemetry_sequence;
-static char message_buffer[BSP_UART_MAX_WRITE_SIZE];
+static char message_buffer[UART_MAX_WRITE_SIZE];
 
 bool UartProtocol_FormatSigned64(char *buffer, size_t capacity,
                                 int64_t value)
@@ -51,7 +51,7 @@ static bool SendFormattedMessage(const char *format, ...)
   va_end(arguments);
 
   return length > 0 && (size_t)length < sizeof(message_buffer) &&
-         BspUart_Write(message_buffer, (size_t)length);
+         uart_write(message_buffer, (size_t)length);
 }
 
 static const char *LogLevelText(UartProtocolLogLevel level)
@@ -163,7 +163,7 @@ bool UartProtocol_SendTelemetryBlock(
   size_t index;
 
   if (lines == NULL || line_count == 0U ||
-      line_count > BspUart_GetTxSlotsAvailable()) {
+      line_count > uart_get_tx_slots_available()) {
     return false;
   }
 
@@ -175,7 +175,7 @@ bool UartProtocol_SendTelemetryBlock(
 
   for (index = 0U; index < line_count; ++index) {
     if (!FormatTelemetryMessage(now_ms, sequence, &lines[index], &length) ||
-        !BspUart_Write(message_buffer, length)) {
+        !uart_write(message_buffer, length)) {
       return false;
     }
   }

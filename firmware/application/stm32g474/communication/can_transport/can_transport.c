@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "bsp/time/bsp_time.h"
+#include "drivers/time.h"
 #include "config/control_config.h"
 #include "communication/ota_transport/ota_can_transport.h"
 #include "drivers/can.h"
@@ -80,7 +80,7 @@ void CanTransport_Run(void)
       .data = {'C', 'H', 'A', 'S', 'S', 'I', 'S', 1U},
   };
 
-  const uint32_t now_ms = BspTime_GetUptimeMs();
+  const uint32_t now_ms = time_uptime_ms();
   struct can_frame frame;
   const uint32_t events = can_take_error_events(can_device);
 

@@ -10,6 +10,7 @@
         chassis,display = <&display0>;
         chassis,flash = <&flash0>;
         chassis,drive = <&drive0>;
+        chassis,uart = <&uart0>;
     };
 
     aliases {
@@ -73,6 +74,14 @@
         status = "okay";
         cubemx-handle = "htim8";
         pwm-period = <8499>;
+    };
+
+    uart0: console-uart {
+        phandle = <6>;
+        chassis,device-id = "uart0";
+        compatible = "st,stm32-uart";
+        status = "okay";
+        cubemx-handle = "huart1";
     };
 
     left-encoder {

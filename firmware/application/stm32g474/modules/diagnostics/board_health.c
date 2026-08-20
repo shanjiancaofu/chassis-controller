@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "bsp/qspi/bsp_qspi_flash.h"
+#include "drivers/flash.h"
 #include "bsp/reset/bsp_reset.h"
 #include "config/storage_layout.h"
 #include "config/target_test_config.h"
@@ -30,7 +30,7 @@ void BoardHealth_Init(void)
   BspReset_ClearCauseFlags();
 
   board_health.qspi_read_ok =
-      BspQspiFlash_ReadJedecId(board_health.qspi_jedec_id);
+      flash_read_jedec_id(board_health.qspi_jedec_id);
   if (board_health.qspi_read_ok &&
       board_health.qspi_jedec_id[2] >= 0x10U &&
       board_health.qspi_jedec_id[2] <= 0x1FU) {

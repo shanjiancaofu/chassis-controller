@@ -4,7 +4,7 @@
 #include "bsp/button/bsp_button.h"
 #include "bsp/imu/bsp_icm45686.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
-#include "bsp/rtc/bsp_rtc.h"
+#include "drivers/rtc.h"
 #include "bsp/sr501/bsp_sr501.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
@@ -194,7 +194,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   BspSr501Snapshot sr501;
   BspPowerSampleSnapshot power_sample;
   MotorTargetTestSnapshot motor_test;
-  BspRtcDateTime date_time = {0};
+  RtcDateTime date_time = {0};
 
   BoardHealth_GetSnapshot(&status.board_health);
   RtosApp_GetRuntimeSnapshot(&runtime);
@@ -234,7 +234,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   status.control_state = SafetyManager_GetState();
   taskEXIT_CRITICAL();
 
-  status.rtc_valid = BspRtc_ReadDateTime(&date_time);
+  status.rtc_valid = rtc_read_datetime(&date_time);
   status.rtc_year = date_time.year;
   status.rtc_month = date_time.month;
   status.rtc_date = date_time.date;

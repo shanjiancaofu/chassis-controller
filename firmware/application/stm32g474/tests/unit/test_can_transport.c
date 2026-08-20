@@ -7,6 +7,7 @@
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
 #include "drivers/can.h"
+#include "drivers/time.h"
 #include "../../../../shared/ota_protocol.h"
 
 static struct can_frame queued_frame;
@@ -101,7 +102,7 @@ static const struct device fake_device = {
     .state = &fake_state,
 };
 
-uint32_t BspTime_GetUptimeMs(void)
+uint32_t time_uptime_ms(void)
 {
   return now_ms;
 }
