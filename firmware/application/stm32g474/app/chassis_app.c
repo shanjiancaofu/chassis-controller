@@ -9,16 +9,16 @@
 #include <stdio.h>
 
 #include "FreeRTOS.h"
-#include "bsp/button/bsp_button.h"
-#include "bsp/emergency_stop/bsp_emergency_stop.h"
-#include "bsp/encoder/bsp_encoder.h"
-#include "bsp/imu/bsp_icm45686.h"
-#include "bsp/lcd/bsp_lcd.h"
-#include "bsp/led/bsp_led.h"
-#include "bsp/motor/bsp_motor.h"
-#include "bsp/power_monitor/bsp_power_sample.h"
-#include "bsp/reset/bsp_reset.h"
-#include "bsp/sr501/bsp_sr501.h"
+#include "drivers/button/button.h"
+#include "drivers/safety/emergency_stop.h"
+#include "drivers/encoder/encoder.h"
+#include "drivers/sensor/icm45686.h"
+#include "drivers/display/lcd.h"
+#include "drivers/led/led.h"
+#include "drivers/motor/motor.h"
+#include "drivers/adc/power_sample.h"
+#include "drivers/reset/reset.h"
+#include "drivers/sensor/sr501.h"
 #include "drivers/time.h"
 #include "drivers/watchdog.h"
 #include "communication/can_transport/can_transport.h"
@@ -52,7 +52,7 @@
 #include "tests/target/qspi_target_test.h"
 #include "task.h"
 
-#if MOTOR_CONTROL_OUTPUT_LIMIT > BSP_MOTOR_COMPARE_MAX
+#if MOTOR_CONTROL_OUTPUT_LIMIT > MOTOR_COMPARE_MAX
 #error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
 #endif
 
@@ -65,23 +65,23 @@ static const OdometryConfig odometry_config = {
 
 static int16_t GetLeftMotorAppliedDuty(void)
 {
-  return BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT);
+  return Motor_GetAppliedDuty(MOTOR_LEFT);
 }
 
 static int16_t GetRightMotorAppliedDuty(void)
 {
-  return BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT);
+  return Motor_GetAppliedDuty(MOTOR_RIGHT);
 }
 
 static const WheelControllerMotorPort wheel_controller_motor_port = {
-    .coast_all = BspMotor_CoastAll,
-    .emergency_stop = BspMotor_EmergencyStop,
-    .set_signed_duty_both = BspMotor_SetSignedDutyBoth,
+    .coast_all = Motor_CoastAll,
+    .emergency_stop = Motor_EmergencyStop,
+    .set_signed_duty_both = Motor_SetSignedDutyBoth,
     .get_left_applied_duty = GetLeftMotorAppliedDuty,
     .get_right_applied_duty = GetRightMotorAppliedDuty,
 };
 
-static void ProcessImuSample(const BspIcm45686Sample *sample)
+static void ProcessImuSample(const Icm45686Stm32Sample *sample)
 {
   if (sample != NULL) {
     ImuOrientation_ProcessSample(sample->accel_mps2, sample->gyro_rad_s,
@@ -89,7 +89,7 @@ static void ProcessImuSample(const BspIcm45686Sample *sample)
   }
 }
 
-static const BspIcm45686SampleSink imu_sample_sink = {
+static const Icm45686Stm32SampleSink imu_sample_sink = {
     .reset = ImuOrientation_Reset,
     .process_sample = ProcessImuSample,
 };
@@ -129,14 +129,9 @@ static uint8_t demo_stage;
 static uint32_t demo_stage_started_ms;
 #endif
 
-bool ChassisApp_Init(void)
+static bool InitializeCommunication(const struct device *can_device,
+                                    uint32_t now_ms)
 {
-  const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_CAN);
-  const uint32_t now_ms = time_uptime_ms();
-  ParameterSnapshot initial_parameters;
-  ParameterStorageSnapshot parameter_storage;
-  bool parameters_loaded;
-
   if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_UART))) {
     return false;
   }
@@ -156,49 +151,48 @@ bool ChassisApp_Init(void)
   OtaCanTransport_Init(can_device);
   OtaUartTransport_Init();
   OtaSession_Init();
-  if (!ChassisMaintenance_Init(&maintenance_port)) {
-    return false;
-  }
-  if (!ChassisConsoleCommands_Init(&console_command_port)) {
-    return false;
-  }
+  return ChassisMaintenance_Init(&maintenance_port) &&
+         ChassisConsoleCommands_Init(&console_command_port);
+}
 
-  BspMotor_Init();
-  if (!BspMotor_Start()) {
+static bool InitializeHardware(uint32_t now_ms)
+{
+  Motor_Init();
+  if (!Motor_Start()) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "motor",
                                "INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
-  BspEncoder_Init();
-  if (!BspEncoder_Start() || !BspPowerSample_Init()) {
+  Encoder_Init();
+  if (!Encoder_Start() || !PowerSample_Init()) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "board",
                                "MOTION_IO_INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
                              "MOTION_IO_READY", NULL);
-  BspButton_Init();
-  BspSr501_Init(time_uptime_ms());
+  Button_Init();
+  Sr501_Init(now_ms);
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
 #if CONFIG_ICM45686
   {
-    BspIcm45686Snapshot imu;
+    Icm45686Stm32Snapshot imu;
     char fields[48];
 
     ImuOrientation_Init();
-    if (!BspIcm45686_SetSampleSink(&imu_sample_sink)) {
+    if (!Icm45686Stm32_SetSampleSink(&imu_sample_sink)) {
       return false;
     }
-    BspIcm45686_Init(time_uptime_ms());
-    BspIcm45686_GetSnapshot(&imu);
+    Icm45686Stm32_Init(now_ms);
+    Icm45686Stm32_GetSnapshot(&imu);
     (void)snprintf(fields, sizeof(fields),
                    "device=ICM45686 who_am_i=0x%02X",
                    (unsigned int)imu.who_am_i);
-    if (imu.status == BSP_ICM45686_READY) {
+    if (imu.status == ICM45686_READY) {
       (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "imu",
                                  "READY", fields);
-    } else if (imu.status == BSP_ICM45686_NOT_FOUND) {
+    } else if (imu.status == ICM45686_NOT_FOUND) {
       (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_WARN, "imu",
                                  "NOT_FOUND", fields);
     } else {
@@ -207,14 +201,20 @@ bool ChassisApp_Init(void)
     }
   }
 #endif
-  (void)LcdStatusPresenter_Init();
+  return LcdStatusPresenter_Init();
+}
+
+static bool InitializeProductModules(void)
+{
+  ParameterSnapshot initial_parameters;
+  ParameterStorageSnapshot parameter_storage;
+  const bool parameters_loaded = ParameterStorage_Init(&initial_parameters);
 
   CommandManager_Init();
   FaultManager_Init();
-  SafetyManager_Init(BspEmergencyStop_IsAsserted());
-  BspEmergencyStop_Init(SafetyManager_LatchEmergencyStopFromIsr);
+  SafetyManager_Init(EmergencyStop_IsAsserted());
+  EmergencyStop_Init(SafetyManager_LatchEmergencyStopFromIsr);
   BoardHealth_Init();
-  parameters_loaded = ParameterStorage_Init(&initial_parameters);
   ParameterManager_Init(parameters_loaded ? &initial_parameters : NULL);
   if (!WheelController_Init(&wheel_controller_motor_port)) {
     return false;
@@ -230,17 +230,16 @@ bool ChassisApp_Init(void)
   {
     char fields[128];
 
-    (void)snprintf(
-        fields, sizeof(fields),
-        "source=%s sequence=%lu left=%u,%u,%u right=%u,%u,%u",
-        parameters_loaded ? "QSPI" : "DEFAULTS",
-        (unsigned long)parameter_storage.sequence,
-        (unsigned int)initial_parameters.left_pid.kp,
-        (unsigned int)initial_parameters.left_pid.ki,
-        (unsigned int)initial_parameters.left_pid.kd,
-        (unsigned int)initial_parameters.right_pid.kp,
-        (unsigned int)initial_parameters.right_pid.ki,
-        (unsigned int)initial_parameters.right_pid.kd);
+    (void)snprintf(fields, sizeof(fields),
+                   "source=%s sequence=%lu left=%u,%u,%u right=%u,%u,%u",
+                   parameters_loaded ? "QSPI" : "DEFAULTS",
+                   (unsigned long)parameter_storage.sequence,
+                   (unsigned int)initial_parameters.left_pid.kp,
+                   (unsigned int)initial_parameters.left_pid.ki,
+                   (unsigned int)initial_parameters.left_pid.kd,
+                   (unsigned int)initial_parameters.right_pid.kp,
+                   (unsigned int)initial_parameters.right_pid.ki,
+                   (unsigned int)initial_parameters.right_pid.kd);
     (void)UartProtocol_SendLog(
         time_uptime_ms(),
         parameter_storage.status == PARAMETER_STORAGE_ERROR
@@ -263,6 +262,18 @@ bool ChassisApp_Init(void)
   IwdgTargetTest_Init();
   MotorTargetTest_Init();
   DiagnosticReport_Init(time_uptime_ms());
+  return true;
+}
+
+bool ChassisApp_Init(void)
+{
+  const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_CAN);
+  const uint32_t now_ms = time_uptime_ms();
+
+  if (!InitializeCommunication(can_device, now_ms) ||
+      !InitializeHardware(now_ms) || !InitializeProductModules()) {
+    return false;
+  }
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO,
                              "application", "READY", "tasks=4");
   consecutive_control_overruns = 0U;
@@ -446,7 +457,7 @@ void ChassisApp_RunServiceCycle(void)
 
   if (IwdgTargetTest_IsResetRequested()) {
     StopControl();
-    BspMotor_EmergencyStop();
+    Motor_EmergencyStop();
   }
 
   if (OtaSession_IsResetRequested(now_ms) &&
@@ -455,9 +466,9 @@ void ChassisApp_RunServiceCycle(void)
        (OtaSession_GetSource() == OTA_SOURCE_CAN_FD &&
         OtaCanTransport_IsTxIdle()))) {
     StopControl();
-    BspMotor_CoastAll();
+    Motor_CoastAll();
     if (watchdog_prepare_for_bootloader()) {
-      BspReset_RequestSystemReset();
+      Reset_RequestSystemReset();
     }
   }
 
@@ -468,7 +479,7 @@ void ChassisApp_RunServiceCycle(void)
     TelemetrySnapshot snapshot;
     uint32_t supply_mv;
     const bool supply_valid =
-        BspPowerSample_ReadMillivolts(&supply_mv);
+        PowerSample_ReadMillivolts(&supply_mv);
 
     taskENTER_CRITICAL();
     WheelController_GetSnapshot(&wheel_snapshot);
@@ -511,22 +522,22 @@ void ChassisApp_RunDiagnosticsCycle(void)
   static uint32_t last_heartbeat_ms;
   const uint32_t now_ms = time_uptime_ms();
 
-  BspSr501_Run(now_ms);
+  Sr501_Run(now_ms);
 #if CONFIG_ICM45686
-  BspIcm45686_Run(now_ms);
+  Icm45686Stm32_Run(now_ms);
 #endif
   SystemStatusCollector_Update(now_ms);
 
   if (now_ms - last_heartbeat_ms >= 500U) {
     last_heartbeat_ms = now_ms;
-    BspLed_Toggle(BSP_LED_BLUE);
+    Led_Toggle(LED_BLUE);
   }
-  BspLed_Set(BSP_LED_GREEN, false);
-  BspLed_Set(BSP_LED_RED, false);
+  Led_Set(LED_GREEN, false);
+  Led_Set(LED_RED, false);
   if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_PASSED) {
-    BspLed_Set(BSP_LED_GREEN, true);
+    Led_Set(LED_GREEN, true);
   } else if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_FAILED) {
-    BspLed_Set(BSP_LED_RED, true);
+    Led_Set(LED_RED, true);
   }
 
   {
@@ -546,7 +557,7 @@ void ChassisApp_RunDisplayCycle(void)
 {
   const uint32_t now_ms = time_uptime_ms();
 
-  BspButton_Run(now_ms);
+  Button_Run(now_ms);
   LcdStatusPresenter_Run(now_ms);
 }
 
@@ -616,7 +627,7 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     consecutive_control_overruns = 0U;
   }
 
-  BspEncoder_ReadDelta(&left_delta, &right_delta);
+  Encoder_ReadDelta(&left_delta, &right_delta);
   max_encoder_delta =
       (int64_t)MOTOR_ENCODER_MAX_DELTA_PER_TICK * notification_count;
   left_abs_delta = left_delta < 0 ? -(int64_t)left_delta : left_delta;
@@ -626,7 +637,7 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     LatchChassisInternalFault(CHASSIS_FAULT_ENCODER);
     return;
   }
-  if (BspPowerSample_GetLatestMillivolts(&latest_supply_mv) &&
+  if (PowerSample_GetLatestMillivolts(&latest_supply_mv) &&
       latest_supply_mv < MOTOR_CONTROL_MIN_SUPPLY_MV) {
     LatchChassisInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
     return;
@@ -720,10 +731,10 @@ static bool AcquireTargetTestLock(void)
   }
 
   StopControl();
-  BspMotor_CoastAll();
+  Motor_CoastAll();
   if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED ||
-      BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT) != 0 ||
-      BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT) != 0) {
+      Motor_GetAppliedDuty(MOTOR_LEFT) != 0 ||
+      Motor_GetAppliedDuty(MOTOR_RIGHT) != 0) {
     return false;
   }
 
@@ -749,10 +760,10 @@ static bool AcquireOtaMaintenanceLock(void)
   }
 
   StopControl();
-  BspMotor_CoastAll();
+  Motor_CoastAll();
   if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED ||
-      BspMotor_GetAppliedDuty(BSP_MOTOR_LEFT) != 0 ||
-      BspMotor_GetAppliedDuty(BSP_MOTOR_RIGHT) != 0) {
+      Motor_GetAppliedDuty(MOTOR_LEFT) != 0 ||
+      Motor_GetAppliedDuty(MOTOR_RIGHT) != 0) {
     return false;
   }
 
@@ -853,29 +864,29 @@ static CommandManagerSubmitResult SubmitMotionCommand(
 
 void ChassisApp_FatalError(void)
 {
-  BspMotor_EmergencyStop();
+  Motor_EmergencyStop();
   LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
 }
 
 void ChassisApp_PanicStopFromException(void)
 {
   taskDISABLE_INTERRUPTS();
-  BspMotor_EmergencyStop();
+  Motor_EmergencyStop();
 }
 
 bool ChassisApp_ClearEmergencyStop(void)
 {
-  if (BspEmergencyStop_IsAsserted()) {
+  if (EmergencyStop_IsAsserted()) {
     return false;
   }
 
   taskENTER_CRITICAL();
-  if (BspEmergencyStop_IsAsserted()) {
+  if (EmergencyStop_IsAsserted()) {
     taskEXIT_CRITICAL();
     return false;
   }
   (void)SafetyManager_ClearEmergencyStop();
-  BspMotor_ClearEmergencyStop();
+  Motor_ClearEmergencyStop();
   taskEXIT_CRITICAL();
 
   StopControl();

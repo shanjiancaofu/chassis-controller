@@ -1,92 +1,329 @@
-#include "drivers/uart/uart_stm32.h"
+#include "drivers/uart/uart_stm32_private.h"
 
-#include "bsp/uart/uart_bsp.h"
+#include <string.h>
 
-static int Start(const struct device *device)
+#include "boards/chassis_g474/board_config.h"
+
+#define UART_DMA_RX_BUFFER_SIZE 128U
+#define UART_RX_RING_SIZE 1024U
+#define UART_TX_QUEUE_DEPTH 8U
+
+typedef struct {
+  uint16_t length;
+  uint32_t token;
+  bool tracked;
+  uint8_t data[UART_STM32_MAX_WRITE_SIZE];
+} UartTxMessage;
+
+static uint8_t dma_rx_buffer[UART_DMA_RX_BUFFER_SIZE];
+static uint16_t dma_rx_position;
+static uint8_t rx_ring[UART_RX_RING_SIZE];
+static volatile uint16_t rx_head;
+static volatile uint16_t rx_tail;
+static volatile uint32_t rx_overflow_count;
+static volatile uint32_t rx_error_count;
+static volatile uint32_t rx_restart_count;
+static volatile bool rx_restart_pending;
+
+static UartTxMessage tx_queue[UART_TX_QUEUE_DEPTH];
+static volatile uint8_t tx_head;
+static uint8_t tx_tail;
+static volatile uint8_t tx_count;
+static volatile bool tx_active;
+static volatile uint32_t tx_queue_full_count;
+static volatile uint32_t tx_error_count;
+static uint32_t next_tx_token;
+static volatile uint32_t completed_tx_token;
+static volatile bool completed_tx_success;
+
+static void StoreReceivedBytes(uint16_t position);
+static void StoreReceivedByte(uint8_t value);
+static void RestartReceiveIfNeeded(void);
+static void StartNextTransmit(void);
+static void CompleteActiveTransmit(bool success);
+static bool QueueTransmit(const void *data, size_t length, bool tracked,
+                          uint32_t *token);
+
+bool UartStm32Start(void)
 {
-  (void)device;
-  return BspUart_Start() ? 0 : -1;
+  dma_rx_position = 0U;
+  rx_head = 0U;
+  rx_tail = 0U;
+  rx_overflow_count = 0U;
+  rx_error_count = 0U;
+  rx_restart_count = 0U;
+  rx_restart_pending = false;
+  tx_head = 0U;
+  tx_tail = 0U;
+  tx_count = 0U;
+  tx_active = false;
+  tx_queue_full_count = 0U;
+  tx_error_count = 0U;
+  next_tx_token = 0U;
+  completed_tx_token = 0U;
+  completed_tx_success = false;
+
+  if (HAL_UARTEx_ReceiveToIdle_DMA(&BOARD_UART, dma_rx_buffer,
+                                   sizeof(dma_rx_buffer)) != HAL_OK) {
+    return false;
+  }
+
+  __HAL_DMA_DISABLE_IT(BOARD_UART.hdmarx, DMA_IT_HT);
+  return true;
 }
 
-static void Run(const struct device *device)
+void UartStm32Run(void)
 {
-  (void)device;
-  BspUart_Run();
+  uint32_t primask = __get_PRIMASK();
+
+  RestartReceiveIfNeeded();
+
+  __disable_irq();
+  StartNextTransmit();
+  __set_PRIMASK(primask);
 }
 
-static size_t Read(const struct device *device, uint8_t *data, size_t capacity)
+size_t UartStm32Read(uint8_t *data, size_t capacity)
 {
-  (void)device;
-  return BspUart_Read(data, capacity);
+  size_t count = 0U;
+
+  if (data == NULL) {
+    return 0U;
+  }
+
+  while (count < capacity && rx_tail != rx_head) {
+    data[count++] = rx_ring[rx_tail];
+    rx_tail = (uint16_t)((rx_tail + 1U) % UART_RX_RING_SIZE);
+  }
+  return count;
 }
 
-static bool Write(const struct device *device, const void *data, size_t length)
+bool UartStm32Write(const void *data, size_t length)
 {
-  (void)device;
-  return BspUart_Write(data, length);
+  return QueueTransmit(data, length, false, NULL);
 }
 
-static bool WriteTracked(const struct device *device, const void *data,
-                         size_t length, uint32_t *token)
+bool UartStm32WriteTracked(const void *data, size_t length,
+                          uint32_t *token)
 {
-  (void)device;
-  return BspUart_WriteTracked(data, length, token);
+  return token != NULL && QueueTransmit(data, length, true, token);
 }
 
-static bool GetTrackedCompletion(const struct device *device, uint32_t token,
-                                 bool *completed, bool *success)
+bool UartStm32GetTrackedCompletion(uint32_t token, bool *completed,
+                                  bool *success)
 {
-  (void)device;
-  return BspUart_GetTrackedCompletion(token, completed, success);
+  uint32_t primask;
+
+  if (token == 0U || completed == NULL || success == NULL) {
+    return false;
+  }
+  primask = __get_PRIMASK();
+  __disable_irq();
+  *completed = completed_tx_token == token;
+  *success = *completed && completed_tx_success;
+  __set_PRIMASK(primask);
+  return true;
 }
 
-static bool IsTxIdle(const struct device *device)
+static bool QueueTransmit(const void *data, size_t length, bool tracked,
+                          uint32_t *token)
 {
-  (void)device;
-  return BspUart_IsTxIdle();
+  uint8_t slot;
+  uint32_t primask;
+
+  if (data == NULL || length == 0U || length > UART_STM32_MAX_WRITE_SIZE) {
+    return false;
+  }
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  if (tx_count >= UART_TX_QUEUE_DEPTH) {
+    ++tx_queue_full_count;
+    __set_PRIMASK(primask);
+    return false;
+  }
+  slot = tx_tail;
+  memcpy(tx_queue[slot].data, data, length);
+  tx_queue[slot].length = (uint16_t)length;
+  tx_queue[slot].tracked = tracked;
+  if (tracked) {
+    ++next_tx_token;
+    if (next_tx_token == 0U) {
+      ++next_tx_token;
+    }
+    tx_queue[slot].token = next_tx_token;
+    *token = next_tx_token;
+  } else {
+    tx_queue[slot].token = 0U;
+  }
+  tx_tail = (uint8_t)((tx_tail + 1U) % UART_TX_QUEUE_DEPTH);
+  ++tx_count;
+  StartNextTransmit();
+  __set_PRIMASK(primask);
+  return true;
 }
 
-static uint8_t GetTxSlotsAvailable(const struct device *device)
+bool UartStm32WriteString(const char *text)
 {
-  (void)device;
-  return BspUart_GetTxSlotsAvailable();
+  return text != NULL && UartStm32Write(text, strlen(text));
 }
 
-static void GetDiagnostics(const struct device *device,
-                           UartDiagnostics *diagnostics)
+bool UartStm32IsTxIdle(void)
 {
-  BspUartDiagnostics bsp_diagnostics;
-  (void)device;
-  BspUart_GetDiagnostics(&bsp_diagnostics);
+  uint32_t primask = __get_PRIMASK();
+  bool idle;
+
+  __disable_irq();
+  idle = tx_count == 0U && !tx_active;
+  __set_PRIMASK(primask);
+  return idle;
+}
+
+uint8_t UartStm32GetTxSlotsAvailable(void)
+{
+  uint32_t primask = __get_PRIMASK();
+  uint8_t available;
+
+  __disable_irq();
+  available = (uint8_t)(UART_TX_QUEUE_DEPTH - tx_count);
+  __set_PRIMASK(primask);
+  return available;
+}
+
+void UartStm32GetDiagnostics(UartStm32Diagnostics *diagnostics)
+{
+  uint16_t head;
+  uint16_t tail;
+  uint32_t primask;
+
   if (diagnostics == NULL) {
     return;
   }
-  *diagnostics = (UartDiagnostics){
-      .rx_overflow_count = bsp_diagnostics.rx_overflow_count,
-      .rx_error_count = bsp_diagnostics.rx_error_count,
-      .rx_restart_count = bsp_diagnostics.rx_restart_count,
-      .tx_queue_full_count = bsp_diagnostics.tx_queue_full_count,
-      .tx_error_count = bsp_diagnostics.tx_error_count,
-      .rx_bytes_available = bsp_diagnostics.rx_bytes_available,
-      .tx_messages_pending = bsp_diagnostics.tx_messages_pending,
-      .tx_active = bsp_diagnostics.tx_active,
-  };
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+  head = rx_head;
+  tail = rx_tail;
+  diagnostics->rx_overflow_count = rx_overflow_count;
+  diagnostics->rx_error_count = rx_error_count;
+  diagnostics->rx_restart_count = rx_restart_count;
+  diagnostics->tx_queue_full_count = tx_queue_full_count;
+  diagnostics->tx_error_count = tx_error_count;
+  diagnostics->tx_messages_pending = tx_count;
+  diagnostics->tx_active = tx_active;
+  __set_PRIMASK(primask);
+
+  diagnostics->rx_bytes_available =
+      head >= tail ? (uint16_t)(head - tail)
+                   : (uint16_t)(UART_RX_RING_SIZE - tail + head);
 }
 
-const struct uart_driver_api uart_stm32_api = {
-    .start = Start,
-    .run = Run,
-    .read = Read,
-    .write = Write,
-    .write_tracked = WriteTracked,
-    .get_tracked_completion = GetTrackedCompletion,
-    .is_tx_idle = IsTxIdle,
-    .get_tx_slots_available = GetTxSlotsAvailable,
-    .get_diagnostics = GetDiagnostics,
-};
-
-int UartStm32_Init(const struct device *device)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
 {
-  (void)device;
-  return Start(device);
+  if (huart == &BOARD_UART && size <= UART_DMA_RX_BUFFER_SIZE) {
+    StoreReceivedBytes(size);
+  }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &BOARD_UART) {
+    CompleteActiveTransmit(true);
+  }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &BOARD_UART) {
+    if (huart->RxState == HAL_UART_STATE_READY) {
+      ++rx_error_count;
+      rx_restart_pending = true;
+    }
+    if (tx_active && huart->gState == HAL_UART_STATE_READY) {
+      CompleteActiveTransmit(false);
+    }
+  }
+}
+
+static void StoreReceivedBytes(uint16_t position)
+{
+  uint16_t index;
+
+  if (position > dma_rx_position) {
+    for (index = dma_rx_position; index < position; ++index) {
+      StoreReceivedByte(dma_rx_buffer[index]);
+    }
+  } else if (position < dma_rx_position) {
+    for (index = dma_rx_position; index < UART_DMA_RX_BUFFER_SIZE; ++index) {
+      StoreReceivedByte(dma_rx_buffer[index]);
+    }
+    for (index = 0U; index < position; ++index) {
+      StoreReceivedByte(dma_rx_buffer[index]);
+    }
+  }
+
+  dma_rx_position = position == UART_DMA_RX_BUFFER_SIZE ? 0U : position;
+}
+
+static void StoreReceivedByte(uint8_t value)
+{
+  const uint16_t next = (uint16_t)((rx_head + 1U) % UART_RX_RING_SIZE);
+
+  if (next == rx_tail) {
+    ++rx_overflow_count;
+    return;
+  }
+  rx_ring[rx_head] = value;
+  rx_head = next;
+}
+
+static void RestartReceiveIfNeeded(void)
+{
+  HAL_StatusTypeDef status;
+
+  if (!rx_restart_pending || BOARD_UART.RxState != HAL_UART_STATE_READY) {
+    return;
+  }
+
+  rx_restart_pending = false;
+  dma_rx_position = 0U;
+  status = HAL_UARTEx_ReceiveToIdle_DMA(&BOARD_UART, dma_rx_buffer,
+                                       sizeof(dma_rx_buffer));
+  if (status == HAL_OK) {
+    __HAL_DMA_DISABLE_IT(BOARD_UART.hdmarx, DMA_IT_HT);
+    ++rx_restart_count;
+  } else {
+    rx_restart_pending = true;
+  }
+}
+
+static void StartNextTransmit(void)
+{
+  if (tx_active || tx_count == 0U || BOARD_UART.gState != HAL_UART_STATE_READY) {
+    return;
+  }
+
+  if (HAL_UART_Transmit_DMA(&BOARD_UART, tx_queue[tx_head].data,
+                            tx_queue[tx_head].length) == HAL_OK) {
+    tx_active = true;
+  }
+}
+
+static void CompleteActiveTransmit(bool success)
+{
+  if (!tx_active || tx_count == 0U) {
+    return;
+  }
+
+  if (!success) {
+    ++tx_error_count;
+  }
+  if (tx_queue[tx_head].tracked) {
+    completed_tx_success = success;
+    completed_tx_token = tx_queue[tx_head].token;
+  }
+  tx_head = (uint8_t)((tx_head + 1U) % UART_TX_QUEUE_DEPTH);
+  --tx_count;
+  tx_active = false;
+  StartNextTransmit();
 }

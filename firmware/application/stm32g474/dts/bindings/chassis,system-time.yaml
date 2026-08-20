@@ -1,0 +1,6 @@
+compatible: "chassis,system-time"
+required:
+  - status
+properties:
+  status:
+    type: string

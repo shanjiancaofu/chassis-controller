@@ -1,7 +1,7 @@
 #include "ui/lcd/lcd_status_presenter.h"
 
-#include "bsp/button/bsp_button.h"
-#include "bsp/reset/bsp_reset.h"
+#include "drivers/button/button.h"
+#include "drivers/reset/reset.h"
 #include "config/app_config.h"
 #include "modules/diagnostics/system_status.h"
 #include "ui/lcd/lcd_ui.h"
@@ -93,25 +93,25 @@ static LcdUiSensorState MapSr501State(SystemStatusSr501State state)
 
 static LcdUiResetCause MapResetCause(uint32_t flags)
 {
-  if ((flags & BSP_RESET_CAUSE_IWDG) != 0U) {
+  if ((flags & RESET_CAUSE_IWDG) != 0U) {
     return LCD_UI_RESET_IWDG;
   }
-  if ((flags & BSP_RESET_CAUSE_WWDG) != 0U) {
+  if ((flags & RESET_CAUSE_WWDG) != 0U) {
     return LCD_UI_RESET_WWDG;
   }
-  if ((flags & BSP_RESET_CAUSE_SOFTWARE) != 0U) {
+  if ((flags & RESET_CAUSE_SOFTWARE) != 0U) {
     return LCD_UI_RESET_SOFTWARE;
   }
-  if ((flags & BSP_RESET_CAUSE_PIN) != 0U) {
+  if ((flags & RESET_CAUSE_PIN) != 0U) {
     return LCD_UI_RESET_PIN;
   }
-  if ((flags & BSP_RESET_CAUSE_BOR) != 0U) {
+  if ((flags & RESET_CAUSE_BOR) != 0U) {
     return LCD_UI_RESET_BROWNOUT;
   }
-  if ((flags & BSP_RESET_CAUSE_LOW_POWER) != 0U) {
+  if ((flags & RESET_CAUSE_LOW_POWER) != 0U) {
     return LCD_UI_RESET_LOW_POWER;
   }
-  if ((flags & BSP_RESET_CAUSE_OPTION_BYTE) != 0U) {
+  if ((flags & RESET_CAUSE_OPTION_BYTE) != 0U) {
     return LCD_UI_RESET_OPTION_BYTE;
   }
   return LCD_UI_RESET_NONE;
@@ -214,7 +214,7 @@ bool LcdStatusPresenter_Init(void)
 
 void LcdStatusPresenter_Run(uint32_t now_ms)
 {
-  if (BspButton_TakeDisplayKeyPressed() &&
+  if (Button_TakeDisplayKeyPressed() &&
       now_ms - last_key_press_ms >= KEY_LOCKOUT_MS) {
     last_key_press_ms = now_ms;
     LcdUi_SetPage(NextPage(LcdUi_GetPage()));

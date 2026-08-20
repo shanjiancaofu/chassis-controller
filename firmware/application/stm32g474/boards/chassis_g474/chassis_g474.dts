@@ -11,6 +11,9 @@
         chassis,flash = <&flash0>;
         chassis,drive = <&drive0>;
         chassis,uart = <&uart0>;
+        chassis,watchdog = <&watchdog0>;
+        chassis,rtc = <&rtc0>;
+        chassis,time = <&time0>;
     };
 
     aliases {
@@ -82,6 +85,29 @@
         compatible = "st,stm32-uart";
         status = "okay";
         cubemx-handle = "huart1";
+    };
+
+    watchdog0: watchdog {
+        phandle = <7>;
+        chassis,device-id = "watchdog0";
+        compatible = "st,stm32-iwdg";
+        status = "okay";
+        cubemx-handle = "hiwdg";
+    };
+
+    rtc0: rtc {
+        phandle = <8>;
+        chassis,device-id = "rtc0";
+        compatible = "st,stm32-rtc";
+        status = "okay";
+        cubemx-handle = "hrtc";
+    };
+
+    time0: system-time {
+        phandle = <9>;
+        chassis,device-id = "time0";
+        compatible = "chassis,system-time";
+        status = "okay";
     };
 
     left-encoder {

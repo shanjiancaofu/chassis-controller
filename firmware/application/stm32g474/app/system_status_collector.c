@@ -1,11 +1,11 @@
 #include "app/system_status_collector.h"
 
 #include "FreeRTOS.h"
-#include "bsp/button/bsp_button.h"
-#include "bsp/imu/bsp_icm45686.h"
-#include "bsp/power_monitor/bsp_power_sample.h"
+#include "drivers/button/button.h"
+#include "drivers/sensor/icm45686.h"
+#include "drivers/adc/power_sample.h"
 #include "drivers/rtc.h"
-#include "bsp/sr501/bsp_sr501.h"
+#include "drivers/sensor/sr501.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
 #include "communication/ota_transport/ota_confirmation.h"
@@ -56,14 +56,14 @@ static SystemStatusLcdState MapLcdState(LcdUiStatus state)
   }
 }
 
-static SystemStatusImuState MapImuState(BspIcm45686Status state)
+static SystemStatusImuState MapImuState(Icm45686Stm32Status state)
 {
   switch (state) {
-    case BSP_ICM45686_NOT_FOUND:
+    case ICM45686_NOT_FOUND:
       return SYSTEM_STATUS_IMU_NOT_FOUND;
-    case BSP_ICM45686_READY:
+    case ICM45686_READY:
       return SYSTEM_STATUS_IMU_READY;
-    case BSP_ICM45686_DEGRADED:
+    case ICM45686_DEGRADED:
       return SYSTEM_STATUS_IMU_DEGRADED;
     default:
       return SYSTEM_STATUS_IMU_UNINITIALIZED;
@@ -132,7 +132,7 @@ static void CopyRuntimeSnapshot(SystemRuntimeSnapshot *destination,
 }
 
 static void CopyButtonSnapshot(SystemStatusButtonSnapshot *destination,
-                               const BspButtonSnapshot *source)
+                               const ButtonSnapshot *source)
 {
   for (uint32_t index = 0U; index < SYSTEM_STATUS_BUTTON_COUNT; ++index) {
     destination->pressed[index] = source->pressed[index];
@@ -141,7 +141,7 @@ static void CopyButtonSnapshot(SystemStatusButtonSnapshot *destination,
 }
 
 static void CopyImuSnapshot(SystemStatusImuSnapshot *destination,
-                            const BspIcm45686Snapshot *source,
+                            const Icm45686Stm32Snapshot *source,
                             const ImuOrientationSnapshot *orientation)
 {
   destination->status = MapImuState(source->status);
@@ -163,9 +163,9 @@ static void CopyImuSnapshot(SystemStatusImuSnapshot *destination,
 }
 
 static void CopySr501Snapshot(SystemStatusSr501Snapshot *destination,
-                              const BspSr501Snapshot *source)
+                              const Sr501Snapshot *source)
 {
-  destination->status = source->status == BSP_SR501_READY
+  destination->status = source->status == SR501_READY
                             ? SYSTEM_STATUS_SR501_READY
                             : SYSTEM_STATUS_SR501_WARMING_UP;
   destination->raw_high = source->raw_high;
@@ -176,7 +176,7 @@ static void CopySr501Snapshot(SystemStatusSr501Snapshot *destination,
 }
 
 static void CopyPowerSnapshot(SystemStatusPowerSampleSnapshot *destination,
-                              const BspPowerSampleSnapshot *source)
+                              const PowerSampleSnapshot *source)
 {
   destination->valid = source->valid;
   destination->millivolts = source->millivolts;
@@ -188,11 +188,11 @@ void SystemStatusCollector_Update(uint32_t now_ms)
 {
   SystemStatusSnapshot status = {0};
   RtosAppRuntimeSnapshot runtime;
-  BspButtonSnapshot buttons;
-  BspIcm45686Snapshot imu;
+  ButtonSnapshot buttons;
+  Icm45686Stm32Snapshot imu;
   ImuOrientationSnapshot orientation;
-  BspSr501Snapshot sr501;
-  BspPowerSampleSnapshot power_sample;
+  Sr501Snapshot sr501;
+  PowerSampleSnapshot power_sample;
   MotorTargetTestSnapshot motor_test;
   RtcDateTime date_time = {0};
 
@@ -200,11 +200,11 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   RtosApp_GetRuntimeSnapshot(&runtime);
   CopyRuntimeSnapshot(&status.runtime, &runtime);
 
-  BspButton_GetSnapshot(&buttons);
-  BspIcm45686_GetSnapshot(&imu);
+  Button_GetSnapshot(&buttons);
+  Icm45686Stm32_GetSnapshot(&imu);
   ImuOrientation_GetSnapshot(&orientation);
-  BspSr501_GetSnapshot(&sr501);
-  BspPowerSample_GetSnapshot(now_ms, &power_sample);
+  Sr501_GetSnapshot(&sr501);
+  PowerSample_GetSnapshot(now_ms, &power_sample);
   CopyButtonSnapshot(&status.buttons, &buttons);
   CopyImuSnapshot(&status.imu, &imu, &orientation);
   CopySr501Snapshot(&status.sr501, &sr501);
@@ -212,7 +212,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
 
   status.can_state = MapCanState(CanTransport_GetLinkStatus());
   status.lcd_state = MapLcdState(LcdUi_GetStatus());
-  status.supply_valid = BspPowerSample_ReadMillivolts(&status.supply_mv);
+  status.supply_valid = PowerSample_ReadMillivolts(&status.supply_mv);
   status.fault_flags = FaultManager_GetFlags();
   status.qspi_test_state = (uint32_t)QspiTargetTest_GetStatus();
   status.ota_confirmation_state = (uint32_t)OtaConfirmation_GetStatus();

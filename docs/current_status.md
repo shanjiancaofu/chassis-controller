@@ -18,6 +18,10 @@
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
+- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于最终 driver relocation、模块化 CMake
+  和 ChassisApp 装配收口后的 ELF 重新打包：payload `103408` 字节、CRC32 `0xEF8A4A2D`，OTA 包
+  `103472` 字节；仅完成构建和
+  主机格式校验，尚未烧录。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
@@ -35,7 +39,7 @@
 - Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）、两个预留按钮（PD3/PD4）
   和 SR501 输入（PD5）；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()`、SPI3 DMA1 CH5/CH6、
   EXTI1/3/4，以及 PD5 普通输入和内部下拉初始化。
-- 已加入 `bsp/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
+- 已加入 `drivers/button` 通用按钮事件驱动。按钮目前只产生消抖后的 pressed event，不绑定业务。
 - LCD 已移除独立全屏封面页，将 taifei 裁剪为带透明掩码的 40x40 RGB565 Logo 并固定绘制在
   四个功能页右上角；原始 `picture_tafei.h` 保留但不再链接到当前页面。`OVERVIEW` 将电压和
   百分比放大到 3 倍字号并扩大电量条，`MOTOR` 使用左右双栏，其余页面按信息层级重新排版。
@@ -43,12 +47,12 @@
   页脚和双栏分隔使用低对比灰色。
   四页均读取同一 `SystemStatusSnapshot`，已接线的 `PB8/BOOT0` 按键用于循环切页；PD3/PD4
   只保留 CubeMX/BSP 配置且尚未接线。新版布局、按键循环、Logo 和电量显示已人工确认正常。
-- 已加入 `bsp/sr501` 轮询驱动。PD5 由 CubeMX 生成代码配置为内部下拉普通输入；驱动忽略 60 秒预热期，
+- 已加入 `drivers/sensor/sr501_stm32.c` 轮询驱动。PD5 由 CubeMX 生成代码配置为内部下拉普通输入；驱动忽略 60 秒预热期，
   使用 50 ms 稳定滤波，只统计 READY 后的稳定低到高事件，并通过 `status` 输出原始电平、
   稳定运动状态、事件计数、最近事件时间和剩余预热时间。状态已进入统一快照、UART 和 LCD，
   但不绑定电机、安全或具体业务。
 - ICM45686 已拆分为 HAL 无关的 `components/icm45686` 寄存器/FIFO 驱动、HAL 无关的
-  `components/imu_fusion` 六轴融合组件，以及 `bsp/imu` STM32 HAL SPI3/DMA 适配层。
+  `components/imu_fusion` 六轴融合组件，以及 `drivers/sensor/icm45686_stm32.c` STM32 HAL SPI3/DMA 适配层。
   当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、ODR/4 内部低通、FIFO watermark、
   16 字节帧、DMA批量读取、FIFO full/非法帧/传输失败flush恢复、16位timestamp动态采样周期、
   静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。当前不启用20-bit、压缩FIFO
@@ -84,17 +88,19 @@
   保留为显式兼容模式。`display_task` 以 1 ms 周期推进 LCD 逐行 DMA，保持页面 1 s 刷新。总览页新增
   9.0--12.6 V 电压窗口估算百分比和电量条；该值不是电池 SOC，阈值需按最终电池规格校准。
 - 0.15.0 已收敛实际依赖边界：`ui/lcd` 持有主题、字模、Logo、四页布局和逐行像素生成，
-  `bsp/lcd` 只持有控制器命令、SPI DMA、片选和背光；`app/system_status_collector` 负责 BSP/RTOS
+  `drivers/display/lcd_stm32.c` 只持有控制器命令、SPI DMA、片选和背光；`app/system_status_collector` 负责 driver/RTOS
   状态到诊断 DTO 的组装；RTOS 通过 Core 注入的周期回调调用 Application，不再反向包含 `app`；
   `wheel_controller` 通过电机端口装配，不再直接依赖电机 BSP。
-- 2026-08-20 继续完成全仓库边界收敛：FDCAN ISR 只把原始帧写入 BSP 固定队列，握手、运动命令和
+- 2026-08-20 继续完成全仓库边界收敛：FDCAN ISR 只把原始帧写入 drivers/can 固定队列，握手、运动命令和
   OTA 解码均在 service task 执行；上层新增 UART、Flash、watchdog、time、RTC 通用 driver API，
-  UART 通过 device/DTS chosen 接入，QSPI/watchdog/RTC/time 由 STM32 BSP adapter 承载；
-  `app/modules/communication/infrastructure/ui/rtos` 不再直接包含 UART/QSPI/RTC/watchdog/time BSP
+  UART 通过 device/DTS chosen 接入，QSPI/watchdog/RTC/time 的 HAL 实现已移动到 STM32 driver；
+  `app/modules/communication/infrastructure/ui/rtos` 不再直接包含 UART/QSPI/RTC/watchdog/time 的
+  旧 BSP 头文件；Application CMake 已拆为 vendor、drivers、components、communication、subsys、
+  modules、ui、kernel、app、rtos 和 target-tests 静态目标。
   头文件。
   OTA 解码全部在 `service_task` 执行；communication 公共接口不再暴露 HAL。RTC、单调时间、LED、
-  E-STOP、IWDG、SPI/GPIO 回调和复位已通过 BSP/Core 边界访问；TIM6 启动由 Core 回调注入 RTOS。
-  IMU SPI/FIFO/DMA 保留在 BSP，Mahony/Kalman 状态迁入 `modules/sensors/imu_orientation`；Console
+  E-STOP、IWDG、SPI/GPIO 回调和复位已通过 drivers/Core 边界访问；TIM6 启动由 Core 回调注入 RTOS。
+  IMU SPI/FIFO/DMA 保留在 `drivers/sensor/icm45686_stm32.c`，Mahony/Kalman 状态迁入 `modules/sensors/imu_orientation`；Console
   命令执行和 OTA 维护协调分别拆到 `app/chassis_console_commands` 与 `app/chassis_maintenance`，
   LCD 状态 presenter 迁入 `ui/lcd`。
 - UART v1 的消息外壳和已有字段语义保持兼容，字段及分区集合不冻结。四分区只承担当前完整
@@ -251,26 +257,22 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 将 QSPI、watchdog、RTC/time 的 BSP adapter 继续下沉到具体 STM32 driver/device 实例；保持
-   现有参数存储、OTA metadata、IWDG 和 RTC 行为不变。
-2. 完成上述 adapter 下沉后重新运行 Debug/Release、架构检查、主机测试和 `git diff --check`。
-3. 基于恢复 CubeMX 初始化入口后的 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前
-   仅记录构建结果，不写硬件 PASS。
-4. 通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
+1. 基于当前 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前仅记录构建结果，不写
+   硬件 PASS。
+2. 通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
    `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`、四任务、
    `fault=0`、`control=STOPPED`、左右 PWM 为零和 LCD 四页。
-5. 检查编码器增量、里程计方向、采样时间戳/年龄和
-   `odometry reset`。
-6. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
+3. 检查编码器增量、里程计方向、采样时间戳/年龄和 `odometry reset`。
+4. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
    固定前不接入航向融合。
-7. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
-8. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
+5. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
+6. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
    欠压注入验证；方向不重复测试。
 
 当前路线：
 
 ```text
-架构检查 -> UART device boundary -> QSPI/settings -> watchdog/RTC
+架构检查 -> UART/QSPI/watchdog/RTC/time device boundary
 -> OTA 实物验证 -> OTA V1 冻结 -> FreeRTOS 快照 -> 四任务调度
 -> 正式 UART 消息 -> LCD 四页 -> ICM45686/Kalman -> SR501 UI/后置实物验证
 -> 里程计/安全保护实测 -> 目标加减速实测 -> 正式 CAN FD 协议

@@ -102,12 +102,44 @@ include/drivers/rtc.h
 ```
 
 UART 已通过 `struct device`、DTS chosen 节点和 STM32 adapter 接入；CubeMX `huart1` 只在
-`boards/chassis_g474/board_devices.c` 与 UART STM32 adapter 可见。UART protocol、Console、
-Telemetry、OTA UART transport 已移除对 `bsp/uart` 的直接依赖。QSPI、watchdog、RTC/time 的上层
-调用也已改为通用 driver API，底层暂由现有 BSP adapter 承载，协议和安全行为未改写。
+`boards/chassis_g474/board_devices.c` 与 UART STM32 driver 实现可见。UART protocol、Console、
+Telemetry、OTA UART transport 已移除对旧 BSP 的直接依赖。QSPI、watchdog、RTC/time 的上层
+调用也已改为通用 driver API，原 BSP 实现已移动到 `drivers/*stm32*`，协议和安全行为未改写。
 
 Debug/Release 构建、架构检查、Kconfig/DTS/architecture 单元测试和 OTA Python 测试均通过；
 本轮没有烧录或目标板硬件结论。
+
+### STM32 driver relocation and device readiness（2026-08-20）
+
+UART、QSPI、watchdog、RTC、time 的 HAL 适配源码已从旧 `bsp/*` 目录移动到
+`drivers/*stm32*`；QSPI、watchdog、RTC、time 增加 DTS 节点和
+`DEVICE_DT_DEFINE` 实例，通用 API 在访问前检查 `device_is_ready()`。旧 Application CMake
+旧 Application CMake 的 BSP 源文件引用已移除。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 115940 | 120 | 55184 | `BUILD PASS` |
+| Release | 103280 | 120 | 55176 | `BUILD PASS` |
+
+镜像门禁报告 Debug Flash `116060 / 491520`、RAM `55304 / 131072`；Release Flash
+`103400 / 491520`、RAM `55296 / 131072`。架构、Kconfig、DTS 和 OTA Python 测试继续通过。
+本轮没有目标板硬件结论。
+
+Release ELF 已重新生成 Application BIN 和 OTA 包：
+
+```text
+application.bin=103408 bytes
+payload_crc32=0xEF8A4A2D
+application.bin sha256=63fbb4eaf1c94c92a0acff4ea302f4fcdc796e380bfb91d0b8ccf668cf2907e7
+app-v0.15.0-b1.ota=103472 bytes
+ota sha256=0de85c99190db2059350af60e9d058aa7c54be54b1c7659c71e68056a8e1b96a
+```
+
+该 OTA 包只完成主机打包和格式校验，尚未烧录，不能记录硬件 `PASS`。
+
+本轮同时将 Application CMake 拆为 `chassis_vendor`、`chassis_drivers`、`chassis_components`、
+`chassis_communication`、`chassis_subsys`、`chassis_modules`、`chassis_ui`、`chassis_kernel`、
+`chassis_app`、`chassis_rtos` 和 `chassis_target_tests` 静态目标；顶层只负责依赖聚合和最终链接。
 
 ### Native Devicetree metadata and bindings（2026-08-20）
 
@@ -713,7 +745,7 @@ Flash、IWDG、复位和跳转的目标板行为。
 ## 2026-08-17 SR501 代码接入构建
 
 SR501 使用 `.ioc` 中的 PD5 普通输入、内部下拉配置。已使用 CubeMX 6.18.1 和
-STM32Cube FW_G4 V1.6.3 生成 `SR501_OUT` 引脚定义及 GPIO 初始化；`bsp/sr501` 负责 60 秒
+STM32Cube FW_G4 V1.6.3 生成 `SR501_OUT` 引脚定义及 GPIO 初始化；`drivers/sensor/sr501_stm32.c` 负责 60 秒
 预热、50 ms 稳定滤波、READY 后稳定低到高单次计数，以及 `status` 诊断输出。当前未绑定
 电机、安全、LCD 或业务。
 

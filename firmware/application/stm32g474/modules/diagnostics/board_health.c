@@ -3,7 +3,7 @@
 #include <stddef.h>
 
 #include "drivers/flash.h"
-#include "bsp/reset/bsp_reset.h"
+#include "drivers/reset/reset.h"
 #include "config/storage_layout.h"
 #include "config/target_test_config.h"
 #include "../../../../shared/qspi_flash_identity.h"
@@ -15,19 +15,19 @@ static uint32_t control_missed_tick_count;
 void BoardHealth_Init(void)
 {
   const bool marker_present =
-      BspReset_ReadBackupRegister(IWDG_TEST_BACKUP_REGISTER) ==
+      Reset_ReadBackupRegister(IWDG_TEST_BACKUP_REGISTER) ==
       IWDG_TEST_MARKER;
 
   board_health = (BoardHealthSnapshot){0};
-  board_health.reset_cause_flags = BspReset_GetCauseFlags();
+  board_health.reset_cause_flags = Reset_GetCauseFlags();
   __atomic_store_n(&control_overrun_count, 0U, __ATOMIC_RELAXED);
   __atomic_store_n(&control_missed_tick_count, 0U, __ATOMIC_RELAXED);
   board_health.iwdg_reset_test_passed =
-      BspReset_WasIndependentWatchdog() && marker_present;
+      Reset_WasIndependentWatchdog() && marker_present;
   if (marker_present) {
-    BspReset_WriteBackupRegister(IWDG_TEST_BACKUP_REGISTER, 0U);
+    Reset_WriteBackupRegister(IWDG_TEST_BACKUP_REGISTER, 0U);
   }
-  BspReset_ClearCauseFlags();
+  Reset_ClearCauseFlags();
 
   board_health.qspi_read_ok =
       flash_read_jedec_id(board_health.qspi_jedec_id);

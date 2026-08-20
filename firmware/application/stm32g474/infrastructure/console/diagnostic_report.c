@@ -3,7 +3,7 @@
 #include <limits.h>
 #include <stdio.h>
 
-#include "bsp/reset/bsp_reset.h"
+#include "drivers/reset/reset.h"
 #include "config/build_info.h"
 #include "config/storage_layout.h"
 #include "communication/ota_transport/ota_confirmation.h"
@@ -328,25 +328,25 @@ static const char *TaskStateText(SystemStatusTaskState state)
 
 static const char *ResetCauseText(uint32_t flags)
 {
-  if ((flags & BSP_RESET_CAUSE_IWDG) != 0U) {
+  if ((flags & RESET_CAUSE_IWDG) != 0U) {
     return "IWDG";
   }
-  if ((flags & BSP_RESET_CAUSE_WWDG) != 0U) {
+  if ((flags & RESET_CAUSE_WWDG) != 0U) {
     return "WWDG";
   }
-  if ((flags & BSP_RESET_CAUSE_SOFTWARE) != 0U) {
+  if ((flags & RESET_CAUSE_SOFTWARE) != 0U) {
     return "SOFTWARE";
   }
-  if ((flags & BSP_RESET_CAUSE_PIN) != 0U) {
+  if ((flags & RESET_CAUSE_PIN) != 0U) {
     return "PIN";
   }
-  if ((flags & BSP_RESET_CAUSE_BOR) != 0U) {
+  if ((flags & RESET_CAUSE_BOR) != 0U) {
     return "BOR";
   }
-  if ((flags & BSP_RESET_CAUSE_LOW_POWER) != 0U) {
+  if ((flags & RESET_CAUSE_LOW_POWER) != 0U) {
     return "LOW_POWER";
   }
-  if ((flags & BSP_RESET_CAUSE_OPTION_BYTE) != 0U) {
+  if ((flags & RESET_CAUSE_OPTION_BYTE) != 0U) {
     return "OPTION_BYTE";
   }
   return "UNKNOWN";

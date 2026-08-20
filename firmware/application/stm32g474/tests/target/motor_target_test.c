@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "bsp/motor/bsp_motor.h"
+#include "drivers/motor/motor.h"
 #include "config/target_test_config.h"
 #include "modules/safety/safety_manager.h"
 
@@ -48,8 +48,8 @@ bool MotorTargetTest_Start(MotorTargetTestAction action, uint32_t now_ms)
       return false;
   }
 
-  BspMotor_CoastAll();
-  BspMotor_SetSignedDutyBoth(left_duty, right_duty);
+  Motor_CoastAll();
+  Motor_SetSignedDutyBoth(left_duty, right_duty);
   test_snapshot.running = true;
   test_snapshot.action = action;
   test_snapshot.left_duty = left_duty;
@@ -64,7 +64,7 @@ void MotorTargetTest_Run(uint32_t now_ms)
     return;
   }
   if (!SafetyManager_IsOpenLoopTestRunning()) {
-    BspMotor_CoastAll();
+    Motor_CoastAll();
     test_snapshot = (MotorTargetTestSnapshot){0};
     return;
   }
@@ -75,7 +75,7 @@ void MotorTargetTest_Run(uint32_t now_ms)
 
 void MotorTargetTest_Stop(void)
 {
-  BspMotor_CoastAll();
+  Motor_CoastAll();
   test_snapshot = (MotorTargetTestSnapshot){0};
   if (SafetyManager_IsOpenLoopTestRunning()) {
     SafetyManager_Stop();

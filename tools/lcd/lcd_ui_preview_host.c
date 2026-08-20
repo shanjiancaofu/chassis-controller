@@ -2,51 +2,51 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "bsp/lcd/bsp_lcd.h"
+#include "drivers/display/lcd.h"
 #include "ui/lcd/lcd_ui.h"
 #include "ui/lcd/lcd_ui_layout.h"
 
-bool BspLcd_Init(void)
+bool Lcd_Init(void)
 {
   return true;
 }
 
-bool BspLcd_BeginFrame(void)
+bool Lcd_BeginFrame(void)
 {
   return true;
 }
 
-bool BspLcd_TransmitRow(const uint8_t *row_data, uint16_t size)
+bool Lcd_TransmitRow(const uint8_t *row_data, uint16_t size)
 {
   (void)row_data;
   (void)size;
   return true;
 }
 
-bool BspLcd_IsRowTransferComplete(void)
+bool Lcd_IsRowTransferComplete(void)
 {
   return true;
 }
 
-bool BspLcd_HasTransferError(void)
+bool Lcd_HasTransferError(void)
 {
   return false;
 }
 
-void BspLcd_EndFrame(void)
+void Lcd_EndFrame(void)
 {
 }
 
-BspLcdStatus BspLcd_GetStatus(void)
+LcdStatus Lcd_GetStatus(void)
 {
-  return BSP_LCD_READY;
+  return LCD_READY;
 }
 
-void BspLcd_OnSpiTxComplete(void)
+void Lcd_OnSpiTxComplete(void)
 {
 }
 
-void BspLcd_OnSpiError(void)
+void Lcd_OnSpiError(void)
 {
 }
 

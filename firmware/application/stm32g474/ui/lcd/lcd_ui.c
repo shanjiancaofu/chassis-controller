@@ -5,16 +5,16 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/lcd/bsp_lcd.h"
-#include "bsp/lcd/lcd_logo_image.h"
+#include "drivers/display/lcd.h"
+#include "drivers/display/lcd_logo_image.h"
 #include "config/build_info.h"
 #include "ui/lcd/lcd_ui_layout.h"
 
 #define LCD_TEXT_LINE_COUNT 24U
 #define LCD_TEXT_LINE_LENGTH 32U
 
-_Static_assert(LCD_UI_WIDTH == BSP_LCD_WIDTH &&
-                   LCD_UI_HEIGHT == BSP_LCD_HEIGHT,
+_Static_assert(LCD_UI_WIDTH == LCD_WIDTH &&
+                   LCD_UI_HEIGHT == LCD_HEIGHT,
                "LCD UI canvas must match the physical panel");
 
 typedef struct
@@ -865,14 +865,14 @@ static void LcdRenderRow(uint16_t row)
 static bool LcdTransmitRow(uint16_t row)
 {
   LcdRenderRow(row);
-  return BspLcd_TransmitRow(lcd_line_buffer, sizeof(lcd_line_buffer));
+  return Lcd_TransmitRow(lcd_line_buffer, sizeof(lcd_line_buffer));
 }
 
 static bool LcdStartDrawing(void)
 {
   lcd_redraw_requested = false;
   LcdPreparePage(lcd_requested_page);
-  if (!BspLcd_BeginFrame()) {
+  if (!Lcd_BeginFrame()) {
     return false;
   }
 
@@ -887,7 +887,7 @@ bool LcdUi_Init(void)
   lcd_requested_page = LCD_UI_PAGE_OVERVIEW;
   lcd_redraw_requested = true;
   lcd_status_data = (LcdUiStatusData){0};
-  if (!BspLcd_Init()) {
+  if (!Lcd_Init()) {
     return false;
   }
   if (!LcdStartDrawing()) {
@@ -908,16 +908,16 @@ void LcdUi_Run(void)
   if (lcd_status != LCD_UI_DRAWING) {
     return;
   }
-  if (BspLcd_HasTransferError()) {
+  if (Lcd_HasTransferError()) {
     lcd_status = LCD_UI_FAILED;
     return;
   }
-  if (!BspLcd_IsRowTransferComplete()) {
+  if (!Lcd_IsRowTransferComplete()) {
     return;
   }
   if (lcd_next_row >= LCD_UI_HEIGHT) {
-    BspLcd_EndFrame();
-    lcd_status = BspLcd_GetStatus() == BSP_LCD_READY
+    Lcd_EndFrame();
+    lcd_status = Lcd_GetStatus() == LCD_READY
                      ? LCD_UI_READY
                      : LCD_UI_FAILED;
     return;
