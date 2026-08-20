@@ -69,6 +69,18 @@ Application CMake。Device Model 的 `EARLY/PRE_KERNEL_1/PRE_KERNEL_2` 初始化
 Release 镜像门禁报告 Flash `102704 / 491520`、RAM `55256 / 131072`；CubeMX/DTS 一致性检查和
 `git diff --check` 通过。本轮没有烧录或目标板验证，硬件状态保持 `NOT VERIFIED`。
 
+### Native Kconfig pipeline（2026-08-20）
+
+配置生成器已拆分为 `tools/kconfig/{lexer,parser,model,evaluator,config,genconfig}.py`，
+`tools/config/generate_config.py` 保留为 CMake 兼容入口。当前支持 `config/menuconfig`、
+`menu/endmenu`、`if/endif`、`choice/endchoice`、`source`、`bool/int/hex/string`、
+`default`、`range`、`depends on`、`select` 以及基本逻辑/比较表达式；生成结果位于
+`build/.../generated/.config`、`autoconf.h` 和 `config.cmake`。
+
+Kconfig 单元测试 4 项通过；当前 `config/Kconfig` + `config/prj.conf` 生成的配置符号与 ARM
+Debug/Release 构建通过，13 项 OTA Python 测试通过。此项只验证主机解析和构建集成，没有目标板
+硬件结论。
+
 ### 0.15.0 全仓库依赖边界收敛（2026-08-20）
 
 本轮在 0.15.0 首版基础上继续移除 CAN ISR 协议解析和上层 HAL/CubeMX 依赖，拆分 Console、
