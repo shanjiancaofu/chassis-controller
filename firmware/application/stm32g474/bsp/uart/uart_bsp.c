@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#include "usart.h"
+#include "board/board_config.h"
 
 #define UART_DMA_RX_BUFFER_SIZE 128U
 #define UART_RX_RING_SIZE 1024U
@@ -63,12 +63,12 @@ bool BspUart_Start(void)
   completed_tx_token = 0U;
   completed_tx_success = false;
 
-  if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, dma_rx_buffer,
+  if (HAL_UARTEx_ReceiveToIdle_DMA(&BOARD_UART, dma_rx_buffer,
                                    sizeof(dma_rx_buffer)) != HAL_OK) {
     return false;
   }
 
-  __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
+  __HAL_DMA_DISABLE_IT(BOARD_UART.hdmarx, DMA_IT_HT);
   return true;
 }
 
@@ -220,21 +220,21 @@ void BspUart_GetDiagnostics(BspUartDiagnostics *diagnostics)
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
 {
-  if (huart == &huart1 && size <= UART_DMA_RX_BUFFER_SIZE) {
+  if (huart == &BOARD_UART && size <= UART_DMA_RX_BUFFER_SIZE) {
     StoreReceivedBytes(size);
   }
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if (huart == &huart1) {
+  if (huart == &BOARD_UART) {
     CompleteActiveTransmit(true);
   }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-  if (huart == &huart1) {
+  if (huart == &BOARD_UART) {
     if (huart->RxState == HAL_UART_STATE_READY) {
       ++rx_error_count;
       rx_restart_pending = true;
@@ -281,16 +281,16 @@ static void RestartReceiveIfNeeded(void)
 {
   HAL_StatusTypeDef status;
 
-  if (!rx_restart_pending || huart1.RxState != HAL_UART_STATE_READY) {
+  if (!rx_restart_pending || BOARD_UART.RxState != HAL_UART_STATE_READY) {
     return;
   }
 
   rx_restart_pending = false;
   dma_rx_position = 0U;
-  status = HAL_UARTEx_ReceiveToIdle_DMA(&huart1, dma_rx_buffer,
+  status = HAL_UARTEx_ReceiveToIdle_DMA(&BOARD_UART, dma_rx_buffer,
                                        sizeof(dma_rx_buffer));
   if (status == HAL_OK) {
-    __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
+    __HAL_DMA_DISABLE_IT(BOARD_UART.hdmarx, DMA_IT_HT);
     ++rx_restart_count;
   } else {
     rx_restart_pending = true;
@@ -299,11 +299,11 @@ static void RestartReceiveIfNeeded(void)
 
 static void StartNextTransmit(void)
 {
-  if (tx_active || tx_count == 0U || huart1.gState != HAL_UART_STATE_READY) {
+  if (tx_active || tx_count == 0U || BOARD_UART.gState != HAL_UART_STATE_READY) {
     return;
   }
 
-  if (HAL_UART_Transmit_DMA(&huart1, tx_queue[tx_head].data,
+  if (HAL_UART_Transmit_DMA(&BOARD_UART, tx_queue[tx_head].data,
                             tx_queue[tx_head].length) == HAL_OK) {
     tx_active = true;
   }

@@ -17,5 +17,6 @@ uint32_t BspReset_GetCauseFlags(void);
 void BspReset_ClearCauseFlags(void);
 uint32_t BspReset_ReadBackupRegister(uint32_t index);
 void BspReset_WriteBackupRegister(uint32_t index, uint32_t value);
+void BspReset_RequestSystemReset(void) __attribute__((noreturn));
 
 #endif

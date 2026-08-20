@@ -1,8 +1,8 @@
-#include "infrastructure/status_display/status_display.h"
+#include "ui/lcd/lcd_status_presenter.h"
 
-#include "board/board_config.h"
 #include "bsp/button/bsp_button.h"
 #include "bsp/reset/bsp_reset.h"
+#include "config/app_config.h"
 #include "modules/diagnostics/system_status.h"
 #include "ui/lcd/lcd_ui.h"
 
@@ -14,14 +14,14 @@ static uint32_t last_refresh_ms;
 
 static uint8_t EstimateBatteryPercent(uint32_t supply_mv)
 {
-  if (supply_mv <= BOARD_POWER_PERCENT_EMPTY_MV) {
+  if (supply_mv <= BATTERY_PERCENT_EMPTY_MV) {
     return 0U;
   }
-  if (supply_mv >= BOARD_POWER_PERCENT_FULL_MV) {
+  if (supply_mv >= BATTERY_PERCENT_FULL_MV) {
     return 100U;
   }
-  return (uint8_t)(((supply_mv - BOARD_POWER_PERCENT_EMPTY_MV) * 100U) /
-                   (BOARD_POWER_PERCENT_FULL_MV - BOARD_POWER_PERCENT_EMPTY_MV));
+  return (uint8_t)(((supply_mv - BATTERY_PERCENT_EMPTY_MV) * 100U) /
+                   (BATTERY_PERCENT_FULL_MV - BATTERY_PERCENT_EMPTY_MV));
 }
 
 static int16_t DegreesFromRadians(float radians)
@@ -207,12 +207,12 @@ static LcdUiPage NextPage(LcdUiPage page)
                                          : (LcdUiPage)next_page;
 }
 
-bool StatusDisplay_Init(void)
+bool LcdStatusPresenter_Init(void)
 {
   return LcdUi_Init();
 }
 
-void StatusDisplay_Run(uint32_t now_ms)
+void LcdStatusPresenter_Run(uint32_t now_ms)
 {
   if (BspButton_TakeDisplayKeyPressed() &&
       now_ms - last_key_press_ms >= KEY_LOCKOUT_MS) {

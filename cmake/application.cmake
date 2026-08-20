@@ -58,19 +58,28 @@ set(APP_SOURCES
   Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c
   Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c
   app/chassis_app.c
+  app/chassis_console_commands.c
+  app/chassis_maintenance.c
   app/system_status_collector.c
   bsp/button/bsp_button.c
   bsp/encoder/bsp_encoder.c
+  bsp/emergency_stop/bsp_emergency_stop.c
   bsp/fdcan/fdcan_bsp.c
+  bsp/interrupts/bsp_interrupts.c
+  bsp/led/bsp_led.c
   bsp/lcd/bsp_lcd.c
   bsp/imu/bsp_icm45686.c
   bsp/motor/bsp_motor.c
   bsp/power_monitor/bsp_power_sample.c
   bsp/qspi/bsp_qspi_flash.c
   bsp/reset/bsp_reset.c
+  bsp/rtc/bsp_rtc.c
   bsp/sr501/bsp_sr501.c
   bsp/uart/uart_bsp.c
+  bsp/time/bsp_time.c
+  bsp/watchdog/bsp_watchdog.c
   ui/lcd/lcd_ui.c
+  ui/lcd/lcd_status_presenter.c
   communication/can_transport/can_transport.c
   communication/ota_transport/ota_can_transport.c
   communication/ota_transport/ota_confirmation.c
@@ -85,7 +94,6 @@ set(APP_SOURCES
   infrastructure/console/diagnostic_report.c
   infrastructure/parameter_storage/parameter_record.c
   infrastructure/parameter_storage/parameter_storage.c
-  infrastructure/status_display/status_display.c
   infrastructure/telemetry/telemetry.c
   infrastructure/uart_protocol/uart_protocol.c
   modules/chassis/command_manager.c
@@ -97,6 +105,7 @@ set(APP_SOURCES
   modules/parameters/parameter_manager.c
   modules/safety/fault_manager.c
   modules/safety/safety_manager.c
+  modules/sensors/imu_orientation.c
   rtos/rtos_app.c
   tests/target/iwdg_target_test.c
   tests/target/motor_target_test.c

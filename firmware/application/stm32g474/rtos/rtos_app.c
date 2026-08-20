@@ -5,9 +5,6 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "main.h"
-#include "tim.h"
-
 #define CONTROL_TASK_STACK_DEPTH 512U
 #define DIAGNOSTICS_TASK_STACK_DEPTH 768U
 #define DISPLAY_TASK_STACK_DEPTH 512U
@@ -74,10 +71,12 @@ bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
 {
   const TickType_t now = xTaskGetTickCount();
 
-  if (callbacks == NULL || callbacks->run_service_cycle == NULL ||
+  if (callbacks == NULL || callbacks->start_control_clock == NULL ||
+      callbacks->run_service_cycle == NULL ||
       callbacks->run_control_cycle == NULL ||
       callbacks->run_diagnostics_cycle == NULL ||
-      callbacks->run_display_cycle == NULL) {
+      callbacks->run_display_cycle == NULL ||
+      callbacks->handle_fatal_error == NULL) {
     return false;
   }
   if (control_task_handle != NULL && diagnostics_task_handle != NULL &&
@@ -298,8 +297,9 @@ static void RtosApp_ControlTaskMain(void *argument)
 {
   (void)argument;
 
-  if (HAL_TIM_Base_Start_IT(&htim6) != HAL_OK) {
-    Error_Handler();
+  if (!app_callbacks.start_control_clock()) {
+    app_callbacks.handle_fatal_error();
+    vTaskSuspend(NULL);
   }
 
   __atomic_store_n(&control_task_started, true, __ATOMIC_RELEASE);

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void ChassisApp_Init(void);
+bool ChassisApp_Init(void);
 void ChassisApp_RunServiceCycle(void);
 void ChassisApp_RunDiagnosticsCycle(void);
 void ChassisApp_RunDisplayCycle(void);

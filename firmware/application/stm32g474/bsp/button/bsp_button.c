@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "main.h"
+#include "board/board_config.h"
 
 #define BUTTON_DEBOUNCE_MS 20U
 
@@ -14,8 +14,8 @@ typedef struct {
 } ButtonState;
 
 static ButtonState buttons[BOARD_BUTTON_COUNT] = {
-    [BOARD_BUTTON_1] = {BUTTON_1_GPIO_Port, BUTTON_1_Pin, false, 0U},
-    [BOARD_BUTTON_2] = {BUTTON_2_GPIO_Port, BUTTON_2_Pin, false, 0U},
+    [BOARD_BUTTON_1] = {BOARD_BUTTON_1_GPIO_PORT, BOARD_BUTTON_1_GPIO_PIN, false, 0U},
+    [BOARD_BUTTON_2] = {BOARD_BUTTON_2_GPIO_PORT, BOARD_BUTTON_2_GPIO_PIN, false, 0U},
 };
 static volatile uint32_t pending_interrupts;
 static volatile bool display_key_interrupt_pending;
@@ -42,10 +42,10 @@ void BspButton_Init(void)
 
 void BspButton_OnInterrupt(uint16_t gpio_pin)
 {
-  if (gpio_pin == BUTTON_1_Pin) {
+  if (gpio_pin == BOARD_BUTTON_1_GPIO_PIN) {
     (void)__atomic_fetch_or(&pending_interrupts, 1UL << BOARD_BUTTON_1,
                             __ATOMIC_RELAXED);
-  } else if (gpio_pin == BUTTON_2_Pin) {
+  } else if (gpio_pin == BOARD_BUTTON_2_GPIO_PIN) {
     (void)__atomic_fetch_or(&pending_interrupts, 1UL << BOARD_BUTTON_2,
                             __ATOMIC_RELAXED);
   }
@@ -86,7 +86,7 @@ void BspButton_Run(uint32_t now_ms)
   if (display_key_debounce_pending &&
       now_ms - display_key_debounce_started_ms >= BUTTON_DEBOUNCE_MS) {
     display_key_debounce_pending = false;
-    if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET) {
+    if (HAL_GPIO_ReadPin(BOARD_DISPLAY_KEY_GPIO_PORT, BOARD_DISPLAY_KEY_GPIO_PIN) == GPIO_PIN_SET) {
       display_key_pressed_event = true;
     }
   }

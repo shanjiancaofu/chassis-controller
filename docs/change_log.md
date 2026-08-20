@@ -2,7 +2,34 @@
 
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
+## 2026-08-20 - 全仓库依赖边界收敛（0.15.0 build1）
+
+### 变更内容
+
+- FDCAN HAL 回调和固定深度原始帧队列下沉到 BSP；中断不再解析握手、运动命令或 OTA，全部由
+  `service_task` 中的 communication 逻辑处理。FDCAN/CanTransport 公共接口移除 HAL 类型。
+- 新增 time、RTC、LED、E-STOP、watchdog 和中断路由 BSP；TIM6 启动通过 Core 回调注入 RTOS，
+  Application/communication/modules/rtos/ui 不再直接包含 CubeMX 外设头或调用 HAL。
+- IMU SPI/FIFO/DMA 与姿态融合拆分：BSP 通过注入采样 sink 上报每个 FIFO 样本，
+  `modules/sensors/imu_orientation` 持有 Mahony/Kalman 状态。
+- 将 Console 命令执行、OTA 维护协调从 `chassis_app.c` 拆入独立 Application 文件；LCD 状态
+  presenter 从 infrastructure 迁入 `ui/lcd`，电池估算阈值迁入 Application 配置。
+- 新增 CanTransport 主机测试，覆盖握手、控制帧、OTA 分发、bus-off 会话撤销和恢复。
+
+### 验证结果
+
+- Debug `text=114020 data=120 bss=55128`，Release `text=101636 data=120 bss=55120`。
+- 10 个 Application C 主机测试、Bootloader core 主机测试、13 个 OTA Python 测试、同源 C LCD
+  预览和依赖扫描通过。
+- Release payload `101764` 字节、CRC32 `0x447F9AC9`，BIN SHA256
+  `ec730a156fe12b23a46a0e5b81d872cd2d355a4d718c8f473f8c255c9ac83a2f`；OTA 包 `101828` 字节，
+  SHA256 `a7553b9b928de830412cd92b9b462acfdc88e6bb1f8938f5f0439d6c660bea41`。
+- 本轮没有烧录；CAN、四任务、IMU、LCD、OTA 和零 PWM 的 0.15.0 目标板结果仍为
+  `NOT VERIFIED`。
+
 ## 2026-08-19 - LCD 与运行边界收敛（0.15.0 build1）
+
+本节是首轮 0.15.0 软件证据；当前 0.15.0 构建和 OTA 以 2026-08-20 条目为准。
 
 ### 变更内容
 

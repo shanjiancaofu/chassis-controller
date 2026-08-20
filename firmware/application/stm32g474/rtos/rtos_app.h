@@ -48,10 +48,12 @@ typedef struct {
 } RtosAppRuntimeSnapshot;
 
 typedef struct {
+  bool (*start_control_clock)(void);
   void (*run_service_cycle)(void);
   void (*run_control_cycle)(uint32_t notification_count);
   void (*run_diagnostics_cycle)(void);
   void (*run_display_cycle)(void);
+  void (*handle_fatal_error)(void);
 } RtosAppCallbacks;
 
 bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks);

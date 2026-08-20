@@ -14,6 +14,7 @@
 - 关键任务健康汇总和条件喂狗
 - `chassis`、`safety`、`parameters`、`diagnostics` 业务域
 - LCD 硬件传输与 UI 渲染分离、Application 状态采集器、RTOS 回调装配和轮控电机端口
+- FDCAN ISR 原始帧队列、HAL 边界 BSP、IMU orientation 业务模块、Console/OTA Application 协调器
 
 Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重新 clean build。
 构建尺寸和未完成的实物回归见 `verification.md`。
@@ -32,6 +33,9 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 | `rtos/rtos_app.c/h` 四任务职责模型 | 继续按真实阻塞或周期需求演进，不按硬件数量增加任务 | 已完成首版迁移 |
 | `ui/lcd/` 与 `bsp/lcd/` | UI 持有布局/像素，BSP 持有控制器/SPI DMA | 0.15.0 已完成拆分 |
 | `app/system_status_collector.c` | 统一组装 BSP/RTOS 到诊断 DTO | 0.15.0 已完成拆分 |
+| CAN ISR 与 communication | ISR 只收原始帧，`service_task` 解析，公共接口不暴露 HAL | 0.15.0 已完成收敛 |
+| `bsp/imu` 与 `modules/sensors/imu_orientation` | BSP 管 SPI/FIFO/DMA，模块持有融合状态 | 0.15.0 已完成拆分 |
+| `app/chassis_console_commands`、`app/chassis_maintenance` | Console 执行与 OTA 维护协调不再堆在 `chassis_app.c` | 0.15.0 已完成拆分 |
 | `tests/target/` 和 `tests/unit/` | 按风险补目标板测试和无 HAL 主机测试 | CommandManager 首批主机测试已落地 |
 | 独立 Bootloader 工程 | 继续与 Application 保持独立 CubeMX、链接脚本和构建配置 | 已完成首版 |
 

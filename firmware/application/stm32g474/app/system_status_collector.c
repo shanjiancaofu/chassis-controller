@@ -4,6 +4,7 @@
 #include "bsp/button/bsp_button.h"
 #include "bsp/imu/bsp_icm45686.h"
 #include "bsp/power_monitor/bsp_power_sample.h"
+#include "bsp/rtc/bsp_rtc.h"
 #include "bsp/sr501/bsp_sr501.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
@@ -18,7 +19,7 @@
 #include "modules/parameters/parameter_manager.h"
 #include "modules/safety/fault_manager.h"
 #include "modules/safety/safety_manager.h"
-#include "rtc.h"
+#include "modules/sensors/imu_orientation.h"
 #include "rtos/rtos_app.h"
 #include "task.h"
 #include "tests/target/motor_target_test.h"
@@ -140,19 +141,20 @@ static void CopyButtonSnapshot(SystemStatusButtonSnapshot *destination,
 }
 
 static void CopyImuSnapshot(SystemStatusImuSnapshot *destination,
-                            const BspIcm45686Snapshot *source)
+                            const BspIcm45686Snapshot *source,
+                            const ImuOrientationSnapshot *orientation)
 {
   destination->status = MapImuState(source->status);
   destination->who_am_i = source->who_am_i;
   destination->sample_valid = source->sample_valid;
-  destination->orientation_valid = source->orientation_valid;
-  destination->kalman_valid = source->kalman_valid;
+  destination->orientation_valid = orientation->orientation_valid;
+  destination->kalman_valid = orientation->kalman_valid;
   destination->fifo_timestamp = source->fifo_timestamp;
-  destination->roll_rad = source->roll_rad;
-  destination->pitch_rad = source->pitch_rad;
-  destination->yaw_rad = source->yaw_rad;
-  destination->kalman_roll_rad = source->kalman_roll_rad;
-  destination->kalman_pitch_rad = source->kalman_pitch_rad;
+  destination->roll_rad = orientation->roll_rad;
+  destination->pitch_rad = orientation->pitch_rad;
+  destination->yaw_rad = orientation->yaw_rad;
+  destination->kalman_roll_rad = orientation->kalman_roll_rad;
+  destination->kalman_pitch_rad = orientation->kalman_pitch_rad;
   destination->last_sample_ms = source->last_sample_ms;
   destination->sample_count = source->sample_count;
   destination->fifo_frame_count = source->fifo_frame_count;
@@ -188,11 +190,11 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   RtosAppRuntimeSnapshot runtime;
   BspButtonSnapshot buttons;
   BspIcm45686Snapshot imu;
+  ImuOrientationSnapshot orientation;
   BspSr501Snapshot sr501;
   BspPowerSampleSnapshot power_sample;
   MotorTargetTestSnapshot motor_test;
-  RTC_TimeTypeDef time = {0};
-  RTC_DateTypeDef date = {0};
+  BspRtcDateTime date_time = {0};
 
   BoardHealth_GetSnapshot(&status.board_health);
   RtosApp_GetRuntimeSnapshot(&runtime);
@@ -200,10 +202,11 @@ void SystemStatusCollector_Update(uint32_t now_ms)
 
   BspButton_GetSnapshot(&buttons);
   BspIcm45686_GetSnapshot(&imu);
+  ImuOrientation_GetSnapshot(&orientation);
   BspSr501_GetSnapshot(&sr501);
   BspPowerSample_GetSnapshot(now_ms, &power_sample);
   CopyButtonSnapshot(&status.buttons, &buttons);
-  CopyImuSnapshot(&status.imu, &imu);
+  CopyImuSnapshot(&status.imu, &imu, &orientation);
   CopySr501Snapshot(&status.sr501, &sr501);
   CopyPowerSnapshot(&status.power_sample, &power_sample);
 
@@ -231,17 +234,12 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   status.control_state = SafetyManager_GetState();
   taskEXIT_CRITICAL();
 
-  status.rtc_valid =
-      HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN) == HAL_OK &&
-      HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN) == HAL_OK &&
-      time.Hours <= 23U && time.Minutes <= 59U && time.Seconds <= 59U &&
-      date.Month >= 1U && date.Month <= 12U && date.Date >= 1U &&
-      date.Date <= 31U;
-  status.rtc_year = date.Year;
-  status.rtc_month = date.Month;
-  status.rtc_date = date.Date;
-  status.rtc_hours = time.Hours;
-  status.rtc_minutes = time.Minutes;
-  status.rtc_seconds = time.Seconds;
+  status.rtc_valid = BspRtc_ReadDateTime(&date_time);
+  status.rtc_year = date_time.year;
+  status.rtc_month = date_time.month;
+  status.rtc_date = date_time.date;
+  status.rtc_hours = date_time.hours;
+  status.rtc_minutes = date_time.minutes;
+  status.rtc_seconds = date_time.seconds;
   SystemStatus_Update(&status);
 }

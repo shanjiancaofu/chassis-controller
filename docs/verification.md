@@ -54,7 +54,41 @@
 
 ## 构建基线
 
+### 0.15.0 全仓库依赖边界收敛（2026-08-20）
+
+本轮在 0.15.0 首版基础上继续移除 CAN ISR 协议解析和上层 HAL/CubeMX 依赖，拆分 Console、
+OTA 维护、IMU orientation 与 LCD presenter。FDCAN ISR 仅执行一次有界 HAL 收帧、固定队列写入
+和原子计数；握手、运动命令与 OTA 解码均由 `service_task` 推进。依赖扫描确认
+Application 的 `app/communication/components/infrastructure/modules/rtos/ui` 不再直接包含
+`main.h`/CubeMX 外设头、调用 HAL 或定义 HAL 回调。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 114020 | 120 | 55128 | `BUILD PASS` |
+| Release | 101636 | 120 | 55120 | `BUILD PASS` |
+
+```text
+application.bin=101764 bytes
+payload_crc32=0x447F9AC9
+bin_sha256=ec730a156fe12b23a46a0e5b81d872cd2d355a4d718c8f473f8c255c9ac83a2f
+app-v0.15.0-b1.ota=101828 bytes
+ota_sha256=a7553b9b928de830412cd92b9b462acfdc88e6bb1f8938f5f0439d6c660bea41
+```
+
+Application C 主机测试增加 CanTransport 后共 10 个，全部使用
+`-std=c11 -Wall -Wextra -Werror` 编译并运行通过。新增测试覆盖 PING/PASS 握手、运动控制帧、
+OTA 帧分发、bus-off 会话撤销和延迟恢复；既有 CommandManager、ICM45686、IMU fusion、odometry、
+OTA metadata、UART arm guard、parameter record、UART protocol 和 wheel controller 测试继续通过。
+Bootloader core 主机测试通过，OTA Python 13 项通过，真实 `lcd_ui.c` 预览重新生成，
+`git diff --check` 通过。
+
+本轮未烧录，不从构建、主机测试、依赖扫描或 PNG 预览推断 FDCAN、IMU、四任务、LCD、OTA 或
+异常零 PWM 已在 0.15.0 目标板通过；上述项目保持 `NOT VERIFIED`。
+
 ### 0.15.0 分层重构构建与产物（2026-08-19）
+
+本节保留 2026-08-19 首轮分层产物证据；同版本当前源码和 OTA 已被上方 2026-08-20 边界收敛
+结果取代，不得再使用本节哈希烧录。
 
 本轮拆分 LCD UI/BSP、Application 状态采集、RTOS 回调和轮控电机端口，并加入异常入口零 PWM。
 预览器以主机 `cc -Wall -Wextra -Werror` 编译真实 `lcd_ui.c`，生成四页和汇总 PNG。执行

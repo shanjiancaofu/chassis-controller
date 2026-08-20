@@ -16,8 +16,8 @@
   `0x4659F611`；OTA 包共 `98328` 字节，已通过 UART OTA 写入并确认。
 - 当前 UI Release `build/arm-release/app-v0.14.0-b1.ota` 的 payload 为 `99628` 字节、CRC32 为
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
-- 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `100840` 字节、
-  CRC32 为 `0x72FEABE4`；OTA 包共 `100904` 字节。该包只完成构建、打包和主机验证，尚未烧录。
+- 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
+  CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
 - 当前阶段：OTA V1 代码基线已冻结，CAN FD OTA、断电恢复、回滚和电气验收统一后置为
   `DEFERRED`。SR501 代码、接线、60 秒预热和低电平零误计数已上板；模块指示灯和 OUT
   均未观察到高电平，剩余实物排查已 `DEFERRED`。PID 代码和调参入口保持现状，实物闭环
@@ -87,6 +87,12 @@
   `bsp/lcd` 只持有控制器命令、SPI DMA、片选和背光；`app/system_status_collector` 负责 BSP/RTOS
   状态到诊断 DTO 的组装；RTOS 通过 Core 注入的周期回调调用 Application，不再反向包含 `app`；
   `wheel_controller` 通过电机端口装配，不再直接依赖电机 BSP。
+- 2026-08-20 继续完成全仓库边界收敛：FDCAN ISR 只把原始帧写入 BSP 固定队列，握手、运动命令和
+  OTA 解码全部在 `service_task` 执行；communication 公共接口不再暴露 HAL。RTC、单调时间、LED、
+  E-STOP、IWDG、SPI/GPIO 回调和复位已通过 BSP/Core 边界访问；TIM6 启动由 Core 回调注入 RTOS。
+  IMU SPI/FIFO/DMA 保留在 BSP，Mahony/Kalman 状态迁入 `modules/sensors/imu_orientation`；Console
+  命令执行和 OTA 维护协调分别拆到 `app/chassis_console_commands` 与 `app/chassis_maintenance`，
+  LCD 状态 presenter 迁入 `ui/lcd`。
 - UART v1 的消息外壳和已有字段语义保持兼容，字段及分区集合不冻结。四分区只承担当前完整
   诊断，不要求所有新功能都往其中堆字段；周期遥测按实际观察需求保持精简。
 - 编码器在 100 Hz 控制采样点记录本地单调时间和实际累计周期，ADC 记录转换完成时间，IMU
@@ -128,9 +134,10 @@
   VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`。稳定状态报告四任务均为
   `RUNNING`、`fault=0`、`control=STOPPED`、左右目标/速度/PWM 均为零、`lcd=READY`、IMU
   `READY` 且 FIFO/timestamp 错误为零；新版 LCD 视觉已由用户人工确认正常。
-- 2026-08-19 `0.15.0 build1` 完成 Debug/Release 构建、9 个 Application C 主机测试、13 个
-  OTA Python 测试、真实 C LCD 预览生成和 OTA 打包。Debug 为 `text=112988 data=120 bss=54544`，
-  Release 为 `text=100712 data=120 bss=54536`。这些是软件证据，不构成目标板通过。
+- 2026-08-20 `0.15.0 build1` 完成边界收敛后的 Debug/Release 构建、10 个 Application C 主机
+  测试、Bootloader core 主机测试、13 个 OTA Python 测试、真实 C LCD 预览生成和 OTA 打包。
+  Debug 为 `text=114020 data=120 bss=55128`，Release 为 `text=101636 data=120 bss=55120`。
+  这些是软件证据，不构成目标板通过。
 - ICM45686 实测 `WHO_AM_I=0xE9`。修正端序配置后，调试快照连续 588 帧无解析、timestamp、
   DMA 或传输错误，采样周期为 `10 ms`；200 个静止样本后零偏标定、Mahony 和 Kalman 均有效。
   普通复位后的 UART `status` 再次报告 224 帧、`imu_fifo_errors=0`、

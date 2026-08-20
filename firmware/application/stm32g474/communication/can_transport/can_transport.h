@@ -4,8 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "stm32g4xx_hal.h"
-
 typedef enum {
   CAN_TRANSPORT_LINK_READY = 0,
   CAN_TRANSPORT_LINK_PASSED,
@@ -41,7 +39,7 @@ typedef struct {
   uint32_t recovery_failure_count;
 } CanTransportDiagnostics;
 
-HAL_StatusTypeDef CanTransport_Init(void);
+bool CanTransport_Init(void);
 void CanTransport_Run(void);
 CanTransportLinkStatus CanTransport_GetLinkStatus(void);
 bool CanTransport_TakeControlCommand(CanTransportControlCommand *command);

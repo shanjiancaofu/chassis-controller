@@ -7,7 +7,7 @@
 #include "../../../../shared/ota_protocol.h"
 
 void OtaCanTransport_Init(void);
-bool OtaCanTransport_OnRxFrameFromIsr(const BspFdcanFrame *frame);
+bool OtaCanTransport_OnRxFrame(const BspFdcanFrame *frame);
 bool OtaCanTransport_TakeMessage(OtaMessage *message);
 bool OtaCanTransport_SendResponse(const OtaResponse *response);
 void OtaCanTransport_ResponseAccepted(void);

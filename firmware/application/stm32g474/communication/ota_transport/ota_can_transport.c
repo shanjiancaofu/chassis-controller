@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "bsp/time/bsp_time.h"
+
 #define OTA_CAN_TX_EVENT_TIMEOUT_MS 100U
 
 static volatile bool message_pending;
@@ -32,7 +34,7 @@ void OtaCanTransport_Init(void)
   pending_message = (OtaMessage){0};
 }
 
-bool OtaCanTransport_OnRxFrameFromIsr(const BspFdcanFrame *frame)
+bool OtaCanTransport_OnRxFrame(const BspFdcanFrame *frame)
 {
   OtaMessage message = {0};
   uint8_t index;
@@ -70,20 +72,14 @@ bool OtaCanTransport_OnRxFrameFromIsr(const BspFdcanFrame *frame)
 
 bool OtaCanTransport_TakeMessage(OtaMessage *message)
 {
-  uint32_t primask;
-
   if (message == NULL) {
     return false;
   }
-  primask = __get_PRIMASK();
-  __disable_irq();
   if (!message_pending) {
-    __set_PRIMASK(primask);
     return false;
   }
   *message = pending_message;
   message_pending = false;
-  __set_PRIMASK(primask);
   return true;
 }
 
@@ -113,12 +109,12 @@ bool OtaCanTransport_SendResponse(const OtaResponse *response)
   do {
     ++tx_marker;
   } while (tx_marker == 0U);
-  if (BspFdcan_SendFrameWithTxEvent(&frame, tx_marker) != HAL_OK) {
+  if (!BspFdcan_SendFrameWithTxEvent(&frame, tx_marker)) {
     return false;
   }
   last_response_confirmed = false;
   pending_tx_marker = tx_marker;
-  tx_started_ms = HAL_GetTick();
+  tx_started_ms = BspTime_GetUptimeMs();
   response_in_progress = true;
   return false;
 }
@@ -137,11 +133,7 @@ bool OtaCanTransport_IsTxIdle(void)
 
 void OtaCanTransport_Invalidate(void)
 {
-  uint32_t primask = __get_PRIMASK();
-
-  __disable_irq();
   message_pending = false;
-  __set_PRIMASK(primask);
   response_in_progress = false;
   response_confirmation_ready = false;
   last_response_confirmed = false;
@@ -178,7 +170,7 @@ static void PollTxEvent(void)
     }
   }
   if (response_in_progress && BspFdcan_IsTxIdle() &&
-      HAL_GetTick() - tx_started_ms >= OTA_CAN_TX_EVENT_TIMEOUT_MS) {
+      BspTime_GetUptimeMs() - tx_started_ms >= OTA_CAN_TX_EVENT_TIMEOUT_MS) {
     response_in_progress = false;
   }
 }

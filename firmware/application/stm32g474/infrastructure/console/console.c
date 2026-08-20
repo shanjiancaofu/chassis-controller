@@ -4,9 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/motor/bsp_motor.h"
 #include "bsp/uart/uart_bsp.h"
 #include "config/control_config.h"
+#include "config/target_test_config.h"
 
 #define CONSOLE_LINE_SIZE 32U
 #define CONSOLE_COMMAND_QUEUE_DEPTH 8U
@@ -162,7 +162,7 @@ static ConsoleCommand ParseCommand(const char *line)
 
     if (sscanf(&line[11], "%u%n", &duty, &consumed) == 1 &&
         line[11U + (size_t)consumed] == '\0' &&
-        duty <= BSP_MOTOR_COMPARE_MAX) {
+        duty <= MOTOR_OPEN_LOOP_TEST_DUTY_MAX) {
       command.type = CONSOLE_COMMAND_MOTOR_DUTY;
       command.arguments.motor_duty = (uint16_t)duty;
     }

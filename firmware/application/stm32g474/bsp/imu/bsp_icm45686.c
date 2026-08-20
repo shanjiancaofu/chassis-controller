@@ -5,8 +5,6 @@
 
 #include "board/board_config.h"
 #include "components/icm45686/icm45686.h"
-#include "components/imu_fusion/imu_fusion.h"
-#include "main.h"
 
 #define ICM45686_SPI_READ 0x80U
 #define ICM45686_MAX_REGISTER_TRANSFER_SIZE 16U
@@ -41,22 +39,9 @@ static const Icm45686Config imu_config = {
     .fifo_watermark_frames = ICM45686_FIFO_WATERMARK_FRAMES,
 };
 
-static const ImuFusionConfig fusion_config = {
-    .proportional_gain = 1.5f,
-    .integral_gain = 0.05f,
-    .gravity_mps2 = 9.80665f,
-    .stationary_accel_tolerance_mps2 = 0.8f,
-    .stationary_gyro_limit_rad_s = 0.2f,
-    .calibration_variance_limit = 0.00001f,
-    .kalman_enabled = true,
-    .kalman_angle_process_noise = 0.001f,
-    .kalman_bias_process_noise = 0.003f,
-    .kalman_measurement_noise = 0.03f,
-};
-
 static Icm45686Device imu_device;
-static ImuFusion imu_fusion;
 static BspIcm45686Snapshot imu_snapshot;
+static BspIcm45686SampleSink sample_sink;
 static volatile bool fifo_interrupt;
 static volatile uint32_t interrupt_count;
 static volatile DmaState dma_state;
@@ -84,13 +69,20 @@ static void ProcessDmaFrames(uint32_t now_ms);
 static void RecordTransferError(uint32_t now_ms);
 static bool FlushFifo(void);
 static float GetSamplePeriod(uint16_t timestamp);
-static void UpdateFusionSnapshot(void);
+
+bool BspIcm45686_SetSampleSink(const BspIcm45686SampleSink *sink)
+{
+  if (sink == NULL || sink->reset == NULL || sink->process_sample == NULL) {
+    return false;
+  }
+  sample_sink = *sink;
+  return true;
+}
 
 void BspIcm45686_Init(uint32_t now_ms)
 {
   memset(&imu_snapshot, 0, sizeof(imu_snapshot));
   memset(&imu_device, 0, sizeof(imu_device));
-  ImuFusion_Init(&imu_fusion, &fusion_config);
   imu_snapshot.status = BSP_ICM45686_UNINITIALIZED;
   imu_snapshot.fifo_enabled = true;
   fifo_interrupt = false;
@@ -124,7 +116,7 @@ void BspIcm45686_Run(uint32_t now_ms)
              now_ms - dma_started_ms >= ICM45686_DMA_TIMEOUT_MS) {
     if (dma_state == DMA_BUSY) {
       (void)HAL_SPI_Abort(&BOARD_IMU_SPI);
-      HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
       dma_state = DMA_IDLE;
       ++imu_snapshot.dma_timeout_count;
       (void)FlushFifo();
@@ -167,7 +159,7 @@ void BspIcm45686_OnDataReadyInterrupt(void)
 void BspIcm45686_OnSpiTransferComplete(void)
 {
   if (dma_state == DMA_BUSY) {
-    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
     dma_state = DMA_COMPLETE;
   }
 }
@@ -175,7 +167,7 @@ void BspIcm45686_OnSpiTransferComplete(void)
 void BspIcm45686_OnSpiTransferError(void)
 {
   if (dma_state == DMA_BUSY) {
-    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
     dma_state = DMA_ERROR;
   }
 }
@@ -201,10 +193,10 @@ static bool SpiRead(void *context, uint8_t reg, uint8_t *data, size_t length)
     return false;
   }
   tx[0] = reg | ICM45686_SPI_READ;
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_RESET);
   const HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(
       spi, tx, rx, (uint16_t)(length + 1U), ICM45686_SPI_TIMEOUT_MS);
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
   if (status != HAL_OK) {
     return false;
   }
@@ -224,10 +216,10 @@ static bool SpiWrite(void *context, uint8_t reg, const uint8_t *data,
   }
   tx[0] = reg & (uint8_t)~ICM45686_SPI_READ;
   memcpy(&tx[1], data, length);
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_RESET);
   const HAL_StatusTypeDef status = HAL_SPI_Transmit(
       spi, tx, (uint16_t)(length + 1U), ICM45686_SPI_TIMEOUT_MS);
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
   return status == HAL_OK;
 }
 
@@ -280,8 +272,9 @@ static bool ConfigureDevice(uint32_t now_ms)
     return false;
   }
 
-  ImuFusion_ResetCalibration(&imu_fusion);
-  UpdateFusionSnapshot();
+  if (sample_sink.reset != NULL) {
+    sample_sink.reset();
+  }
   consecutive_errors = 0U;
   drain_pending = false;
   fifo_interrupt = false;
@@ -327,10 +320,10 @@ static bool StartFifoDma(uint32_t now_ms)
   dma_tx[0] = ICM45686_FIFO_DATA_REGISTER | ICM45686_SPI_READ;
   dma_started_ms = now_ms;
   dma_state = DMA_BUSY;
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_RESET);
   if (HAL_SPI_TransmitReceive_DMA(&BOARD_IMU_SPI, dma_tx, dma_rx,
                                  transfer_length) != HAL_OK) {
-    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
     dma_state = DMA_IDLE;
     return false;
   }
@@ -347,6 +340,7 @@ static void ProcessDmaFrames(uint32_t now_ms)
   for (uint16_t index = 0U; index < dma_frame_count; ++index) {
     Icm45686FifoSample fifo_sample;
     Icm45686Sample sample;
+    BspIcm45686Sample published_sample;
     const uint8_t *frame =
         &dma_rx[1U + index * ICM45686_FIFO_FRAME_SIZE];
 
@@ -359,8 +353,14 @@ static void ProcessDmaFrames(uint32_t now_ms)
     Icm45686_ConvertSample(&imu_device, &fifo_sample.raw, &sample);
     imu_snapshot.sample_period_s = GetSamplePeriod(fifo_sample.timestamp);
     imu_snapshot.fifo_timestamp = fifo_sample.timestamp;
-    ImuFusion_Update(&imu_fusion, sample.accel_mps2, sample.gyro_rad_s,
-                     imu_snapshot.sample_period_s);
+    memcpy(published_sample.accel_mps2, sample.accel_mps2,
+           sizeof(published_sample.accel_mps2));
+    memcpy(published_sample.gyro_rad_s, sample.gyro_rad_s,
+           sizeof(published_sample.gyro_rad_s));
+    published_sample.sample_period_s = imu_snapshot.sample_period_s;
+    if (sample_sink.process_sample != NULL) {
+      sample_sink.process_sample(&published_sample);
+    }
     memcpy(imu_snapshot.accel, fifo_sample.raw.accel,
            sizeof(fifo_sample.raw.accel));
     memcpy(imu_snapshot.gyro, fifo_sample.raw.gyro,
@@ -390,7 +390,6 @@ static void ProcessDmaFrames(uint32_t now_ms)
     if (!parse_error) {
       consecutive_errors = 0U;
     }
-    UpdateFusionSnapshot();
     if (recovery_failed) {
       RecordTransferError(now_ms);
     }
@@ -441,24 +440,4 @@ static void RecordTransferError(uint32_t now_ms)
     drain_pending = false;
     last_attempt_ms = now_ms;
   }
-}
-
-static void UpdateFusionSnapshot(void)
-{
-  ImuFusionOutput output;
-
-  ImuFusion_GetOutput(&imu_fusion, &output);
-  imu_snapshot.calibrated = output.calibrated;
-  imu_snapshot.orientation_valid = output.orientation_valid;
-  imu_snapshot.calibration_samples = output.calibration_samples;
-  memcpy(imu_snapshot.gyro_bias_rad_s, output.gyro_bias_rad_s,
-         sizeof(output.gyro_bias_rad_s));
-  memcpy(imu_snapshot.quaternion, output.quaternion,
-         sizeof(output.quaternion));
-  imu_snapshot.roll_rad = output.roll_rad;
-  imu_snapshot.pitch_rad = output.pitch_rad;
-  imu_snapshot.yaw_rad = output.yaw_rad;
-  imu_snapshot.kalman_valid = output.kalman_valid;
-  imu_snapshot.kalman_roll_rad = output.kalman_roll_rad;
-  imu_snapshot.kalman_pitch_rad = output.kalman_pitch_rad;
 }

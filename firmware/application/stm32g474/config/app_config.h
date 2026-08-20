@@ -8,4 +8,8 @@
 #define MOTOR_DEMO_STOP_TIME_MS 1000U
 #define MOTOR_DEMO_RUN_TIME_MS 2000U
 
+/* Voltage-only estimate for the current nominal 12 V battery setup. */
+#define BATTERY_PERCENT_EMPTY_MV 9000U
+#define BATTERY_PERCENT_FULL_MV 12600U
+
 #endif

@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "app/chassis_app.h"
 #include "rtos/rtos_app.h"
+#include "tim.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,6 +66,8 @@ const osThreadAttr_t defaultTask_attributes = {
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
+static bool StartControlClock(void);
+
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -76,6 +79,11 @@ void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
 /* USER CODE BEGIN 4 */
+static bool StartControlClock(void)
+{
+  return HAL_TIM_Base_Start_IT(&htim6) == HAL_OK;
+}
+
 void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName)
 {
   (void)xTask;
@@ -134,10 +142,12 @@ void MX_FREERTOS_Init(void) {
     Error_Handler();
   }
   const RtosAppCallbacks app_callbacks = {
+    .start_control_clock = StartControlClock,
     .run_service_cycle = ChassisApp_RunServiceCycle,
     .run_control_cycle = ChassisApp_RunControlCycle,
     .run_diagnostics_cycle = ChassisApp_RunDiagnosticsCycle,
     .run_display_cycle = ChassisApp_RunDisplayCycle,
+    .handle_fatal_error = ChassisApp_FatalError,
   };
   if (!RtosApp_CreateTasks(&app_callbacks)) {
     Error_Handler();

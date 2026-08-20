@@ -3,9 +3,9 @@
 #include <string.h>
 
 #include "bsp/fdcan/fdcan_bsp.h"
+#include "bsp/time/bsp_time.h"
 #include "config/control_config.h"
 #include "communication/ota_transport/ota_can_transport.h"
-#include "fdcan.h"
 #include "../../../../shared/ota_protocol.h"
 
 #define CAN_HANDSHAKE_REQUEST_ID 0x720U
@@ -16,15 +16,6 @@
 #define CAN_RECOVERY_RETRY_LIMIT 3U
 #define CAN_RECOVERY_RETRY_DELAY_MS 100U
 
-enum {
-  CAN_ERROR_EVENT_WARNING = 1U << 0,
-  CAN_ERROR_EVENT_PASSIVE = 1U << 1,
-  CAN_ERROR_EVENT_BUS_OFF = 1U << 2,
-  CAN_ERROR_EVENT_PROTOCOL = 1U << 3,
-  CAN_ERROR_EVENT_RX_FIFO_FULL = 1U << 4,
-  CAN_ERROR_EVENT_RX_FIFO_LOST = 1U << 5
-};
-
 static volatile CanTransportLinkStatus link_status;
 static volatile bool response_pending;
 static volatile bool session_invalidated;
@@ -32,13 +23,6 @@ static volatile bool control_command_pending;
 static volatile bool control_sequence_valid;
 static volatile uint8_t last_control_sequence;
 static volatile CanTransportControlCommand pending_control_command;
-static volatile uint32_t error_events;
-static volatile uint32_t warning_count;
-static volatile uint32_t error_passive_count;
-static volatile uint32_t bus_off_count;
-static volatile uint32_t protocol_error_count;
-static volatile uint32_t rx_fifo_full_count;
-static volatile uint32_t rx_fifo_lost_count;
 static uint32_t recovery_count;
 static uint32_t recovery_failure_count;
 static uint32_t response_retry_due_ms;
@@ -52,12 +36,12 @@ static void HandleHandshakeFrame(
     const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE]);
 static void HandleControlFrame(
     const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE]);
+static void ProcessRxFrame(const BspFdcanFrame *frame);
 static void InvalidateControlSession(CanTransportLinkStatus status);
 static void ResetControlSession(void);
-static uint32_t TakeErrorEvents(void);
 static bool TakeResponseRequest(void);
 
-HAL_StatusTypeDef CanTransport_Init(void)
+bool CanTransport_Init(void)
 {
   static const uint32_t accepted_ids[] = {
       CAN_HANDSHAKE_REQUEST_ID,
@@ -68,13 +52,6 @@ HAL_StatusTypeDef CanTransport_Init(void)
   link_status = CAN_TRANSPORT_LINK_READY;
   response_pending = false;
   session_invalidated = false;
-  error_events = 0U;
-  warning_count = 0U;
-  error_passive_count = 0U;
-  bus_off_count = 0U;
-  protocol_error_count = 0U;
-  rx_fifo_full_count = 0U;
-  rx_fifo_lost_count = 0U;
   recovery_count = 0U;
   recovery_failure_count = 0U;
   response_retry_due_ms = 0U;
@@ -96,15 +73,20 @@ void CanTransport_Run(void)
       .data = {'C', 'H', 'A', 'S', 'S', 'I', 'S', 1U},
   };
 
-  const uint32_t now_ms = HAL_GetTick();
-  const uint32_t events = TakeErrorEvents();
+  const uint32_t now_ms = BspTime_GetUptimeMs();
+  BspFdcanFrame frame;
+  const uint32_t events = BspFdcan_TakeErrorEvents();
 
-  if ((events & (CAN_ERROR_EVENT_PASSIVE | CAN_ERROR_EVENT_BUS_OFF |
-                 CAN_ERROR_EVENT_PROTOCOL | CAN_ERROR_EVENT_RX_FIFO_FULL |
-                 CAN_ERROR_EVENT_RX_FIFO_LOST)) != 0U) {
+  while (BspFdcan_TakeRxFrame(&frame)) {
+    ProcessRxFrame(&frame);
+  }
+
+  if ((events & (BSP_FDCAN_ERROR_PASSIVE | BSP_FDCAN_ERROR_BUS_OFF |
+                 BSP_FDCAN_ERROR_PROTOCOL | BSP_FDCAN_ERROR_RX_FIFO_FULL |
+                 BSP_FDCAN_ERROR_RX_FIFO_LOST)) != 0U) {
     InvalidateControlSession(CAN_TRANSPORT_LINK_FAILED);
   }
-  if ((events & CAN_ERROR_EVENT_BUS_OFF) != 0U) {
+  if ((events & BSP_FDCAN_ERROR_BUS_OFF) != 0U) {
     recovery_pending = true;
     recovery_failed = false;
     recovery_attempts = 0U;
@@ -114,7 +96,7 @@ void CanTransport_Run(void)
   if (recovery_pending &&
       (int32_t)(now_ms - recovery_retry_due_ms) >= 0) {
     ++recovery_attempts;
-    if (BspFdcan_Restart() == HAL_OK) {
+    if (BspFdcan_Restart()) {
       ++recovery_count;
       recovery_pending = false;
       recovery_attempts = 0U;
@@ -134,7 +116,7 @@ void CanTransport_Run(void)
     return;
   }
 
-  if (BspFdcan_SendFrame(&response) != HAL_OK) {
+  if (!BspFdcan_SendFrame(&response)) {
     ++response_attempts;
     if (response_attempts < CAN_RESPONSE_RETRY_LIMIT) {
       response_retry_due_ms = now_ms + CAN_RESPONSE_RETRY_DELAY_MS;
@@ -155,40 +137,30 @@ CanTransportLinkStatus CanTransport_GetLinkStatus(void)
 
 bool CanTransport_TakeControlCommand(CanTransportControlCommand *command)
 {
-  uint32_t primask;
-
   if (command == NULL) {
     return false;
   }
-
-  primask = __get_PRIMASK();
-  __disable_irq();
   if (!control_command_pending) {
-    __set_PRIMASK(primask);
     return false;
   }
 
   *command = pending_control_command;
   control_command_pending = false;
-  __set_PRIMASK(primask);
   return true;
 }
 
 bool CanTransport_TakeSessionInvalidated(void)
 {
-  uint32_t primask = __get_PRIMASK();
-  bool invalidated;
+  const bool invalidated = session_invalidated;
 
-  __disable_irq();
-  invalidated = session_invalidated;
   session_invalidated = false;
-  __set_PRIMASK(primask);
   return invalidated;
 }
 
 bool CanTransport_GetDiagnostics(CanTransportDiagnostics *diagnostics)
 {
   BspFdcanDiagnostics hardware = {0};
+  BspFdcanEventCounters counters = {0};
 
   if (diagnostics == NULL || !BspFdcan_GetDiagnostics(&hardware)) {
     return false;
@@ -205,18 +177,13 @@ bool CanTransport_GetDiagnostics(CanTransportDiagnostics *diagnostics)
   diagnostics->restricted_mode = hardware.restricted_mode;
   diagnostics->rx_fifo_fill = hardware.rx_fifo_fill;
   diagnostics->tx_fifo_free = hardware.tx_fifo_free;
-  diagnostics->warning_count =
-      __atomic_load_n(&warning_count, __ATOMIC_RELAXED);
-  diagnostics->error_passive_count =
-      __atomic_load_n(&error_passive_count, __ATOMIC_RELAXED);
-  diagnostics->bus_off_count =
-      __atomic_load_n(&bus_off_count, __ATOMIC_RELAXED);
-  diagnostics->protocol_error_count =
-      __atomic_load_n(&protocol_error_count, __ATOMIC_RELAXED);
-  diagnostics->rx_fifo_full_count =
-      __atomic_load_n(&rx_fifo_full_count, __ATOMIC_RELAXED);
-  diagnostics->rx_fifo_lost_count =
-      __atomic_load_n(&rx_fifo_lost_count, __ATOMIC_RELAXED);
+  BspFdcan_GetEventCounters(&counters);
+  diagnostics->warning_count = counters.warning_count;
+  diagnostics->error_passive_count = counters.error_passive_count;
+  diagnostics->bus_off_count = counters.bus_off_count;
+  diagnostics->protocol_error_count = counters.protocol_error_count;
+  diagnostics->rx_fifo_full_count = counters.rx_fifo_full_count;
+  diagnostics->rx_fifo_lost_count = counters.rx_fifo_lost_count;
   diagnostics->recovery_count = recovery_count;
   diagnostics->recovery_failure_count = recovery_failure_count;
   return true;
@@ -234,67 +201,20 @@ void CanTransport_RequestResponse(void)
   response_pending = true;
 }
 
-void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
-                               uint32_t rx_fifo0_its)
+static void ProcessRxFrame(const BspFdcanFrame *frame)
 {
-  BspFdcanFrame frame = {0};
-
-  if (hfdcan != &hfdcan2) {
+  if (frame == NULL) {
     return;
   }
-  if ((rx_fifo0_its & FDCAN_IT_RX_FIFO0_FULL) != 0U) {
-    (void)__atomic_fetch_add(&rx_fifo_full_count, 1U, __ATOMIC_RELAXED);
-    (void)__atomic_fetch_or(&error_events, CAN_ERROR_EVENT_RX_FIFO_FULL,
-                            __ATOMIC_RELAXED);
+  if (frame->identifier == CAN_HANDSHAKE_REQUEST_ID &&
+      frame->length == BSP_FDCAN_CONTROL_DATA_SIZE) {
+    HandleHandshakeFrame(frame->data);
+  } else if (frame->identifier == CAN_CONTROL_COMMAND_ID &&
+             frame->length == BSP_FDCAN_CONTROL_DATA_SIZE) {
+    HandleControlFrame(frame->data);
+  } else if (frame->identifier == OTA_CAN_REQUEST_ID) {
+    (void)OtaCanTransport_OnRxFrame(frame);
   }
-  if ((rx_fifo0_its & FDCAN_IT_RX_FIFO0_MESSAGE_LOST) != 0U) {
-    (void)__atomic_fetch_add(&rx_fifo_lost_count, 1U, __ATOMIC_RELAXED);
-    (void)__atomic_fetch_or(&error_events, CAN_ERROR_EVENT_RX_FIFO_LOST,
-                            __ATOMIC_RELAXED);
-  }
-  if ((rx_fifo0_its & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == 0U ||
-      BspFdcan_ReadRxFrame(&frame) != HAL_OK) {
-    return;
-  }
-
-  if (frame.identifier == CAN_HANDSHAKE_REQUEST_ID &&
-      frame.length == BSP_FDCAN_CONTROL_DATA_SIZE) {
-    HandleHandshakeFrame(frame.data);
-  } else if (frame.identifier == CAN_CONTROL_COMMAND_ID &&
-             frame.length == BSP_FDCAN_CONTROL_DATA_SIZE) {
-    HandleControlFrame(frame.data);
-  } else if (frame.identifier == OTA_CAN_REQUEST_ID) {
-    (void)OtaCanTransport_OnRxFrameFromIsr(&frame);
-  }
-}
-
-void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan,
-                                   uint32_t error_status_its)
-{
-  uint32_t events = 0U;
-
-  if (hfdcan != &hfdcan2) {
-    return;
-  }
-  if ((error_status_its & FDCAN_IT_ERROR_WARNING) != 0U) {
-    (void)__atomic_fetch_add(&warning_count, 1U, __ATOMIC_RELAXED);
-    events |= CAN_ERROR_EVENT_WARNING;
-  }
-  if ((error_status_its & FDCAN_IT_ERROR_PASSIVE) != 0U) {
-    (void)__atomic_fetch_add(&error_passive_count, 1U, __ATOMIC_RELAXED);
-    events |= CAN_ERROR_EVENT_PASSIVE;
-  }
-  if ((error_status_its & FDCAN_IT_BUS_OFF) != 0U) {
-    (void)__atomic_fetch_add(&bus_off_count, 1U, __ATOMIC_RELAXED);
-    events |= CAN_ERROR_EVENT_BUS_OFF;
-  }
-  if ((error_status_its &
-       (FDCAN_IT_ARB_PROTOCOL_ERROR | FDCAN_IT_DATA_PROTOCOL_ERROR)) !=
-      0U) {
-    (void)__atomic_fetch_add(&protocol_error_count, 1U, __ATOMIC_RELAXED);
-    events |= CAN_ERROR_EVENT_PROTOCOL;
-  }
-  (void)__atomic_fetch_or(&error_events, events, __ATOMIC_RELAXED);
 }
 
 static void HandleHandshakeFrame(
@@ -366,28 +286,15 @@ static void ResetControlSession(void)
 
 static void InvalidateControlSession(CanTransportLinkStatus status)
 {
-  uint32_t primask = __get_PRIMASK();
-
-  __disable_irq();
   link_status = status;
   ResetControlSession();
   session_invalidated = true;
-  __set_PRIMASK(primask);
-}
-
-static uint32_t TakeErrorEvents(void)
-{
-  return __atomic_exchange_n(&error_events, 0U, __ATOMIC_RELAXED);
 }
 
 static bool TakeResponseRequest(void)
 {
-  uint32_t primask = __get_PRIMASK();
-  bool pending;
+  const bool pending = response_pending;
 
-  __disable_irq();
-  pending = response_pending;
   response_pending = false;
-  __set_PRIMASK(primask);
   return pending;
 }

@@ -84,7 +84,7 @@ void MotorTargetTest_Stop(void)
 
 bool MotorTargetTest_SetDuty(uint16_t duty)
 {
-  if (test_snapshot.running || duty > BSP_MOTOR_COMPARE_MAX) {
+  if (test_snapshot.running || duty > MOTOR_OPEN_LOOP_TEST_DUTY_MAX) {
     return false;
   }
   test_duty = duty;

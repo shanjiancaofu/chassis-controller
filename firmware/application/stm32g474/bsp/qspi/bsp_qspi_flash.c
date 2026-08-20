@@ -3,7 +3,7 @@
 #include <stddef.h>
 
 #include "board/board_config.h"
-#include "config/storage_layout.h"
+#include "../../../../shared/qspi_flash_identity.h"
 
 #define QSPI_WRITE_ENABLE_COMMAND 0x06U
 #define QSPI_JEDEC_ID_COMMAND 0x9FU

@@ -3,6 +3,7 @@
 
 /* Explicit UART-confirmed bring-up test: about 76% of TIM8 PWM period. */
 #define MOTOR_OPEN_LOOP_TEST_DUTY 6500
+#define MOTOR_OPEN_LOOP_TEST_DUTY_MAX 8499
 #define MOTOR_OPEN_LOOP_TEST_DURATION_MS 1000U
 
 #define IWDG_TEST_BACKUP_REGISTER 2U
