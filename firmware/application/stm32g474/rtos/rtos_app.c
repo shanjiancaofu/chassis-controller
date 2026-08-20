@@ -5,31 +5,21 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#define CONTROL_TASK_STACK_DEPTH 512U
-#define DIAGNOSTICS_TASK_STACK_DEPTH 768U
-#define DISPLAY_TASK_STACK_DEPTH 512U
-
-#define CONTROL_TASK_PRIORITY (configMAX_PRIORITIES - 2U)
-#define SERVICE_TASK_PRIORITY (configMAX_PRIORITIES - 4U)
-#define DIAGNOSTICS_TASK_PRIORITY (configMAX_PRIORITIES - 5U)
-#define DISPLAY_TASK_PRIORITY (configMAX_PRIORITIES - 6U)
-
-#define SERVICE_TASK_EXPECTED_PERIOD_MS 1U
-#define CONTROL_TASK_EXPECTED_PERIOD_MS 10U
-#define DIAGNOSTICS_TASK_EXPECTED_PERIOD_MS 100U
-#define DISPLAY_TASK_EXPECTED_PERIOD_MS 1U
-
-#define SERVICE_TASK_HEALTH_TIMEOUT_MS 200U
-#define CONTROL_TASK_HEALTH_TIMEOUT_MS 50U
-#define DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS 500U
-#define DISPLAY_TASK_HEALTH_TIMEOUT_MS 2000U
-
 static StaticTask_t control_task_buffer;
-static StackType_t control_task_stack[CONTROL_TASK_STACK_DEPTH];
+static StackType_t control_task_stack[CONFIG_CONTROL_TASK_STACK_SIZE];
 static StaticTask_t diagnostics_task_buffer;
-static StackType_t diagnostics_task_stack[DIAGNOSTICS_TASK_STACK_DEPTH];
+static StackType_t diagnostics_task_stack[CONFIG_DIAGNOSTICS_TASK_STACK_SIZE];
 static StaticTask_t display_task_buffer;
-static StackType_t display_task_stack[DISPLAY_TASK_STACK_DEPTH];
+static StackType_t display_task_stack[CONFIG_DISPLAY_TASK_STACK_SIZE];
+
+_Static_assert(CONFIG_CONTROL_TASK_PRIORITY < configMAX_PRIORITIES,
+               "control task priority invalid");
+_Static_assert(CONFIG_SERVICE_TASK_PRIORITY < CONFIG_CONTROL_TASK_PRIORITY,
+               "service task must be below control");
+_Static_assert(CONFIG_DIAGNOSTICS_TASK_PRIORITY < CONFIG_SERVICE_TASK_PRIORITY,
+               "diagnostics task must be below service");
+_Static_assert(CONFIG_DISPLAY_TASK_PRIORITY < CONFIG_DIAGNOSTICS_TASK_PRIORITY,
+               "display task must be below diagnostics");
 
 static TaskHandle_t service_task_handle;
 static TaskHandle_t control_task_handle;
@@ -86,16 +76,16 @@ bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
   app_callbacks = *callbacks;
 
   control_task_handle = xTaskCreateStatic(
-      RtosApp_ControlTaskMain, "control", CONTROL_TASK_STACK_DEPTH, NULL,
-      CONTROL_TASK_PRIORITY, control_task_stack, &control_task_buffer);
+      RtosApp_ControlTaskMain, "control", CONFIG_CONTROL_TASK_STACK_SIZE, NULL,
+      CONFIG_CONTROL_TASK_PRIORITY, control_task_stack, &control_task_buffer);
   diagnostics_task_handle = xTaskCreateStatic(
-      RtosApp_DiagnosticsTaskMain, "diagnostics", DIAGNOSTICS_TASK_STACK_DEPTH,
+      RtosApp_DiagnosticsTaskMain, "diagnostics", CONFIG_DIAGNOSTICS_TASK_STACK_SIZE,
       NULL,
-      DIAGNOSTICS_TASK_PRIORITY, diagnostics_task_stack,
+      CONFIG_DIAGNOSTICS_TASK_PRIORITY, diagnostics_task_stack,
       &diagnostics_task_buffer);
   display_task_handle = xTaskCreateStatic(
-      RtosApp_DisplayTaskMain, "display", DISPLAY_TASK_STACK_DEPTH, NULL,
-      DISPLAY_TASK_PRIORITY, display_task_stack, &display_task_buffer);
+      RtosApp_DisplayTaskMain, "display", CONFIG_DISPLAY_TASK_STACK_SIZE, NULL,
+      CONFIG_DISPLAY_TASK_PRIORITY, display_task_stack, &display_task_buffer);
 
   service_task_heartbeat = now;
   control_task_heartbeat = now;
@@ -134,7 +124,8 @@ void RtosApp_ServiceTaskMain(void *argument)
                        &last_service_run_tick, &service_run_count,
                        &service_period_ticks);
     app_callbacks.run_service_cycle();
-    vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(1U));
+    vTaskDelayUntil(&last_wake_time,
+                    pdMS_TO_TICKS(CONFIG_SERVICE_TASK_PERIOD_MS));
   }
 }
 
@@ -150,7 +141,7 @@ void RtosApp_DiagnosticsTaskMain(void *argument)
                        &diagnostics_period_ticks);
     app_callbacks.run_diagnostics_cycle();
     vTaskDelayUntil(&last_wake_time,
-                    pdMS_TO_TICKS(DIAGNOSTICS_TASK_EXPECTED_PERIOD_MS));
+                    pdMS_TO_TICKS(CONFIG_DIAGNOSTICS_TASK_PERIOD_MS));
   }
 }
 
@@ -166,7 +157,7 @@ void RtosApp_DisplayTaskMain(void *argument)
                        &display_period_ticks);
     app_callbacks.run_display_cycle();
     vTaskDelayUntil(&last_wake_time,
-                    pdMS_TO_TICKS(DISPLAY_TASK_EXPECTED_PERIOD_MS));
+                    pdMS_TO_TICKS(CONFIG_DISPLAY_TASK_PERIOD_MS));
   }
 }
 
@@ -180,18 +171,18 @@ bool RtosApp_AreCriticalTasksHealthy(void)
          GetTaskHealthState(
              true,
              now - __atomic_load_n(&service_task_heartbeat, __ATOMIC_RELAXED),
-             pdMS_TO_TICKS(SERVICE_TASK_HEALTH_TIMEOUT_MS)) ==
+             pdMS_TO_TICKS(CONFIG_SERVICE_TASK_TIMEOUT_MS)) ==
              RTOS_APP_TASK_RUNNING &&
          GetTaskHealthState(
              true,
              now - __atomic_load_n(&control_task_heartbeat, __ATOMIC_RELAXED),
-             pdMS_TO_TICKS(CONTROL_TASK_HEALTH_TIMEOUT_MS)) ==
+             pdMS_TO_TICKS(CONFIG_CONTROL_TASK_TIMEOUT_MS)) ==
              RTOS_APP_TASK_RUNNING &&
          GetTaskHealthState(
              true,
              now - __atomic_load_n(&diagnostics_task_heartbeat,
                                    __ATOMIC_RELAXED),
-             pdMS_TO_TICKS(DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS)) ==
+             pdMS_TO_TICKS(CONFIG_DIAGNOSTICS_TASK_TIMEOUT_MS)) ==
              RTOS_APP_TASK_RUNNING;
 }
 
@@ -227,14 +218,14 @@ void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
       __atomic_load_n(&diagnostics_period_ticks, __ATOMIC_RELAXED));
   snapshot->display_period_ms = TicksToMilliseconds(
       __atomic_load_n(&display_period_ticks, __ATOMIC_RELAXED));
-  snapshot->service_expected_period_ms = 1U;
-  snapshot->control_expected_period_ms = 10U;
-  snapshot->diagnostics_expected_period_ms = 100U;
-  snapshot->display_expected_period_ms = DISPLAY_TASK_EXPECTED_PERIOD_MS;
-  snapshot->service_timeout_ms = SERVICE_TASK_HEALTH_TIMEOUT_MS;
-  snapshot->control_timeout_ms = CONTROL_TASK_HEALTH_TIMEOUT_MS;
-  snapshot->diagnostics_timeout_ms = DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS;
-  snapshot->display_timeout_ms = DISPLAY_TASK_HEALTH_TIMEOUT_MS;
+  snapshot->service_expected_period_ms = CONFIG_SERVICE_TASK_PERIOD_MS;
+  snapshot->control_expected_period_ms = CONFIG_CONTROL_TASK_PERIOD_MS;
+  snapshot->diagnostics_expected_period_ms = CONFIG_DIAGNOSTICS_TASK_PERIOD_MS;
+  snapshot->display_expected_period_ms = CONFIG_DISPLAY_TASK_PERIOD_MS;
+  snapshot->service_timeout_ms = CONFIG_SERVICE_TASK_TIMEOUT_MS;
+  snapshot->control_timeout_ms = CONFIG_CONTROL_TASK_TIMEOUT_MS;
+  snapshot->diagnostics_timeout_ms = CONFIG_DIAGNOSTICS_TASK_TIMEOUT_MS;
+  snapshot->display_timeout_ms = CONFIG_DISPLAY_TASK_TIMEOUT_MS;
   snapshot->service_run_count = __atomic_load_n(&service_run_count, __ATOMIC_RELAXED);
   snapshot->control_run_count = __atomic_load_n(&control_run_count, __ATOMIC_RELAXED);
   snapshot->diagnostics_run_count =
@@ -258,16 +249,16 @@ void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
           : 0U;
   snapshot->service_task_state = GetTaskHealthState(
       __atomic_load_n(&service_task_started, __ATOMIC_ACQUIRE), service_age,
-      pdMS_TO_TICKS(SERVICE_TASK_HEALTH_TIMEOUT_MS));
+      pdMS_TO_TICKS(CONFIG_SERVICE_TASK_TIMEOUT_MS));
   snapshot->control_task_state = GetTaskHealthState(
       __atomic_load_n(&control_task_started, __ATOMIC_ACQUIRE), control_age,
-      pdMS_TO_TICKS(CONTROL_TASK_HEALTH_TIMEOUT_MS));
+      pdMS_TO_TICKS(CONFIG_CONTROL_TASK_TIMEOUT_MS));
   snapshot->diagnostics_task_state = GetTaskHealthState(
       __atomic_load_n(&diagnostics_task_started, __ATOMIC_ACQUIRE),
-      diagnostics_age, pdMS_TO_TICKS(DIAGNOSTICS_TASK_HEALTH_TIMEOUT_MS));
+      diagnostics_age, pdMS_TO_TICKS(CONFIG_DIAGNOSTICS_TASK_TIMEOUT_MS));
   snapshot->display_task_state = GetTaskHealthState(
       __atomic_load_n(&display_task_started, __ATOMIC_ACQUIRE), display_age,
-      pdMS_TO_TICKS(DISPLAY_TASK_HEALTH_TIMEOUT_MS));
+      pdMS_TO_TICKS(CONFIG_DISPLAY_TASK_TIMEOUT_MS));
   snapshot->service_task_healthy =
       snapshot->service_task_state == RTOS_APP_TASK_RUNNING;
   snapshot->control_task_healthy =

@@ -1,74 +1,112 @@
 #ifdef CAN_TRANSPORT_HOST_TEST
 
 #include <assert.h>
+#include <errno.h>
 #include <string.h>
 
-#include "bsp/fdcan/fdcan_bsp.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
+#include "drivers/can.h"
 #include "../../../../shared/ota_protocol.h"
 
-static BspFdcanFrame queued_frame;
+static struct can_frame queued_frame;
 static bool frame_pending;
 static uint32_t now_ms;
 static uint32_t error_events;
 static uint32_t send_count;
 static uint32_t restart_count;
 static uint32_t ota_frame_count;
+static struct device_state fake_state = {.init_res = 0, .initialized = true};
 
-bool BspFdcan_Start(const uint32_t *ids, size_t count)
+bool device_is_ready(const struct device *device)
 {
-  return ids != NULL && count == 3U;
+  return device != NULL && device->state == &fake_state;
 }
 
-bool BspFdcan_Restart(void)
+static int FakeStart(const struct device *device, const struct can_filter *filters,
+                     size_t count)
 {
+  (void)device;
+  return filters != NULL && count == 3U ? 0 : -EINVAL;
+}
+
+static int FakeStop(const struct device *device)
+{
+  (void)device;
+  return 0;
+}
+
+static int FakeRecover(const struct device *device)
+{
+  (void)device;
   ++restart_count;
-  return true;
+  return 0;
 }
 
-bool BspFdcan_TakeRxFrame(BspFdcanFrame *frame)
+static int FakeRecv(const struct device *device, struct can_frame *frame)
 {
+  (void)device;
   if (!frame_pending || frame == NULL) {
-    return false;
+    return -EAGAIN;
   }
   *frame = queued_frame;
   frame_pending = false;
-  return true;
+  return 0;
 }
 
-bool BspFdcan_SendFrame(const BspFdcanFrame *frame)
+static int FakeSend(const struct device *device, const struct can_frame *frame)
 {
+  (void)device;
   assert(frame != NULL);
   ++send_count;
-  return true;
+  return 0;
 }
 
-uint32_t BspFdcan_TakeErrorEvents(void)
+static uint32_t FakeTakeErrorEvents(const struct device *device)
 {
+  (void)device;
   const uint32_t events = error_events;
 
   error_events = 0U;
   return events;
 }
 
-void BspFdcan_GetEventCounters(BspFdcanEventCounters *counters)
+static int FakeGetDiagnostics(const struct device *device,
+                              struct can_diagnostics *diagnostics)
 {
-  *counters = (BspFdcanEventCounters){0};
+  (void)device;
+  *diagnostics = (struct can_diagnostics){0};
+  return 0;
 }
 
-bool BspFdcan_GetDiagnostics(BspFdcanDiagnostics *diagnostics)
+static bool FakeIsTxIdle(const struct device *device)
 {
-  *diagnostics = (BspFdcanDiagnostics){0};
+  (void)device;
   return true;
 }
+
+static const struct can_driver_api fake_api = {
+    .start = FakeStart,
+    .stop = FakeStop,
+    .send = FakeSend,
+    .recv = FakeRecv,
+    .recover = FakeRecover,
+    .get_diagnostics = FakeGetDiagnostics,
+    .take_error_events = FakeTakeErrorEvents,
+    .is_tx_idle = FakeIsTxIdle,
+};
+static const struct device fake_device = {
+    .name = "fake_can",
+    .api = &fake_api,
+    .state = &fake_state,
+};
 
 uint32_t BspTime_GetUptimeMs(void)
 {
   return now_ms;
 }
 
-bool OtaCanTransport_OnRxFrame(const BspFdcanFrame *frame)
+bool OtaCanTransport_OnRxFrame(const struct can_frame *frame)
 {
   assert(frame != NULL);
   ++ota_frame_count;
@@ -77,11 +115,12 @@ bool OtaCanTransport_OnRxFrame(const BspFdcanFrame *frame)
 
 static void QueueFrame(uint32_t identifier, const uint8_t data[8])
 {
-  queued_frame = (BspFdcanFrame){
-      .identifier = identifier,
-      .length = BSP_FDCAN_CONTROL_DATA_SIZE,
+  queued_frame = (struct can_frame){
+      .id = identifier,
+      .dlc = 8U,
+      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
   };
-  memcpy(queued_frame.data, data, BSP_FDCAN_CONTROL_DATA_SIZE);
+  memcpy(queued_frame.data, data, 8U);
   frame_pending = true;
 }
 
@@ -93,7 +132,7 @@ int main(void)
                                      10U, 0U, 0xF6U, 0xFFU};
   CanTransportControlCommand command;
 
-  assert(CanTransport_Init());
+  assert(CanTransport_Init(&fake_device) == 0);
   QueueFrame(0x720U, ping);
   CanTransport_Run();
   assert(send_count == 1U);
@@ -112,7 +151,7 @@ int main(void)
   CanTransport_Run();
   assert(ota_frame_count == 1U);
 
-  error_events = BSP_FDCAN_ERROR_BUS_OFF;
+  error_events = CAN_ERROR_BUS_OFF;
   CanTransport_Run();
   assert(CanTransport_TakeSessionInvalidated());
   now_ms = 100U;

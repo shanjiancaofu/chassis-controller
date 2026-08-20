@@ -1,4 +1,5 @@
 set(APP_ROOT "${CMAKE_SOURCE_DIR}/firmware/application/stm32g474")
+include("${CMAKE_SOURCE_DIR}/cmake/application_config.cmake")
 
 set(APP_SOURCES
   Application/User/Core/syscalls.c
@@ -61,10 +62,10 @@ set(APP_SOURCES
   app/chassis_console_commands.c
   app/chassis_maintenance.c
   app/system_status_collector.c
+  boards/chassis_g474/board_devices.c
   bsp/button/bsp_button.c
   bsp/encoder/bsp_encoder.c
   bsp/emergency_stop/bsp_emergency_stop.c
-  bsp/fdcan/fdcan_bsp.c
   bsp/interrupts/bsp_interrupts.c
   bsp/led/bsp_led.c
   bsp/lcd/bsp_lcd.c
@@ -90,12 +91,16 @@ set(APP_SOURCES
   components/icm45686/icm45686.c
   components/imu_fusion/imu_fusion.c
   components/pid/speed_pid.c
+  drivers/can/can_common.c
+  drivers/can/can_stm32_fdcan.c
   infrastructure/console/console.c
   infrastructure/console/diagnostic_report.c
   infrastructure/parameter_storage/parameter_record.c
   infrastructure/parameter_storage/parameter_storage.c
   infrastructure/telemetry/telemetry.c
   infrastructure/uart_protocol/uart_protocol.c
+  kernel/device.c
+  kernel/init.c
   modules/chassis/command_manager.c
   modules/chassis/differential_drive.c
   modules/chassis/odometry.c
@@ -115,6 +120,8 @@ list(TRANSFORM APP_SOURCES PREPEND "${APP_ROOT}/")
 add_executable(application ${APP_SOURCES})
 target_include_directories(application PRIVATE
   "${APP_ROOT}"
+  "${APP_ROOT}/include"
+  "${APP_GENERATED_DIR}"
   "${APP_ROOT}/Core/Inc"
   "${APP_ROOT}/Drivers/STM32G4xx_HAL_Driver/Inc"
   "${APP_ROOT}/Drivers/STM32G4xx_HAL_Driver/Inc/Legacy"
@@ -126,5 +133,15 @@ target_include_directories(application PRIVATE
 target_compile_definitions(application PRIVATE
   USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00008000U
   $<$<CONFIG:Debug>:APP_DEBUG_IWDG_FREEZE>)
+target_compile_options(application PRIVATE
+  "-include${APP_AUTOCONF_HEADER}")
 stm32g474_target(application
   "${APP_ROOT}/STM32G474VETX_FLASH.ld" "application.map")
+add_custom_command(TARGET application POST_BUILD
+  COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/build/check_image_size.py"
+          --size-tool "${CMAKE_SIZE}"
+          --elf "$<TARGET_FILE:application>"
+          --flash-limit 491520
+          --ram-limit 131072
+  VERBATIM)

@@ -1,16 +1,18 @@
 #include "communication/can_transport/can_transport.h"
 
+#include <errno.h>
 #include <string.h>
 
-#include "bsp/fdcan/fdcan_bsp.h"
 #include "bsp/time/bsp_time.h"
 #include "config/control_config.h"
 #include "communication/ota_transport/ota_can_transport.h"
+#include "drivers/can.h"
 #include "../../../../shared/ota_protocol.h"
 
 #define CAN_HANDSHAKE_REQUEST_ID 0x720U
 #define CAN_HANDSHAKE_RESPONSE_ID 0x721U
 #define CAN_CONTROL_COMMAND_ID 0x100U
+#define CAN_CONTROL_DATA_SIZE 8U
 #define CAN_RESPONSE_RETRY_LIMIT 3U
 #define CAN_RESPONSE_RETRY_DELAY_MS 10U
 #define CAN_RECOVERY_RETRY_LIMIT 3U
@@ -31,23 +33,27 @@ static uint8_t response_attempts;
 static uint8_t recovery_attempts;
 static bool recovery_pending;
 static bool recovery_failed;
+static const struct device *can_device;
 
-static void HandleHandshakeFrame(
-    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE]);
-static void HandleControlFrame(
-    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE]);
-static void ProcessRxFrame(const BspFdcanFrame *frame);
+static void HandleHandshakeFrame(const uint8_t data[CAN_CONTROL_DATA_SIZE]);
+static void HandleControlFrame(const uint8_t data[CAN_CONTROL_DATA_SIZE]);
+static void ProcessRxFrame(const struct can_frame *frame);
 static void InvalidateControlSession(CanTransportLinkStatus status);
 static void ResetControlSession(void);
 static bool TakeResponseRequest(void);
 
-bool CanTransport_Init(void)
+int CanTransport_Init(const struct device *device)
 {
-  static const uint32_t accepted_ids[] = {
-      CAN_HANDSHAKE_REQUEST_ID,
-      CAN_CONTROL_COMMAND_ID,
-      OTA_CAN_REQUEST_ID,
+  static const struct can_filter accepted_filters[] = {
+      {.id = CAN_HANDSHAKE_REQUEST_ID, .mask = 0x7FFU},
+      {.id = CAN_CONTROL_COMMAND_ID, .mask = 0x7FFU},
+      {.id = OTA_CAN_REQUEST_ID, .mask = 0x7FFU},
   };
+
+  if (!device_is_ready(device)) {
+    return -ENODEV;
+  }
+  can_device = device;
 
   link_status = CAN_TRANSPORT_LINK_READY;
   response_pending = false;
@@ -61,32 +67,33 @@ bool CanTransport_Init(void)
   recovery_pending = false;
   recovery_failed = false;
   ResetControlSession();
-  return BspFdcan_Start(accepted_ids,
-                        sizeof(accepted_ids) / sizeof(accepted_ids[0]));
+  return can_start(can_device, accepted_filters,
+                   sizeof(accepted_filters) / sizeof(accepted_filters[0]));
 }
 
 void CanTransport_Run(void)
 {
-  static const BspFdcanFrame response = {
-      .identifier = CAN_HANDSHAKE_RESPONSE_ID,
-      .length = BSP_FDCAN_CONTROL_DATA_SIZE,
+  static const struct can_frame response = {
+      .id = CAN_HANDSHAKE_RESPONSE_ID,
+      .dlc = CAN_CONTROL_DATA_SIZE,
+      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
       .data = {'C', 'H', 'A', 'S', 'S', 'I', 'S', 1U},
   };
 
   const uint32_t now_ms = BspTime_GetUptimeMs();
-  BspFdcanFrame frame;
-  const uint32_t events = BspFdcan_TakeErrorEvents();
+  struct can_frame frame;
+  const uint32_t events = can_take_error_events(can_device);
 
-  while (BspFdcan_TakeRxFrame(&frame)) {
+  while (can_recv(can_device, &frame) == 0) {
     ProcessRxFrame(&frame);
   }
 
-  if ((events & (BSP_FDCAN_ERROR_PASSIVE | BSP_FDCAN_ERROR_BUS_OFF |
-                 BSP_FDCAN_ERROR_PROTOCOL | BSP_FDCAN_ERROR_RX_FIFO_FULL |
-                 BSP_FDCAN_ERROR_RX_FIFO_LOST)) != 0U) {
+  if ((events & (CAN_ERROR_PASSIVE | CAN_ERROR_BUS_OFF |
+                 CAN_ERROR_PROTOCOL | CAN_ERROR_RX_FIFO_FULL |
+                 CAN_ERROR_RX_FIFO_LOST)) != 0U) {
     InvalidateControlSession(CAN_TRANSPORT_LINK_FAILED);
   }
-  if ((events & BSP_FDCAN_ERROR_BUS_OFF) != 0U) {
+  if ((events & CAN_ERROR_BUS_OFF) != 0U) {
     recovery_pending = true;
     recovery_failed = false;
     recovery_attempts = 0U;
@@ -96,7 +103,7 @@ void CanTransport_Run(void)
   if (recovery_pending &&
       (int32_t)(now_ms - recovery_retry_due_ms) >= 0) {
     ++recovery_attempts;
-    if (BspFdcan_Restart()) {
+    if (can_recover(can_device) == 0) {
       ++recovery_count;
       recovery_pending = false;
       recovery_attempts = 0U;
@@ -116,7 +123,7 @@ void CanTransport_Run(void)
     return;
   }
 
-  if (!BspFdcan_SendFrame(&response)) {
+  if (can_send(can_device, &response) < 0) {
     ++response_attempts;
     if (response_attempts < CAN_RESPONSE_RETRY_LIMIT) {
       response_retry_due_ms = now_ms + CAN_RESPONSE_RETRY_DELAY_MS;
@@ -159,10 +166,10 @@ bool CanTransport_TakeSessionInvalidated(void)
 
 bool CanTransport_GetDiagnostics(CanTransportDiagnostics *diagnostics)
 {
-  BspFdcanDiagnostics hardware = {0};
-  BspFdcanEventCounters counters = {0};
+  struct can_diagnostics hardware = {0};
 
-  if (diagnostics == NULL || !BspFdcan_GetDiagnostics(&hardware)) {
+  if (diagnostics == NULL ||
+      can_get_diagnostics(can_device, &hardware) < 0) {
     return false;
   }
 
@@ -177,13 +184,12 @@ bool CanTransport_GetDiagnostics(CanTransportDiagnostics *diagnostics)
   diagnostics->restricted_mode = hardware.restricted_mode;
   diagnostics->rx_fifo_fill = hardware.rx_fifo_fill;
   diagnostics->tx_fifo_free = hardware.tx_fifo_free;
-  BspFdcan_GetEventCounters(&counters);
-  diagnostics->warning_count = counters.warning_count;
-  diagnostics->error_passive_count = counters.error_passive_count;
-  diagnostics->bus_off_count = counters.bus_off_count;
-  diagnostics->protocol_error_count = counters.protocol_error_count;
-  diagnostics->rx_fifo_full_count = counters.rx_fifo_full_count;
-  diagnostics->rx_fifo_lost_count = counters.rx_fifo_lost_count;
+  diagnostics->warning_count = hardware.warning_count;
+  diagnostics->error_passive_count = hardware.error_passive_count;
+  diagnostics->bus_off_count = hardware.bus_off_count;
+  diagnostics->protocol_error_count = hardware.protocol_error_count;
+  diagnostics->rx_fifo_full_count = hardware.rx_fifo_full_count;
+  diagnostics->rx_fifo_lost_count = hardware.rx_fifo_lost_count;
   diagnostics->recovery_count = recovery_count;
   diagnostics->recovery_failure_count = recovery_failure_count;
   return true;
@@ -201,29 +207,28 @@ void CanTransport_RequestResponse(void)
   response_pending = true;
 }
 
-static void ProcessRxFrame(const BspFdcanFrame *frame)
+static void ProcessRxFrame(const struct can_frame *frame)
 {
   if (frame == NULL) {
     return;
   }
-  if (frame->identifier == CAN_HANDSHAKE_REQUEST_ID &&
-      frame->length == BSP_FDCAN_CONTROL_DATA_SIZE) {
+  if (frame->id == CAN_HANDSHAKE_REQUEST_ID &&
+      frame->dlc == CAN_CONTROL_DATA_SIZE) {
     HandleHandshakeFrame(frame->data);
-  } else if (frame->identifier == CAN_CONTROL_COMMAND_ID &&
-             frame->length == BSP_FDCAN_CONTROL_DATA_SIZE) {
+  } else if (frame->id == CAN_CONTROL_COMMAND_ID &&
+             frame->dlc == CAN_CONTROL_DATA_SIZE) {
     HandleControlFrame(frame->data);
-  } else if (frame->identifier == OTA_CAN_REQUEST_ID) {
+  } else if (frame->id == OTA_CAN_REQUEST_ID) {
     (void)OtaCanTransport_OnRxFrame(frame);
   }
 }
 
-static void HandleHandshakeFrame(
-    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE])
+static void HandleHandshakeFrame(const uint8_t data[CAN_CONTROL_DATA_SIZE])
 {
-  static const uint8_t request[BSP_FDCAN_CONTROL_DATA_SIZE] = {
+  static const uint8_t request[CAN_CONTROL_DATA_SIZE] = {
       'P', 'I', 'N', 'G', 1U, 0U, 0U, 0U,
   };
-  static const uint8_t confirmation[BSP_FDCAN_CONTROL_DATA_SIZE] = {
+  static const uint8_t confirmation[CAN_CONTROL_DATA_SIZE] = {
       'P', 'A', 'S', 'S', 1U, 0U, 0U, 0U,
   };
 
@@ -244,8 +249,7 @@ static void HandleHandshakeFrame(
   response_pending = false;
 }
 
-static void HandleControlFrame(
-    const uint8_t data[BSP_FDCAN_CONTROL_DATA_SIZE])
+static void HandleControlFrame(const uint8_t data[CAN_CONTROL_DATA_SIZE])
 {
   int16_t left_target;
   int16_t right_target;

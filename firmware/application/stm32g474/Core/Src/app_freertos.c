@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app/chassis_app.h"
+#include "init.h"
 #include "rtos/rtos_app.h"
 #include "tim.h"
 /* USER CODE END Includes */
@@ -112,7 +113,9 @@ void vApplicationMallocFailedHook(void)
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
-
+  if (SystemInit_RunLevel(INIT_LEVEL_POST_KERNEL) < 0) {
+    Error_Handler();
+  }
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -138,7 +141,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_THREADS */
   if (defaultTaskHandle == NULL ||
       osThreadSetPriority(defaultTaskHandle,
-                          (osPriority_t)(configMAX_PRIORITIES - 4U)) != osOK) {
+                          (osPriority_t)CONFIG_SERVICE_TASK_PRIORITY) != osOK) {
     Error_Handler();
   }
   const RtosAppCallbacks app_callbacks = {
@@ -155,6 +158,9 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
+  if (SystemInit_RunLevel(INIT_LEVEL_APPLICATION) < 0) {
+    Error_Handler();
+  }
   /* add events, ... */
   /* USER CODE END RTOS_EVENTS */
 

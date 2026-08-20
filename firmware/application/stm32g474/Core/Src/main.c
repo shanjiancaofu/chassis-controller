@@ -33,6 +33,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app/chassis_app.h"
+#include "init.h"
 #include "rtos/rtos_app.h"
 /* USER CODE END Includes */
 
@@ -95,6 +96,10 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+  if (SystemInit_RunLevel(INIT_LEVEL_EARLY) < 0)
+  {
+    Error_Handler();
+  }
 
   /* USER CODE END SysInit */
 
@@ -115,6 +120,11 @@ int main(void)
   MX_TIM6_Init();
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
+  if (SystemInit_RunLevel(INIT_LEVEL_PRE_KERNEL_1) < 0 ||
+      SystemInit_RunLevel(INIT_LEVEL_PRE_KERNEL_2) < 0)
+  {
+    Error_Handler();
+  }
   if (!AppWatchdog_ConfigureNormal()) {
     Error_Handler();
   }

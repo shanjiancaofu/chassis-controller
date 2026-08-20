@@ -1,0 +1,109 @@
+mainmenu "Chassis Controller Application"
+
+config CAN
+    bool
+    default y
+
+config ICM45686
+    bool
+    default y
+
+config LCD
+    bool
+    default y
+
+config QSPI
+    bool
+    default y
+
+config OTA
+    bool
+    default y
+
+config TARGET_TEST
+    bool
+    default y
+
+config MOTOR_DEMO
+    bool
+    default n
+
+config CAN_RX_QUEUE_SIZE
+    int
+    default 8
+    range 2 32
+
+config CONTROL_TASK_STACK_SIZE
+    int
+    default 512
+    range 256 2048
+
+config DIAGNOSTICS_TASK_STACK_SIZE
+    int
+    default 768
+    range 256 2048
+
+config DISPLAY_TASK_STACK_SIZE
+    int
+    default 512
+    range 256 2048
+
+config CONTROL_TASK_PRIORITY
+    int
+    default 54
+    range 0 55
+
+config SERVICE_TASK_PRIORITY
+    int
+    default 52
+    range 0 55
+
+config DIAGNOSTICS_TASK_PRIORITY
+    int
+    default 51
+    range 0 55
+
+config DISPLAY_TASK_PRIORITY
+    int
+    default 50
+    range 0 55
+
+config SERVICE_TASK_PERIOD_MS
+    int
+    default 1
+    range 1 1000
+
+config CONTROL_TASK_PERIOD_MS
+    int
+    default 10
+    range 1 1000
+
+config DIAGNOSTICS_TASK_PERIOD_MS
+    int
+    default 100
+    range 1 10000
+
+config DISPLAY_TASK_PERIOD_MS
+    int
+    default 1
+    range 1 1000
+
+config SERVICE_TASK_TIMEOUT_MS
+    int
+    default 200
+    range 1 60000
+
+config CONTROL_TASK_TIMEOUT_MS
+    int
+    default 50
+    range 1 60000
+
+config DIAGNOSTICS_TASK_TIMEOUT_MS
+    int
+    default 500
+    range 1 60000
+
+config DISPLAY_TASK_TIMEOUT_MS
+    int
+    default 2000
+    range 1 60000

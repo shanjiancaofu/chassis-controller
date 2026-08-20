@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "bsp/time/bsp_time.h"
+#include "drivers/can/can_stm32_fdcan.h"
 
 #define OTA_CAN_TX_EVENT_TIMEOUT_MS 100U
 
@@ -16,13 +17,15 @@ static bool last_response_confirmed;
 static uint8_t tx_marker;
 static uint8_t pending_tx_marker;
 static uint32_t tx_started_ms;
+static const struct device *can_device;
 
 static uint32_t ReadU32(const uint8_t *data);
 static void WriteU32(uint8_t *data, uint32_t value);
 static void PollTxEvent(void);
 
-void OtaCanTransport_Init(void)
+void OtaCanTransport_Init(const struct device *device)
 {
+  can_device = device;
   message_pending = false;
   dropped_count = 0U;
   response_in_progress = false;
@@ -34,13 +37,13 @@ void OtaCanTransport_Init(void)
   pending_message = (OtaMessage){0};
 }
 
-bool OtaCanTransport_OnRxFrame(const BspFdcanFrame *frame)
+bool OtaCanTransport_OnRxFrame(const struct can_frame *frame)
 {
   OtaMessage message = {0};
   uint8_t index;
 
-  if (frame == NULL || frame->identifier != OTA_CAN_REQUEST_ID ||
-      frame->length != OTA_CAN_FRAME_SIZE ||
+  if (frame == NULL || frame->id != OTA_CAN_REQUEST_ID ||
+      frame->dlc != OTA_CAN_FRAME_SIZE ||
       frame->data[0] != OTA_PROTOCOL_VERSION ||
       frame->data[1] < OTA_MESSAGE_BEGIN ||
       frame->data[1] > OTA_MESSAGE_STATUS ||
@@ -85,9 +88,10 @@ bool OtaCanTransport_TakeMessage(OtaMessage *message)
 
 bool OtaCanTransport_SendResponse(const OtaResponse *response)
 {
-  BspFdcanFrame frame = {
-      .identifier = OTA_CAN_RESPONSE_ID,
-      .length = OTA_CAN_FRAME_SIZE,
+  struct can_frame frame = {
+      .id = OTA_CAN_RESPONSE_ID,
+      .dlc = OTA_CAN_FRAME_SIZE,
+      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
   };
 
   if (response == NULL) {
@@ -109,7 +113,7 @@ bool OtaCanTransport_SendResponse(const OtaResponse *response)
   do {
     ++tx_marker;
   } while (tx_marker == 0U);
-  if (!BspFdcan_SendFrameWithTxEvent(&frame, tx_marker)) {
+  if (can_stm32_fdcan_send_with_tx_event(can_device, &frame, tx_marker) < 0) {
     return false;
   }
   last_response_confirmed = false;
@@ -128,7 +132,7 @@ bool OtaCanTransport_IsTxIdle(void)
 {
   PollTxEvent();
   return last_response_confirmed && !response_in_progress &&
-         BspFdcan_IsTxIdle();
+         can_is_tx_idle(can_device);
 }
 
 void OtaCanTransport_Invalidate(void)
@@ -162,14 +166,14 @@ static void PollTxEvent(void)
 {
   uint8_t marker;
 
-  while (BspFdcan_TakeTxEvent(&marker)) {
+  while (can_stm32_fdcan_take_tx_event(can_device, &marker) == 0) {
     if (response_in_progress && marker == pending_tx_marker) {
       response_in_progress = false;
       response_confirmation_ready = true;
       last_response_confirmed = true;
     }
   }
-  if (response_in_progress && BspFdcan_IsTxIdle() &&
+  if (response_in_progress && can_is_tx_idle(can_device) &&
       BspTime_GetUptimeMs() - tx_started_ms >= OTA_CAN_TX_EVENT_TIMEOUT_MS) {
     response_in_progress = false;
   }

@@ -30,7 +30,6 @@
 #include "config/app_config.h"
 #include "config/build_info.h"
 #include "config/control_config.h"
-#include "config/feature_config.h"
 #include "infrastructure/console/console.h"
 #include "infrastructure/console/diagnostic_report.h"
 #include "infrastructure/parameter_storage/parameter_storage.h"
@@ -45,6 +44,8 @@
 #include "modules/safety/fault_manager.h"
 #include "modules/safety/safety_manager.h"
 #include "modules/sensors/imu_orientation.h"
+#include "devicetree_generated.h"
+#include "device.h"
 #include "ui/lcd/lcd_status_presenter.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/motor_target_test.h"
@@ -123,13 +124,14 @@ static const ChassisConsoleCommandPort console_command_port = {
     .start_motor_target_test = StartMotorTargetTest,
 };
 
-#if ENABLE_MOTOR_DEMO
+#if CONFIG_MOTOR_DEMO
 static uint8_t demo_stage;
 static uint32_t demo_stage_started_ms;
 #endif
 
 bool ChassisApp_Init(void)
 {
+  const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_CAN);
   const uint32_t now_ms = BspTime_GetUptimeMs();
   ParameterSnapshot initial_parameters;
   ParameterStorageSnapshot parameter_storage;
@@ -144,14 +146,14 @@ bool ChassisApp_Init(void)
   (void)UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_INFO, "boot",
                              "STARTED", "fw=" CHASSIS_FIRMWARE_VERSION
                              " build=" CHASSIS_FIRMWARE_BUILD_STRING);
-  if (!CanTransport_Init()) {
+  if (CanTransport_Init(can_device) < 0) {
     (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_ERROR, "board",
                                "FDCAN_INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
   (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO, "board",
                              "FDCAN_READY", NULL);
-  OtaCanTransport_Init();
+  OtaCanTransport_Init(can_device);
   OtaUartTransport_Init();
   OtaSession_Init();
   if (!ChassisMaintenance_Init(&maintenance_port)) {
@@ -179,7 +181,7 @@ bool ChassisApp_Init(void)
   BspSr501_Init(BspTime_GetUptimeMs());
   (void)UartProtocol_SendLog(BspTime_GetUptimeMs(), UART_PROTOCOL_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
-#if ENABLE_ICM45686
+#if CONFIG_ICM45686
   {
     BspIcm45686Snapshot imu;
     char fields[48];
@@ -267,7 +269,7 @@ bool ChassisApp_Init(void)
   if (SafetyManager_IsEmergencyStopLatched()) {
     WheelController_EmergencyStop();
   }
-#if ENABLE_MOTOR_DEMO
+#if CONFIG_MOTOR_DEMO
   demo_stage = 0U;
   demo_stage_started_ms = BspTime_GetUptimeMs();
   if (SubmitMotionCommand(0, 0, COMMAND_SOURCE_TARGET_TEST,
@@ -296,7 +298,7 @@ void ChassisApp_RunServiceCycle(void)
     ChassisConsoleCommands_Process(&console_command, now_ms);
   }
 
-#if ENABLE_MOTOR_DEMO
+#if CONFIG_MOTOR_DEMO
   if (demo_stage < 6U) {
     taskENTER_CRITICAL();
     (void)CommandManager_Refresh(COMMAND_SOURCE_TARGET_TEST, now_ms);
@@ -510,7 +512,7 @@ void ChassisApp_RunDiagnosticsCycle(void)
   const uint32_t now_ms = BspTime_GetUptimeMs();
 
   BspSr501_Run(now_ms);
-#if ENABLE_ICM45686
+#if CONFIG_ICM45686
   BspIcm45686_Run(now_ms);
 #endif
   SystemStatusCollector_Update(now_ms);

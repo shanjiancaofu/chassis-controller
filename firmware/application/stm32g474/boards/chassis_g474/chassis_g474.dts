@@ -1,0 +1,83 @@
+/dts-v1/;
+
+/ {
+    model = "Chassis Controller STM32G474VET6";
+    compatible = "shanjiancaofu,chassis-g474";
+
+    chosen {
+        chassis,can = <&can0>;
+        chassis,imu = <&imu0>;
+        chassis,display = <&display0>;
+        chassis,flash = <&flash0>;
+        chassis,drive = <&drive0>;
+    };
+
+    can0: can {
+        phandle = <1>;
+        chassis,device-id = "can0";
+        compatible = "st,stm32g4-fdcan";
+        status = "okay";
+        cubemx-handle = "hfdcan2";
+        bitrate = <500000>;
+        sample-point = <800>;
+        bitrate-data = <2000000>;
+        sample-point-data = <824>;
+        standard-filter-count = <2>;
+    };
+
+    imu0: sensor {
+        phandle = <2>;
+        chassis,device-id = "imu0";
+        compatible = "invensense,icm45686";
+        status = "okay";
+        bus = "spi3";
+        cubemx-handle = "hspi3";
+        frequency = <1328125>;
+    };
+
+    display0: display {
+        phandle = <3>;
+        chassis,device-id = "display0";
+        compatible = "sitronix,st7789v";
+        status = "okay";
+        bus = "spi2";
+        cubemx-handle = "hspi2";
+        width = <320>;
+        height = <240>;
+    };
+
+    flash0: flash {
+        phandle = <4>;
+        chassis,device-id = "flash0";
+        compatible = "winbond,w25q64";
+        status = "okay";
+        bus = "quadspi1";
+        cubemx-handle = "hqspi1";
+        size = <0x00800000>;
+        erase-block-size = <4096>;
+        write-block-size = <256>;
+    };
+
+    drive0: motor-controller {
+        phandle = <5>;
+        chassis,device-id = "drive0";
+        compatible = "st,stm32-pwm-drive";
+        status = "okay";
+        cubemx-handle = "htim8";
+        pwm-period = <8499>;
+    };
+
+    left-encoder {
+        chassis,device-id = "left_encoder";
+        compatible = "st,stm32-tim-encoder";
+        status = "okay";
+        cubemx-handle = "htim2";
+    };
+
+    right-encoder {
+        chassis,device-id = "right_encoder";
+        compatible = "st,stm32-tim-encoder";
+        status = "okay";
+        cubemx-handle = "htim4";
+    };
+};

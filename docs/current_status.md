@@ -247,15 +247,17 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 通过 UART OTA 安装 `build/arm-release/app-v0.15.0-b1.ota`，复核
+1. 先基于恢复 CubeMX 初始化入口后的 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前
+   仅记录构建结果，不写硬件 PASS。
+2. 通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
    `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`、四任务、
    `fault=0`、`control=STOPPED`、左右 PWM 为零和 LCD 四页。
-2. 检查编码器增量、里程计方向、采样时间戳/年龄和
+3. 检查编码器增量、里程计方向、采样时间戳/年龄和
    `odometry reset`。
-3. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
+4. 落地进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
    固定前不接入航向融合。
-4. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
-5. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
+5. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口。
+6. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
    欠压注入验证；方向不重复测试。
 
 当前路线：

@@ -86,6 +86,46 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
+  .device (READONLY) :
+  {
+    . = ALIGN(4);
+    __device_start = .;
+    KEEP(*(.device))
+    __device_end = .;
+    . = ALIGN(4);
+  } >FLASH
+
+  .chassis_init (READONLY) :
+  {
+    . = ALIGN(4);
+    __init_EARLY_start = .;
+    KEEP(*(SORT_BY_NAME(.z_init_EARLY_P_?_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_EARLY_P_??_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_EARLY_P_???_SUB_*)))
+    __init_EARLY_end = .;
+    __init_PRE_KERNEL_1_start = .;
+    KEEP(*(SORT_BY_NAME(.z_init_PRE_KERNEL_1_P_?_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_PRE_KERNEL_1_P_??_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_PRE_KERNEL_1_P_???_SUB_*)))
+    __init_PRE_KERNEL_1_end = .;
+    __init_PRE_KERNEL_2_start = .;
+    KEEP(*(SORT_BY_NAME(.z_init_PRE_KERNEL_2_P_?_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_PRE_KERNEL_2_P_??_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_PRE_KERNEL_2_P_???_SUB_*)))
+    __init_PRE_KERNEL_2_end = .;
+    __init_POST_KERNEL_start = .;
+    KEEP(*(SORT_BY_NAME(.z_init_POST_KERNEL_P_?_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_POST_KERNEL_P_??_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_POST_KERNEL_P_???_SUB_*)))
+    __init_POST_KERNEL_end = .;
+    __init_APPLICATION_start = .;
+    KEEP(*(SORT_BY_NAME(.z_init_APPLICATION_P_?_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_APPLICATION_P_??_SUB_*)))
+    KEEP(*(SORT_BY_NAME(.z_init_APPLICATION_P_???_SUB_*)))
+    __init_APPLICATION_end = .;
+    . = ALIGN(4);
+  } >FLASH
+
   .ARM.extab (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
   {
     . = ALIGN(4);

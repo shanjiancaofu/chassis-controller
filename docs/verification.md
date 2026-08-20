@@ -54,6 +54,21 @@
 
 ## 构建基线
 
+### CubeMX 初始化入口恢复（2026-08-20）
+
+按仓库规则恢复 CubeMX 生成的 `Core/Src/main.c`、`gpio.c`、`dma.c` 及对应头文件，并重新纳入
+Application CMake。Device Model 的 `EARLY/PRE_KERNEL_1/PRE_KERNEL_2` 初始化调用保留在
+`main.c` 用户代码区，`POST_KERNEL/APPLICATION` 仍由 FreeRTOS 生成入口调用；CubeMX `.ioc`
+继续作为时钟、GPIO、DMA、NVIC 和外设初始化的硬件配置源。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 115132 | 120 | 55144 | `BUILD PASS` |
+| Release | 102584 | 120 | 55136 | `BUILD PASS` |
+
+Release 镜像门禁报告 Flash `102704 / 491520`、RAM `55256 / 131072`；CubeMX/DTS 一致性检查和
+`git diff --check` 通过。本轮没有烧录或目标板验证，硬件状态保持 `NOT VERIFIED`。
+
 ### 0.15.0 全仓库依赖边界收敛（2026-08-20）
 
 本轮在 0.15.0 首版基础上继续移除 CAN ISR 协议解析和上层 HAL/CubeMX 依赖，拆分 Console、
