@@ -6,16 +6,16 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前处于 OTA V1 主线收尾和 ICM45686 后置阶段。独立 Bootloader、Application 重定位、
+当前处于 OTA V1 持续开发和 Application 原生平台化阶段。独立 Bootloader、Application 重定位、
 UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建。2026-08-13
 已写入并读回匹配的 b12/build22 factory 与 QSPI confirmed 基线。2026-08-17 已通过 UART OTA
 将 b13 安装、TRIAL 验证并提交为 confirmed；b13 在未连接 ICM45686 时正常启动，普通复位后
-保持稳定。OTA V1 代码基线据此冻结；断电启动、零 PWM、安装/回滚故障注入和 CAN FD OTA 均后置，不阻塞当前功能主线。
+保持稳定。此前冻结范围已解除；断电启动、零 PWM、安装/回滚故障注入、CAN FD OTA、PID、
+里程计和传感器动态验收均可与软件开发并行推进，未实测内容继续标记为 `NOT VERIFIED`。
 最新摘要见
 [`docs/current_status.md`](docs/current_status.md)，完整证据见 `docs/verification.md`。
-当前不再扩展 OTA recovery；OTA V1 代码基线已冻结，当前加入 SR501 模块，随后进入 PID、
-轮组标定与加减速、里程计、安全保护、诊断和正式 CAN FD 底盘协议。后置 OTA 回归不阻塞
-功能开发。
+OTA recovery、CAN FD OTA、PID、轮组标定、加减速、里程计、安全保护、诊断和正式 CAN FD
+底盘协议都保持在活动路线中，按实现批次和硬件条件分别验证，不以某一项硬件验收阻塞其他开发。
 
 ## 目录
 
@@ -33,8 +33,8 @@ example/                    # 本地参考例程，不提交
 Application 自有代码位于：
 
 ```text
-app/  board/  bsp/  components/  communication/
-infrastructure/  modules/  rtos/  tests/  config/
+app/  boards/  drivers/  components/  communication/
+subsys/  modules/  kernel/  rtos/  tests/  config/
 ```
 
 ## 文档

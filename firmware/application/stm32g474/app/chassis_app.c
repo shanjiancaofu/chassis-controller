@@ -29,11 +29,11 @@
 #include "config/app_config.h"
 #include "config/build_info.h"
 #include "config/control_config.h"
-#include "infrastructure/console/console.h"
-#include "infrastructure/console/diagnostic_report.h"
-#include "infrastructure/parameter_storage/parameter_storage.h"
-#include "infrastructure/telemetry/telemetry.h"
-#include "infrastructure/uart_protocol/uart_protocol.h"
+#include "subsys/console/console.h"
+#include "subsys/console/diagnostic_report.h"
+#include "subsys/settings/parameter_storage.h"
+#include "subsys/telemetry/telemetry.h"
+#include "communication/uart_protocol/uart_protocol.h"
 #include "modules/chassis/command_manager.h"
 #include "modules/chassis/odometry.h"
 #include "modules/chassis/wheel_controller.h"
@@ -45,6 +45,7 @@
 #include "modules/sensors/imu_orientation.h"
 #include "devicetree_generated.h"
 #include "device.h"
+#include "devicetree_generated.h"
 #include "drivers/uart.h"
 #include "ui/lcd/lcd_status_presenter.h"
 #include "tests/target/iwdg_target_test.h"
@@ -63,20 +64,39 @@ static const OdometryConfig odometry_config = {
     .track_width_m = CHASSIS_TRACK_WIDTH_M,
 };
 
+static const struct device *drive_device;
+static const struct device *left_encoder_device;
+static const struct device *right_encoder_device;
+
 static int16_t GetLeftMotorAppliedDuty(void)
 {
-  return Motor_GetAppliedDuty(MOTOR_LEFT);
+  return motor_get_applied_duty(drive_device, MOTOR_LEFT);
 }
 
 static int16_t GetRightMotorAppliedDuty(void)
 {
-  return Motor_GetAppliedDuty(MOTOR_RIGHT);
+  return motor_get_applied_duty(drive_device, MOTOR_RIGHT);
+}
+
+static void CoastMotors(void)
+{
+  motor_coast_all(drive_device);
+}
+
+static void EmergencyStopMotors(void)
+{
+  motor_emergency_stop(drive_device);
+}
+
+static void SetMotorDutyBoth(int16_t left_duty, int16_t right_duty)
+{
+  motor_set_signed_duty_both(drive_device, left_duty, right_duty);
 }
 
 static const WheelControllerMotorPort wheel_controller_motor_port = {
-    .coast_all = Motor_CoastAll,
-    .emergency_stop = Motor_EmergencyStop,
-    .set_signed_duty_both = Motor_SetSignedDutyBoth,
+    .coast_all = CoastMotors,
+    .emergency_stop = EmergencyStopMotors,
+    .set_signed_duty_both = SetMotorDutyBoth,
     .get_left_applied_duty = GetLeftMotorAppliedDuty,
     .get_right_applied_duty = GetRightMotorAppliedDuty,
 };
@@ -157,14 +177,15 @@ static bool InitializeCommunication(const struct device *can_device,
 
 static bool InitializeHardware(uint32_t now_ms)
 {
-  Motor_Init();
-  if (!Motor_Start()) {
+  if (!device_is_ready(drive_device) || motor_start(drive_device) < 0) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "motor",
                                "INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
-  Encoder_Init();
-  if (!Encoder_Start() || !PowerSample_Init()) {
+  if (!device_is_ready(left_encoder_device) ||
+      !device_is_ready(right_encoder_device) ||
+      encoder_start(left_encoder_device) < 0 ||
+      encoder_start(right_encoder_device) < 0 || !PowerSample_Init()) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "board",
                                "MOTION_IO_INIT_FAILED", "code=UNAVAILABLE");
     return false;
@@ -269,6 +290,9 @@ bool ChassisApp_Init(void)
 {
   const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_CAN);
   const uint32_t now_ms = time_uptime_ms();
+  drive_device = DEVICE_DT_GET(DT_NODE_DRIVE0);
+  left_encoder_device = DEVICE_DT_GET(DT_NODE_LEFT_ENCODER);
+  right_encoder_device = DEVICE_DT_GET(DT_NODE_RIGHT_ENCODER);
 
   if (!InitializeCommunication(can_device, now_ms) ||
       !InitializeHardware(now_ms) || !InitializeProductModules()) {
@@ -457,7 +481,7 @@ void ChassisApp_RunServiceCycle(void)
 
   if (IwdgTargetTest_IsResetRequested()) {
     StopControl();
-    Motor_EmergencyStop();
+    motor_emergency_stop(drive_device);
   }
 
   if (OtaSession_IsResetRequested(now_ms) &&
@@ -466,7 +490,7 @@ void ChassisApp_RunServiceCycle(void)
        (OtaSession_GetSource() == OTA_SOURCE_CAN_FD &&
         OtaCanTransport_IsTxIdle()))) {
     StopControl();
-    Motor_CoastAll();
+    motor_coast_all(drive_device);
     if (watchdog_prepare_for_bootloader()) {
       Reset_RequestSystemReset();
     }
@@ -627,7 +651,11 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     consecutive_control_overruns = 0U;
   }
 
-  Encoder_ReadDelta(&left_delta, &right_delta);
+  if (encoder_read_delta(left_encoder_device, &left_delta) < 0 ||
+      encoder_read_delta(right_encoder_device, &right_delta) < 0) {
+    left_delta = 0;
+    right_delta = 0;
+  }
   max_encoder_delta =
       (int64_t)MOTOR_ENCODER_MAX_DELTA_PER_TICK * notification_count;
   left_abs_delta = left_delta < 0 ? -(int64_t)left_delta : left_delta;
@@ -731,10 +759,10 @@ static bool AcquireTargetTestLock(void)
   }
 
   StopControl();
-  Motor_CoastAll();
+  motor_coast_all(drive_device);
   if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED ||
-      Motor_GetAppliedDuty(MOTOR_LEFT) != 0 ||
-      Motor_GetAppliedDuty(MOTOR_RIGHT) != 0) {
+      motor_get_applied_duty(drive_device, MOTOR_LEFT) != 0 ||
+      motor_get_applied_duty(drive_device, MOTOR_RIGHT) != 0) {
     return false;
   }
 
@@ -760,10 +788,10 @@ static bool AcquireOtaMaintenanceLock(void)
   }
 
   StopControl();
-  Motor_CoastAll();
+  motor_coast_all(drive_device);
   if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED ||
-      Motor_GetAppliedDuty(MOTOR_LEFT) != 0 ||
-      Motor_GetAppliedDuty(MOTOR_RIGHT) != 0) {
+      motor_get_applied_duty(drive_device, MOTOR_LEFT) != 0 ||
+      motor_get_applied_duty(drive_device, MOTOR_RIGHT) != 0) {
     return false;
   }
 
@@ -864,14 +892,14 @@ static CommandManagerSubmitResult SubmitMotionCommand(
 
 void ChassisApp_FatalError(void)
 {
-  Motor_EmergencyStop();
+  motor_emergency_stop(drive_device);
   LatchChassisInternalFault(CHASSIS_FAULT_INTERNAL);
 }
 
 void ChassisApp_PanicStopFromException(void)
 {
   taskDISABLE_INTERRUPTS();
-  Motor_EmergencyStop();
+  motor_emergency_stop(drive_device);
 }
 
 bool ChassisApp_ClearEmergencyStop(void)
@@ -886,7 +914,7 @@ bool ChassisApp_ClearEmergencyStop(void)
     return false;
   }
   (void)SafetyManager_ClearEmergencyStop();
-  Motor_ClearEmergencyStop();
+  motor_clear_emergency_stop(drive_device);
   taskEXIT_CRITICAL();
 
   StopControl();

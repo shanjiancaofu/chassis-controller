@@ -6,8 +6,8 @@
 #include "communication/ota_transport/ota_session.h"
 #include "communication/ota_transport/ota_uart_arm_guard.h"
 #include "communication/ota_transport/ota_uart_transport.h"
-#include "infrastructure/telemetry/telemetry.h"
-#include "infrastructure/uart_protocol/uart_protocol.h"
+#include "subsys/telemetry/telemetry.h"
+#include "communication/uart_protocol/uart_protocol.h"
 #include "modules/chassis/command_manager.h"
 
 #define OTA_UART_ARM_TIMEOUT_MS 30000U

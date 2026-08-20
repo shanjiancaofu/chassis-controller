@@ -1,4 +1,4 @@
-#include "infrastructure/parameter_storage/parameter_record.h"
+#include "subsys/settings/parameter_record.h"
 
 #include <stddef.h>
 

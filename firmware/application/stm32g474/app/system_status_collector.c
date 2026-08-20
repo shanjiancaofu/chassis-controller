@@ -11,7 +11,7 @@
 #include "communication/ota_transport/ota_confirmation.h"
 #include "communication/ota_transport/ota_session.h"
 #include "communication/ota_transport/ota_uart_transport.h"
-#include "infrastructure/telemetry/telemetry.h"
+#include "subsys/telemetry/telemetry.h"
 #include "modules/chassis/odometry.h"
 #include "modules/chassis/wheel_controller.h"
 #include "modules/diagnostics/board_health.h"

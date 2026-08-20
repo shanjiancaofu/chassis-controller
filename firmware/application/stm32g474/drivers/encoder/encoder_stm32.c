@@ -1,46 +1,51 @@
 #include "drivers/encoder/encoder.h"
 
-#include "boards/chassis_g474/board_config.h"
-
-static uint16_t previous_left_count;
-static uint16_t previous_right_count;
-
-void Encoder_Init(void)
+static const EncoderStm32Config *config(const struct device *device)
 {
-  __HAL_TIM_SET_COUNTER(&BOARD_LEFT_ENCODER_TIMER, 0U);
-  __HAL_TIM_SET_COUNTER(&BOARD_RIGHT_ENCODER_TIMER, 0U);
-  previous_left_count = 0U;
-  previous_right_count = 0U;
+  return device != NULL ? device->config : NULL;
 }
 
-bool Encoder_Start(void)
+static EncoderStm32Data *data(const struct device *device)
 {
-  Encoder_Init();
-  if (HAL_TIM_Encoder_Start(&BOARD_LEFT_ENCODER_TIMER, TIM_CHANNEL_ALL) !=
-      HAL_OK) {
-    return false;
-  }
-  if (HAL_TIM_Encoder_Start(&BOARD_RIGHT_ENCODER_TIMER, TIM_CHANNEL_ALL) !=
-      HAL_OK) {
-    HAL_TIM_Encoder_Stop(&BOARD_LEFT_ENCODER_TIMER, TIM_CHANNEL_ALL);
-    return false;
-  }
-  return true;
+  return device != NULL ? device->data : NULL;
 }
 
-void Encoder_ReadDelta(int32_t *left_delta, int32_t *right_delta)
+static int Start(const struct device *device)
 {
-  const uint16_t current_left =
-      (uint16_t)__HAL_TIM_GET_COUNTER(&BOARD_LEFT_ENCODER_TIMER);
-  const uint16_t current_right =
-      (uint16_t)__HAL_TIM_GET_COUNTER(&BOARD_RIGHT_ENCODER_TIMER);
+  const EncoderStm32Config *cfg = config(device);
+  EncoderStm32Data *state = data(device);
+  if (cfg == NULL || state == NULL || cfg->timer == NULL ||
+      HAL_TIM_Encoder_Start(cfg->timer, TIM_CHANNEL_ALL) != HAL_OK) {
+    return -1;
+  }
+  __HAL_TIM_SET_COUNTER(cfg->timer, 0U);
+  state->previous_count = 0U;
+  return 0;
+}
 
-  *left_delta =
-      (int32_t)(int16_t)(current_left - previous_left_count) *
-      BOARD_LEFT_ENCODER_DIRECTION;
-  *right_delta =
-      (int32_t)(int16_t)(current_right - previous_right_count) *
-      BOARD_RIGHT_ENCODER_DIRECTION;
-  previous_left_count = current_left;
-  previous_right_count = current_right;
+static int ReadDelta(const struct device *device, int32_t *delta)
+{
+  const EncoderStm32Config *cfg = config(device);
+  EncoderStm32Data *state = data(device);
+  uint16_t current;
+  if (cfg == NULL || state == NULL || cfg->timer == NULL || delta == NULL) {
+    return -1;
+  }
+  current = (uint16_t)__HAL_TIM_GET_COUNTER(cfg->timer);
+  *delta = (int32_t)(int16_t)(current - state->previous_count) * cfg->direction;
+  state->previous_count = current;
+  return 0;
+}
+
+const EncoderDriverApi encoder_stm32_api = {
+    .start = Start,
+    .read_delta = ReadDelta,
+};
+
+int EncoderStm32_Init(const struct device *device)
+{
+  EncoderStm32Data *state = data(device);
+  if (state == NULL) return -1;
+  state->previous_count = 0U;
+  return 0;
 }

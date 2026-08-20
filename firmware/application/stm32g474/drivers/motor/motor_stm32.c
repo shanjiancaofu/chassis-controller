@@ -1,155 +1,133 @@
 #include "drivers/motor/motor.h"
 
-#include "boards/chassis_g474/board_config.h"
-
-static volatile bool emergency_stopped;
-static int16_t left_applied_duty;
-static int16_t right_applied_duty;
-
-void Motor_Init(void)
+static const MotorStm32Config *config(const struct device *device)
 {
-  Motor_CoastAll();
+  return device != NULL ? device->config : NULL;
 }
 
-bool Motor_Start(void)
+static MotorStm32Data *data(const struct device *device)
 {
-  if (BOARD_MOTOR_TIMER.Instance != TIM8) {
-    return false;
-  }
-
-  Motor_CoastAll();
-  if (HAL_TIM_PWM_Start(&BOARD_MOTOR_TIMER,
-                        BOARD_MOTOR_LEFT_POSITIVE_CHANNEL) != HAL_OK ||
-      HAL_TIM_PWM_Start(&BOARD_MOTOR_TIMER,
-                        BOARD_MOTOR_LEFT_NEGATIVE_CHANNEL) != HAL_OK ||
-      HAL_TIM_PWM_Start(&BOARD_MOTOR_TIMER,
-                        BOARD_MOTOR_RIGHT_NEGATIVE_CHANNEL) != HAL_OK ||
-      HAL_TIM_PWM_Start(&BOARD_MOTOR_TIMER,
-                        BOARD_MOTOR_RIGHT_POSITIVE_CHANNEL) != HAL_OK) {
-    HAL_TIM_PWM_Stop(&BOARD_MOTOR_TIMER,
-                     BOARD_MOTOR_LEFT_POSITIVE_CHANNEL);
-    HAL_TIM_PWM_Stop(&BOARD_MOTOR_TIMER,
-                     BOARD_MOTOR_LEFT_NEGATIVE_CHANNEL);
-    HAL_TIM_PWM_Stop(&BOARD_MOTOR_TIMER,
-                     BOARD_MOTOR_RIGHT_NEGATIVE_CHANNEL);
-    HAL_TIM_PWM_Stop(&BOARD_MOTOR_TIMER,
-                     BOARD_MOTOR_RIGHT_POSITIVE_CHANNEL);
-    Motor_CoastAll();
-    return false;
-  }
-
-  Motor_CoastAll();
-  return true;
+  return device != NULL ? device->data : NULL;
 }
 
-void Motor_SetSignedDuty(MotorId motor, int16_t duty)
+static void Coast(const struct device *device)
 {
-  int32_t value = duty;
-  uint32_t compare;
+  const MotorStm32Config *cfg = config(device);
+  MotorStm32Data *state = data(device);
   const uint32_t primask = __get_PRIMASK();
 
-  if (value > MOTOR_COMPARE_MAX) {
-    value = MOTOR_COMPARE_MAX;
-  } else if (value < -MOTOR_COMPARE_MAX) {
-    value = -MOTOR_COMPARE_MAX;
-  }
-  compare = (uint32_t)(value < 0 ? -value : value);
-
   __disable_irq();
-  if (emergency_stopped || BOARD_MOTOR_TIMER.Instance != TIM8) {
+  if (cfg != NULL && cfg->timer != NULL) {
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->left_positive_channel, 0U);
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->left_negative_channel, 0U);
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->right_positive_channel, 0U);
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->right_negative_channel, 0U);
+  }
+  if (state != NULL) {
+    state->left_applied_duty = 0;
+    state->right_applied_duty = 0;
+  }
+  __set_PRIMASK(primask);
+}
+
+static int Start(const struct device *device)
+{
+  const MotorStm32Config *cfg = config(device);
+  if (cfg == NULL || cfg->timer == NULL || cfg->timer->Instance != TIM8) {
+    return -1;
+  }
+  Coast(device);
+  if (HAL_TIM_PWM_Start(cfg->timer, cfg->left_positive_channel) != HAL_OK ||
+      HAL_TIM_PWM_Start(cfg->timer, cfg->left_negative_channel) != HAL_OK ||
+      HAL_TIM_PWM_Start(cfg->timer, cfg->right_positive_channel) != HAL_OK ||
+      HAL_TIM_PWM_Start(cfg->timer, cfg->right_negative_channel) != HAL_OK) {
+    Coast(device);
+    return -1;
+  }
+  Coast(device);
+  return 0;
+}
+
+static void SetDuty(const struct device *device, MotorId motor, int16_t duty)
+{
+  const MotorStm32Config *cfg = config(device);
+  MotorStm32Data *state = data(device);
+  int32_t value = duty;
+  const uint32_t primask = __get_PRIMASK();
+
+  if (cfg == NULL || state == NULL || cfg->timer == NULL ||
+      cfg->timer->Instance != TIM8) {
+    return;
+  }
+  if (value > MOTOR_COMPARE_MAX) value = MOTOR_COMPARE_MAX;
+  if (value < -MOTOR_COMPARE_MAX) value = -MOTOR_COMPARE_MAX;
+  __disable_irq();
+  if (state->emergency_stopped) {
     __set_PRIMASK(primask);
     return;
   }
-
   if (motor == MOTOR_LEFT) {
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_LEFT_POSITIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_LEFT_NEGATIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(
-        &BOARD_MOTOR_TIMER,
-        value >= 0 ? BOARD_MOTOR_LEFT_POSITIVE_CHANNEL
-                   : BOARD_MOTOR_LEFT_NEGATIVE_CHANNEL,
-        compare);
-    left_applied_duty = (int16_t)value;
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->left_positive_channel, 0U);
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->left_negative_channel, 0U);
+    __HAL_TIM_SET_COMPARE(cfg->timer,
+                          value >= 0 ? cfg->left_positive_channel
+                                     : cfg->left_negative_channel,
+                          (uint32_t)(value < 0 ? -value : value));
+    state->left_applied_duty = (int16_t)value;
   } else if (motor == MOTOR_RIGHT) {
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_RIGHT_NEGATIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_RIGHT_POSITIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(
-        &BOARD_MOTOR_TIMER,
-        value >= 0 ? BOARD_MOTOR_RIGHT_POSITIVE_CHANNEL
-                   : BOARD_MOTOR_RIGHT_NEGATIVE_CHANNEL,
-        compare);
-    right_applied_duty = (int16_t)value;
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->right_positive_channel, 0U);
+    __HAL_TIM_SET_COMPARE(cfg->timer, cfg->right_negative_channel, 0U);
+    __HAL_TIM_SET_COMPARE(cfg->timer,
+                          value >= 0 ? cfg->right_positive_channel
+                                     : cfg->right_negative_channel,
+                          (uint32_t)(value < 0 ? -value : value));
+    state->right_applied_duty = (int16_t)value;
   }
   __set_PRIMASK(primask);
 }
 
-void Motor_SetSignedDutyBoth(int16_t left_duty, int16_t right_duty)
+static void SetBoth(const struct device *device, int16_t left, int16_t right)
 {
-  Motor_SetSignedDuty(MOTOR_LEFT, left_duty);
-  Motor_SetSignedDuty(MOTOR_RIGHT, right_duty);
+  SetDuty(device, MOTOR_LEFT, left);
+  SetDuty(device, MOTOR_RIGHT, right);
 }
 
-void Motor_CoastAll(void)
+static void EmergencyStop(const struct device *device)
 {
-  const uint32_t primask = __get_PRIMASK();
-
-  __disable_irq();
-  if (BOARD_MOTOR_TIMER.Instance == TIM8) {
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_LEFT_POSITIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_LEFT_NEGATIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_RIGHT_NEGATIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_RIGHT_POSITIVE_CHANNEL, 0U);
-  }
-  left_applied_duty = 0;
-  right_applied_duty = 0;
-  __set_PRIMASK(primask);
+  MotorStm32Data *state = data(device);
+  if (state != NULL) state->emergency_stopped = true;
+  Coast(device);
 }
 
-void Motor_EmergencyStop(void)
+static void ClearEmergencyStop(const struct device *device)
 {
-  const uint32_t primask = __get_PRIMASK();
-
-  __disable_irq();
-  emergency_stopped = true;
-  if (BOARD_MOTOR_TIMER.Instance == TIM8) {
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_LEFT_POSITIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_LEFT_NEGATIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_RIGHT_NEGATIVE_CHANNEL, 0U);
-    __HAL_TIM_SET_COMPARE(&BOARD_MOTOR_TIMER,
-                          BOARD_MOTOR_RIGHT_POSITIVE_CHANNEL, 0U);
-  }
-  left_applied_duty = 0;
-  right_applied_duty = 0;
-  __set_PRIMASK(primask);
+  MotorStm32Data *state = data(device);
+  if (state != NULL) state->emergency_stopped = false;
 }
 
-void Motor_ClearEmergencyStop(void)
+static int16_t GetDuty(const struct device *device, MotorId motor)
 {
-  const uint32_t primask = __get_PRIMASK();
-
-  __disable_irq();
-  emergency_stopped = false;
-  __set_PRIMASK(primask);
+  const MotorStm32Data *state = data(device);
+  if (state == NULL) return 0;
+  return motor == MOTOR_LEFT ? state->left_applied_duty
+                             : motor == MOTOR_RIGHT ? state->right_applied_duty : 0;
 }
 
-int16_t Motor_GetAppliedDuty(MotorId motor)
+const MotorDriverApi motor_stm32_api = {
+    .start = Start,
+    .set_signed_duty = SetDuty,
+    .set_signed_duty_both = SetBoth,
+    .coast_all = Coast,
+    .emergency_stop = EmergencyStop,
+    .clear_emergency_stop = ClearEmergencyStop,
+    .get_applied_duty = GetDuty,
+};
+
+int MotorStm32_Init(const struct device *device)
 {
-  if (motor == MOTOR_LEFT) {
-    return left_applied_duty;
-  }
-  if (motor == MOTOR_RIGHT) {
-    return right_applied_duty;
-  }
+  MotorStm32Data *state = data(device);
+  if (state == NULL) return -1;
+  state->emergency_stopped = false;
+  Coast(device);
   return 0;
 }

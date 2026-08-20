@@ -1,4 +1,7 @@
 #include "drivers/safety/emergency_stop.h"
+#include "device.h"
+#include "devicetree_generated.h"
+#include "drivers/motor/motor.h"
 
 #include "drivers/motor/motor.h"
 #include "boards/chassis_g474/board_config.h"
@@ -20,7 +23,7 @@ void EmergencyStop_OnInterrupt(void)
   if (!EmergencyStop_IsAsserted()) {
     return;
   }
-  Motor_EmergencyStop();
+  motor_emergency_stop(DEVICE_DT_GET(DT_NODE_DRIVE0));
   if (latched_callback != NULL) {
     latched_callback();
   }

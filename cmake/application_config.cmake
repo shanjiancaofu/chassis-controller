@@ -72,7 +72,7 @@ execute_process(
           --scope app
           --scope modules
           --scope communication
-          --scope infrastructure
+          --scope subsys
           --scope ui
           --scope rtos
   COMMAND_ERROR_IS_FATAL ANY)

@@ -10,7 +10,7 @@ from tools.build.check_architecture import scan
 class ArchitectureCheckTest(unittest.TestCase):
     def test_current_application_layers_are_clean(self) -> None:
         root = Path(__file__).parents[3] / "firmware/application/stm32g474"
-        self.assertEqual(scan(root, ["app", "modules", "communication", "infrastructure", "ui", "rtos"]), [])
+        self.assertEqual(scan(root, ["app", "modules", "communication", "subsys", "ui", "rtos"]), [])
 
     def test_direct_hal_include_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -45,28 +45,30 @@ chassis-controller/
 │  │     ├─ Application/User/        # CubeMX/CubeIDE 工程入口
 │  │     ├─ chassis_controller.ioc
 │  │     │
-│  │     ├─ board/                   # 当前硬件板资源映射
-│  │     │  └─ board_config.h
+│  │     ├─ boards/
+│  │     │  └─ chassis_g474/         # DTS、板级设备实例和 CubeMX handle 绑定
+│  │     │     ├─ chassis_g474.dts
+│  │     │     ├─ board_config.h
+│  │     │     └─ board_devices.c
 │  │     │
-│  │     ├─ bsp/                     # 板级外设和具体设备驱动
+│  │     ├─ drivers/                 # 真实设备驱动和 STM32 HAL 适配
+│  │     │  ├─ adc/
 │  │     │  ├─ button/
-│  │     │  ├─ emergency_stop/
-│  │     │  ├─ encoder/
-│  │     │  ├─ fdcan/
-│  │     │  ├─ interrupts/
-│  │     │  ├─ lcd/
+│  │     │  ├─ can/
+│  │     │  ├─ display/
 │  │     │  │  └─ assets/            # LCD 图片和取模素材
+│  │     │  ├─ encoder/
+│  │     │  ├─ flash/
+│  │     │  ├─ gpio/
 │  │     │  ├─ led/
 │  │     │  ├─ motor/
-│  │     │  ├─ power_monitor/
-│  │     │  ├─ qspi/
 │  │     │  ├─ reset/
 │  │     │  ├─ rtc/
-│  │     │  ├─ sr501/
+│  │     │  ├─ safety/
+│  │     │  ├─ sensor/
 │  │     │  ├─ time/
 │  │     │  ├─ uart/
-│  │     │  ├─ watchdog/
-│  │     │  └─ imu/                  # ICM45686 SPI3/DMA 板级适配
+│  │     │  └─ watchdog/
 │  │     │
 │  │     ├─ components/              # 不依赖 HAL 的通用算法组件
 │  │     │  ├─ pid/
@@ -80,11 +82,12 @@ chassis-controller/
 │  │     │  ├─ chassis_protocol/
 │  │     │  └─ ota_transport/
 │  │     │
-│  │     ├─ infrastructure/          # 非实时运行基础设施
+│  │     ├─ subsys/                  # 非实时公共子系统
 │  │     │  ├─ console/
-│  │     │  ├─ telemetry/
-│  │     │  └─ parameter_storage/    # 参数持久化落地时创建
+│  │     │  ├─ settings/
+│  │     │  └─ telemetry/
 │  │     │
+│  │     ├─ kernel/                  # Device/Init/linker integration
 │  │     ├─ ui/                      # 产品界面和像素渲染
 │  │     │  └─ lcd/
 │  │     │     ├─ lcd_ui.c
@@ -154,6 +157,8 @@ chassis-controller/
 │  │     │  ├─ target_test_config.h
 │  │     │  └─ build_info.h
 │  │     │
+│  │     ├─ app/                     # 产品装配和维护协调
+│  │     ├─ rtos/                    # FreeRTOS task runtime
 │  │     └─ tests/
 │  │        ├─ unit/                 # PC 单元测试
 │  │        └─ target/               # STM32 板上测试
@@ -294,13 +299,14 @@ USART1 轮询输出启动诊断，不依赖 CubeMX UART 初始化。
 
 `protocol/` 保持仓库顶层，因为 CAN FD 和 OTA 传输协议同时约束 STM32、
 Jetson 和主机工具，不属于某个固件工程。LCD 图片素材跟随使用者放在
-`firmware/application/stm32g474/bsp/lcd/assets/`，不再放仓库顶层。
+`firmware/application/stm32g474/drivers/display/assets/`，不再放仓库顶层。
 
 ## 命名规则
 
 - CubeMX 已使用 `Drivers/` 和 `Middlewares/`，自定义层不再使用同名小写目录。
-- 自定义代码统一使用 `board/`、`bsp/`、`components/`、`communication/`、
-  `infrastructure/`、`ui/`、`modules/`、`rtos/`、`app/` 和 `config/`。
+- Application 自定义代码统一使用 `boards/`、`drivers/`、`components/`、`communication/`、
+  `subsys/`、`kernel/`、`ui/`、`modules/`、`rtos/`、`app/`、`tests/` 和 `config/`；不再创建
+  Application `bsp/` 或 `infrastructure/` 目录。
 - 文件名使用 `snake_case`，目录按业务或设备命名。
 - FreeRTOS 入口使用 `RtosApp_<TaskName>TaskMain()`；任务每次调度调用的 Application 周期函数
   使用 `ChassisApp_Run<TaskName>Cycle()`，不使用含义不清的统一 `Run()`。

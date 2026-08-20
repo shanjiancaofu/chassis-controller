@@ -1,4 +1,4 @@
-#include "infrastructure/console/diagnostic_report.h"
+#include "subsys/console/diagnostic_report.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -7,8 +7,8 @@
 #include "config/build_info.h"
 #include "config/storage_layout.h"
 #include "communication/ota_transport/ota_confirmation.h"
-#include "infrastructure/telemetry/telemetry.h"
-#include "infrastructure/uart_protocol/uart_protocol.h"
+#include "subsys/telemetry/telemetry.h"
+#include "communication/uart_protocol/uart_protocol.h"
 #include "modules/diagnostics/system_status.h"
 #include "tests/target/qspi_target_test.h"
 

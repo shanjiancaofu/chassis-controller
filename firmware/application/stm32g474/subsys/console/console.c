@@ -1,4 +1,4 @@
-#include "infrastructure/console/console.h"
+#include "subsys/console/console.h"
 
 #include <limits.h>
 #include <stdio.h>

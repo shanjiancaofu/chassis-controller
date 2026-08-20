@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "infrastructure/console/console.h"
+#include "subsys/console/console.h"
 #include "modules/chassis/command_manager.h"
 #include "tests/target/motor_target_test.h"
 

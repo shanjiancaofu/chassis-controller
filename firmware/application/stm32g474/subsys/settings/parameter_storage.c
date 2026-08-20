@@ -1,11 +1,11 @@
-#include "infrastructure/parameter_storage/parameter_storage.h"
+#include "subsys/settings/parameter_storage.h"
 
 #include <stddef.h>
 #include <string.h>
 
 #include "drivers/flash.h"
 #include "config/storage_layout.h"
-#include "infrastructure/parameter_storage/parameter_record.h"
+#include "subsys/settings/parameter_record.h"
 
 #define PARAMETER_COPY_A_START QSPI_PARAMETERS_START
 #define PARAMETER_COPY_B_START (QSPI_PARAMETERS_START + QSPI_FLASH_SECTOR_SIZE)

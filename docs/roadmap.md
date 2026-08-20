@@ -14,7 +14,7 @@
 - 关键任务健康汇总和条件喂狗
 - `chassis`、`safety`、`parameters`、`diagnostics` 业务域
 - LCD 硬件传输与 UI 渲染分离、Application 状态采集器、RTOS 回调装配和轮控电机端口
-- FDCAN ISR 原始帧队列、HAL 边界 BSP、IMU orientation 业务模块、Console/OTA Application 协调器
+- FDCAN ISR 原始帧队列、HAL 边界 drivers、IMU orientation 业务模块、Console/OTA Application 协调器
 
 Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重新 clean build。
 构建尺寸和未完成的实物回归见 `verification.md`。
@@ -28,13 +28,14 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 | 五个 `firmware/shared/*.h` | Bootloader、Application 和主机工具共用固定 ABI/硬件契约 | 已完成首版，后续兼容修改必须提升格式版本 |
 | Application `components/pid/`、`components/crc/` | Bootloader 保持独立 CRC 实现 | 已按独立工程边界拆分 |
 | `communication/can_transport/`、`communication/ota_transport/` | 增加 `chassis_protocol/` | 正式底盘协议编解码落地时 |
-| `infrastructure/` | 保留现有命名，后续增加参数存储 | 参数持久化实现时 |
+| `subsys/console/`、`subsys/settings/`、`subsys/telemetry/` | 按 subsystem 组织公共服务 | 已完成目录迁移，后续按服务能力扩展 |
 | `modules/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
 | `rtos/rtos_app.c/h` 四任务职责模型 | 继续按真实阻塞或周期需求演进，不按硬件数量增加任务 | 已完成首版迁移 |
-| `ui/lcd/` 与 `bsp/lcd/` | UI 持有布局/像素，BSP 持有控制器/SPI DMA | 0.15.0 已完成拆分 |
-| `app/system_status_collector.c` | 统一组装 BSP/RTOS 到诊断 DTO | 0.15.0 已完成拆分 |
+| `ui/lcd/` 与 `drivers/display/` | UI 持有布局/像素，driver 持有控制器/SPI DMA | 已完成拆分 |
+| `app/system_status_collector.c` | 统一组装 driver/RTOS 到诊断 DTO | 0.15.0 已完成拆分 |
 | CAN ISR 与 communication | ISR 只收原始帧，`service_task` 解析，公共接口不暴露 HAL | 0.15.0 已完成收敛 |
-| `bsp/imu` 与 `modules/sensors/imu_orientation` | BSP 管 SPI/FIFO/DMA，模块持有融合状态 | 0.15.0 已完成拆分 |
+| `drivers/motor`、`drivers/encoder` | 真实 device/api/data/state 实例，WheelController 只依赖 generic motor port | 首批 Device Model 迁移已完成，继续迁移 power/sensor/display |
+| `drivers/sensor/icm45686_stm32.c` 与 `modules/sensors/imu_orientation` | driver 管 SPI/FIFO/DMA，模块持有融合状态 | 已完成拆分 |
 | `app/chassis_console_commands`、`app/chassis_maintenance` | Console 执行与 OTA 维护协调不再堆在 `chassis_app.c` | 0.15.0 已完成拆分 |
 | `tests/target/` 和 `tests/unit/` | 按风险补目标板测试和无 HAL 主机测试 | CommandManager 首批主机测试已落地 |
 | 独立 Bootloader 工程 | 继续与 Application 保持独立 CubeMX、链接脚本和构建配置 | 已完成首版 |
@@ -267,6 +268,9 @@ OTA V1 的 UART 主链已通过，但代码和验收范围不再冻结。以下�
 
 ## 后续阶段
 
+冻结限制已解除。软件架构、driver API、OTA recovery、协议、主机测试和硬件验收允许并行推进；
+`NOT VERIFIED` 仅表示证据尚未完成，不作为开发前置条件。
+
 ### 底盘功能（阶段 6 之后）
 
 阶段 5/6 进入底盘功能收尾后，按以下详细项推进：
@@ -280,7 +284,7 @@ OTA V1 的 UART 主链已通过，但代码和验收范围不再冻结。以下�
    距离、原地旋转角度及轮径/轮距校准。
 5. 堵转、编码器异常和电压保护代码已完成；故障注入和阈值实测 `NOT VERIFIED`。
 6. Fault、Health 和 Reset 诊断闭环。
-7. 在已验证行为基础上完善并冻结正式 CAN FD 底盘协议。
+7. 在已验证行为基础上完善并分批验收正式 CAN FD 底盘协议；不以协议验收冻结其他软件开发。
 
 ### 发布安全
 

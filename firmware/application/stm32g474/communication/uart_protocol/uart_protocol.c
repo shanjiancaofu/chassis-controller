@@ -1,4 +1,4 @@
-#include "infrastructure/uart_protocol/uart_protocol.h"
+#include "communication/uart_protocol/uart_protocol.h"
 
 #include <stdarg.h>
 #include <stdio.h>

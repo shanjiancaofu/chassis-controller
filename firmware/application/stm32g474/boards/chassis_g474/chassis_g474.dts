@@ -14,6 +14,8 @@
         chassis,watchdog = <&watchdog0>;
         chassis,rtc = <&rtc0>;
         chassis,time = <&time0>;
+        chassis,left-encoder = <&left_encoder>;
+        chassis,right-encoder = <&right_encoder>;
     };
 
     aliases {
@@ -22,6 +24,8 @@
         display = &display0;
         flash = &flash0;
         drive = &drive0;
+        left-encoder = &left_encoder;
+        right-encoder = &right_encoder;
     };
 
     can0: can {
@@ -110,14 +114,14 @@
         status = "okay";
     };
 
-    left-encoder {
+    left_encoder: left-encoder {
         chassis,device-id = "left_encoder";
         compatible = "st,stm32-tim-encoder";
         status = "okay";
         cubemx-handle = "htim2";
     };
 
-    right-encoder {
+    right_encoder: right-encoder {
         chassis,device-id = "right_encoder";
         compatible = "st,stm32-tim-encoder";
         status = "okay";

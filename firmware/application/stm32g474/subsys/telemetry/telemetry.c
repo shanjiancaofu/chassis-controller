@@ -1,4 +1,4 @@
-#include "infrastructure/telemetry/telemetry.h"
+#include "subsys/telemetry/telemetry.h"
 
 #include <limits.h>
 #include <stddef.h>
@@ -7,7 +7,7 @@
 #include "drivers/uart.h"
 #include "config/control_config.h"
 #include "config/protocol_config.h"
-#include "infrastructure/uart_protocol/uart_protocol.h"
+#include "communication/uart_protocol/uart_protocol.h"
 
 static TelemetryMode telemetry_mode;
 static uint32_t last_transmit_ms;
