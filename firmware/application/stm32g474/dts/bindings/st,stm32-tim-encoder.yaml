@@ -1,0 +1,9 @@
+compatible: "st,stm32-tim-encoder"
+required:
+  - status
+  - cubemx-handle
+properties:
+  status:
+    type: string
+  cubemx-handle:
+    type: string

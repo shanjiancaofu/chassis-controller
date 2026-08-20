@@ -247,10 +247,9 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角不�
 
 ## 下一步
 
-1. 完善自实现 Devicetree 的 `chosen/aliases/phandle-array` 和 bindings 校验，并增加错误输入测试。
-2. 基于恢复 CubeMX 初始化入口后的 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前
+1. 基于恢复 CubeMX 初始化入口后的 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前
    仅记录构建结果，不写硬件 PASS。
-3. 通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
+2. 通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
    `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`、四任务、
    `fault=0`、`control=STOPPED`、左右 PWM 为零和 LCD 四页。
 4. 检查编码器增量、里程计方向、采样时间戳/年龄和

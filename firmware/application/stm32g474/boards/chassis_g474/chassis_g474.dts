@@ -12,6 +12,14 @@
         chassis,drive = <&drive0>;
     };
 
+    aliases {
+        can = &can0;
+        imu = &imu0;
+        display = &display0;
+        flash = &flash0;
+        drive = &drive0;
+    };
+
     can0: can {
         phandle = <1>;
         chassis,device-id = "can0";

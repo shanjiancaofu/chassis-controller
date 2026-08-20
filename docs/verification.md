@@ -81,6 +81,16 @@ Kconfig 单元测试 4 项通过；当前 `config/Kconfig` + `config/prj.conf` �
 Debug/Release 构建通过，13 项 OTA Python 测试通过。此项只验证主机解析和构建集成，没有目标板
 硬件结论。
 
+### Native Devicetree metadata and bindings（2026-08-20）
+
+`tools/dts/generate_devicetree.py` 现已生成 `chosen`、`aliases`、`__symbols__` 节点标签和
+phandle-array 元数据；`tools/dts/verify_bindings.py` 根据
+`firmware/application/stm32g474/dts/bindings/*.yaml` 校验每个启用设备的 `compatible`、必需
+属性和基础类型。CMake 配置阶段已接入 `dtc -@`、CubeMX/DTS 一致性检查和 bindings 检查。
+
+DTS 单元测试 2 项、Kconfig 单元测试 4 项、Debug/Release 构建和 OTA Python 测试 13 项均通过。
+本轮只验证生成、解析和构建集成，没有目标板硬件结论。
+
 ### 0.15.0 全仓库依赖边界收敛（2026-08-20）
 
 本轮在 0.15.0 首版基础上继续移除 CAN ISR 协议解析和上层 HAL/CubeMX 依赖，拆分 Console、

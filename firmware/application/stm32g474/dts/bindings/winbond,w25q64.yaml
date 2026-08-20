@@ -1,0 +1,21 @@
+compatible: "winbond,w25q64"
+required:
+  - status
+  - bus
+  - cubemx-handle
+  - size
+  - erase-block-size
+  - write-block-size
+properties:
+  status:
+    type: string
+  bus:
+    type: string
+  cubemx-handle:
+    type: string
+  size:
+    type: integer
+  erase-block-size:
+    type: integer
+  write-block-size:
+    type: integer

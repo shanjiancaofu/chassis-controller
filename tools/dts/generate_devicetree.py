@@ -40,6 +40,27 @@ def u32(data: bytes) -> int:
     return struct.unpack(">I", data)[0]
 
 
+def cells(data: bytes) -> list[int]:
+    if len(data) % 4:
+        raise ValueError(f"expected DT cells, got {len(data)} bytes")
+    return list(struct.unpack(f">{len(data) // 4}I", data))
+
+
+def string_list(data: bytes) -> list[str] | None:
+    if not data or data[-1] != 0:
+        return None
+    parts = data.rstrip(b"\0").split(b"\0")
+    if not parts or any(not part for part in parts):
+        return None
+    try:
+        values = [part.decode("utf-8") for part in parts]
+    except UnicodeDecodeError:
+        return None
+    if any(not value.isprintable() for value in values):
+        return None
+    return values
+
+
 def parse_dtb(path: pathlib.Path) -> list[Node]:
     blob = path.read_bytes()
     if len(blob) < 40:
@@ -105,9 +126,80 @@ def property_value(name: str, data: bytes):
         "width", "height", "size", "erase-block-size",
         "write-block-size", "pwm-period",
     }
+    if not data:
+        return True
     if name in numeric:
         return u32(data)
+    values = string_list(data)
+    if values is not None:
+        return values[0] if len(values) == 1 else values
+    if len(data) % 4 == 0:
+        values = cells(data)
+        return values[0] if len(values) == 1 else values
     return c_string(data)
+
+
+def build_manifest(nodes: list[Node]) -> dict:
+    phandles: dict[int, str] = {}
+    paths: dict[str, str] = {}
+    devices: dict[str, dict] = {}
+    labels: dict[str, str] = {}
+    for node in nodes:
+        device_id_raw = node.properties.get("chassis,device-id")
+        if device_id_raw is None:
+            continue
+        device_id = token(c_string(device_id_raw))
+        values = {name: property_value(name, data)
+                  for name, data in node.properties.items()
+                  if name != "chassis,device-id"}
+        devices[device_id] = {"path": node.path, **values}
+        paths[node.path] = device_id
+        labels[token(device_id)] = device_id
+        if "phandle" in values:
+            phandles[int(values["phandle"])] = device_id
+
+    symbols_node = next((node for node in nodes if node.path == "/__symbols__"), None)
+    if symbols_node:
+        for label, data in symbols_node.properties.items():
+            path_value = c_string(data)
+            if path_value in paths:
+                labels[token(label)] = paths[path_value]
+
+    def resolve_reference(value: int) -> str:
+        if value not in phandles:
+            raise ValueError(f"unknown phandle {value}")
+        return phandles[value]
+
+    def resolve_property_reference(data: bytes) -> str:
+        strings = string_list(data)
+        if strings is not None and len(strings) == 1 and strings[0] in paths:
+            return paths[strings[0]]
+        return resolve_reference(u32(data))
+
+    chosen: dict[str, str | list[str]] = {}
+    aliases: dict[str, str] = {}
+    phandle_arrays: dict[str, dict[str, list[str | int]]] = {}
+    chosen_node = next((node for node in nodes if node.path == "/chosen"), None)
+    aliases_node = next((node for node in nodes if node.path == "/aliases"), None)
+    if chosen_node:
+        for name, data in chosen_node.properties.items():
+            references = [resolve_reference(cell) for cell in cells(data)]
+            chosen[token(name)] = references[0] if len(references) == 1 else references
+    if aliases_node:
+        for name, data in aliases_node.properties.items():
+            aliases[token(name)] = resolve_property_reference(data)
+
+    for device_id, values in devices.items():
+        for name, value in list(values.items()):
+            if name in {"path", "phandle"} or not isinstance(value, list):
+                continue
+            if not value or not isinstance(value[0], int) or value[0] not in phandles:
+                continue
+            resolved: list[str | int] = [phandles[value[0]], *value[1:]]
+            phandle_arrays.setdefault(device_id, {})[name] = resolved
+
+    return {"devices": devices, "chosen": chosen, "aliases": aliases,
+            "labels": labels, "phandle_arrays": phandle_arrays}
 
 
 def write_if_changed(path: pathlib.Path, content: str) -> None:
@@ -124,27 +216,8 @@ def main() -> None:
     args = parser.parse_args()
 
     nodes = parse_dtb(args.dtb)
-    phandles: dict[int, str] = {}
-    devices: dict[str, dict] = {}
-    chosen: dict[str, str] = {}
-    for node in nodes:
-        device_id_raw = node.properties.get("chassis,device-id")
-        if device_id_raw is None:
-            continue
-        device_id = token(c_string(device_id_raw))
-        values = {name: property_value(name, data)
-                  for name, data in node.properties.items()
-                  if name != "chassis,device-id"}
-        devices[device_id] = {"path": node.path, **values}
-        if "phandle" in values:
-            phandles[int(values["phandle"])] = device_id
-    chosen_node = next((node for node in nodes if node.path == "/chosen"), None)
-    if chosen_node:
-        for name, data in chosen_node.properties.items():
-            handle = u32(data)
-            if handle not in phandles:
-                raise ValueError(f"chosen {name} references unknown phandle {handle}")
-            chosen[token(name)] = phandles[handle]
+    manifest = build_manifest(nodes)
+    devices = manifest["devices"]
 
     lines = ["#ifndef CHASSIS_DEVICETREE_GENERATED_H",
              "#define CHASSIS_DEVICETREE_GENERATED_H", "",
@@ -159,15 +232,27 @@ def main() -> None:
             if name in ("path", "phandle"):
                 continue
             macro = token(name).upper()
-            rendered = f'"{value}"' if isinstance(value, str) else f"{value}U"
-            lines.append(f"#define DT_PROP_{upper_id}_{macro} {rendered}")
+            if isinstance(value, list):
+                lines.append(f"#define DT_PROP_{upper_id}_{macro}_COUNT {len(value)}U")
+                for index, item in enumerate(value):
+                    rendered = f'"{item}"' if isinstance(item, str) else f"{item}U"
+                    lines.append(f"#define DT_PROP_{upper_id}_{macro}_{index} {rendered}")
+            else:
+                rendered = f'"{value}"' if isinstance(value, str) else f"{value}U"
+                lines.append(f"#define DT_PROP_{upper_id}_{macro} {rendered}")
         lines.append("")
-    for name, device_id in sorted(chosen.items()):
+    for name, device_id in sorted(manifest["chosen"].items()):
+        if isinstance(device_id, list):
+            raise ValueError(f"chosen {name} must reference one device")
         lines.append(f"#define DT_CHOSEN_{name.upper()} {device_id}")
+    for name, device_id in sorted(manifest["aliases"].items()):
+        lines.append(f"#define DT_ALIAS_{name.upper()} {device_id}")
+    for name, device_id in sorted(manifest["labels"].items()):
+        lines.append(f"#define DT_NODELABEL_{name.upper()} {device_id}")
     lines.extend(["", "#endif", ""])
     write_if_changed(args.header, "\n".join(lines))
     write_if_changed(args.json,
-                     json.dumps({"devices": devices, "chosen": chosen},
+                     json.dumps(manifest,
                                 indent=2, sort_keys=True) + "\n")
 
 

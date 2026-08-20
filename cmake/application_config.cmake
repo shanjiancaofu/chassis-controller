@@ -8,6 +8,9 @@ set(APP_CONFIG_FILE "${APP_GENERATED_DIR}/.config")
 set(APP_DTB "${APP_GENERATED_DIR}/chassis_g474.dtb")
 set(APP_DTS_HEADER "${APP_GENERATED_DIR}/devicetree_generated.h")
 set(APP_DTS_MANIFEST "${APP_GENERATED_DIR}/devicetree.json")
+set(APP_DTS_BINDINGS "${APP_ROOT}/dts/bindings")
+file(GLOB APP_DTS_BINDING_FILES CONFIGURE_DEPENDS
+  "${APP_DTS_BINDINGS}/*.yaml")
 set(APP_KCONFIG "${APP_ROOT}/config/Kconfig")
 set(APP_PRJ_CONF "${APP_ROOT}/config/prj.conf")
 set(APP_DTS "${APP_ROOT}/boards/chassis_g474/chassis_g474.dts")
@@ -23,7 +26,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/tools/kconfig/model.py"
   "${CMAKE_SOURCE_DIR}/tools/kconfig/parser.py"
   "${CMAKE_SOURCE_DIR}/tools/dts/generate_devicetree.py"
-  "${CMAKE_SOURCE_DIR}/tools/dts/verify_hw_config.py")
+  "${CMAKE_SOURCE_DIR}/tools/dts/verify_hw_config.py"
+  "${CMAKE_SOURCE_DIR}/tools/dts/verify_bindings.py"
+  ${APP_DTS_BINDING_FILES})
 file(MAKE_DIRECTORY "${APP_GENERATED_DIR}")
 
 execute_process(
@@ -38,7 +43,7 @@ execute_process(
 include("${APP_CONFIG_CMAKE}")
 
 execute_process(
-  COMMAND "${DTC_EXECUTABLE}" -I dts -O dtb -o "${APP_DTB}" "${APP_DTS}"
+  COMMAND "${DTC_EXECUTABLE}" -@ -I dts -O dtb -o "${APP_DTB}" "${APP_DTS}"
   COMMAND_ERROR_IS_FATAL ANY)
 execute_process(
   COMMAND "${Python3_EXECUTABLE}"
@@ -52,4 +57,10 @@ execute_process(
           "${CMAKE_SOURCE_DIR}/tools/dts/verify_hw_config.py"
           --ioc "${APP_ROOT}/chassis_controller.ioc"
           --manifest "${APP_DTS_MANIFEST}"
+  COMMAND_ERROR_IS_FATAL ANY)
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/dts/verify_bindings.py"
+          --manifest "${APP_DTS_MANIFEST}"
+          --bindings "${APP_DTS_BINDINGS}"
   COMMAND_ERROR_IS_FATAL ANY)
