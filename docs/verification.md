@@ -81,6 +81,14 @@ Kconfig 单元测试 4 项通过；当前 `config/Kconfig` + `config/prj.conf` �
 Debug/Release 构建通过，13 项 OTA Python 测试通过。此项只验证主机解析和构建集成，没有目标板
 硬件结论。
 
+### Architecture boundary checker（2026-08-20）
+
+新增 `tools/build/check_architecture.py`，在 CMake configure 阶段扫描 `app/`、`modules/`、
+`communication/`、`infrastructure/`、`ui/` 和 `rtos/`，禁止直接包含 CubeMX/HAL 外设头、调用
+`HAL_*`、使用 `*_HandleTypeDef` 或暴露 `hfdcan*`、`hspi*`、`htim*` 等硬件句柄。当前源码扫描
+通过；架构检查单元测试 2 项、Debug/Release 构建和 OTA Python 测试 13 项通过。本轮没有目标板
+硬件结论。
+
 ### Native Devicetree metadata and bindings（2026-08-20）
 
 `tools/dts/generate_devicetree.py` 现已生成 `chosen`、`aliases`、`__symbols__` 节点标签和

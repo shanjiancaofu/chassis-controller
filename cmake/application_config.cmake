@@ -28,6 +28,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/tools/dts/generate_devicetree.py"
   "${CMAKE_SOURCE_DIR}/tools/dts/verify_hw_config.py"
   "${CMAKE_SOURCE_DIR}/tools/dts/verify_bindings.py"
+  "${CMAKE_SOURCE_DIR}/tools/build/check_architecture.py"
   ${APP_DTS_BINDING_FILES})
 file(MAKE_DIRECTORY "${APP_GENERATED_DIR}")
 
@@ -63,4 +64,15 @@ execute_process(
           "${CMAKE_SOURCE_DIR}/tools/dts/verify_bindings.py"
           --manifest "${APP_DTS_MANIFEST}"
           --bindings "${APP_DTS_BINDINGS}"
+  COMMAND_ERROR_IS_FATAL ANY)
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/build/check_architecture.py"
+          --root "${APP_ROOT}"
+          --scope app
+          --scope modules
+          --scope communication
+          --scope infrastructure
+          --scope ui
+          --scope rtos
   COMMAND_ERROR_IS_FATAL ANY)
