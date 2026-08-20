@@ -5,6 +5,7 @@
 #include "drivers/sensor/icm45686.h"
 #include "drivers/adc/power_sample.h"
 #include "drivers/rtc.h"
+#include "devicetree_generated.h"
 #include "drivers/sensor/sr501.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
@@ -204,7 +205,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   Icm45686Stm32_GetSnapshot(&imu);
   ImuOrientation_GetSnapshot(&orientation);
   Sr501_GetSnapshot(&sr501);
-  PowerSample_GetSnapshot(now_ms, &power_sample);
+  power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), now_ms, &power_sample);
   CopyButtonSnapshot(&status.buttons, &buttons);
   CopyImuSnapshot(&status.imu, &imu, &orientation);
   CopySr501Snapshot(&status.sr501, &sr501);
@@ -212,7 +213,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
 
   status.can_state = MapCanState(CanTransport_GetLinkStatus());
   status.lcd_state = MapLcdState(LcdUi_GetStatus());
-  status.supply_valid = PowerSample_ReadMillivolts(&status.supply_mv);
+  status.supply_valid = power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), &status.supply_mv);
   status.fault_flags = FaultManager_GetFlags();
   status.qspi_test_state = (uint32_t)QspiTargetTest_GetStatus();
   status.ota_confirmation_state = (uint32_t)OtaConfirmation_GetStatus();

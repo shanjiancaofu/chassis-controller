@@ -16,6 +16,7 @@
         chassis,time = <&time0>;
         chassis,left-encoder = <&left_encoder>;
         chassis,right-encoder = <&right_encoder>;
+        chassis,power = <&power0>;
     };
 
     aliases {
@@ -126,5 +127,13 @@
         compatible = "st,stm32-tim-encoder";
         status = "okay";
         cubemx-handle = "htim4";
+    };
+
+    power0: power-monitor {
+        phandle = <10>;
+        chassis,device-id = "power0";
+        compatible = "st,stm32-adc-power";
+        status = "okay";
+        cubemx-handle = "hadc1";
     };
 };

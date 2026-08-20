@@ -1,0 +1,9 @@
+compatible: "st,stm32-adc-power"
+required:
+  - status
+  - cubemx-handle
+properties:
+  status:
+    type: string
+  cubemx-handle:
+    type: string

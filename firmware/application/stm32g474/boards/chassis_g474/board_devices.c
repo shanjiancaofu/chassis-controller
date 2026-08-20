@@ -5,6 +5,8 @@
 #include "drivers/uart/uart_stm32.h"
 #include "drivers/motor/motor.h"
 #include "drivers/encoder/encoder.h"
+#include "drivers/adc/power_sample.h"
+#include "adc.h"
 #include "fdcan.h"
 #include "tim.h"
 #include "usart.h"
@@ -63,3 +65,6 @@ DEVICE_DT_DEFINE(left_encoder, EncoderStm32_Init, &left_encoder_data,
                  &left_encoder_config, PRE_KERNEL_2, 81, &encoder_stm32_api);
 DEVICE_DT_DEFINE(right_encoder, EncoderStm32_Init, &right_encoder_data,
                  &right_encoder_config, PRE_KERNEL_2, 82, &encoder_stm32_api);
+
+DEVICE_DT_DEFINE(power0, PowerSampleStm32_Init, NULL, NULL,
+                 PRE_KERNEL_2, 83, &power_sample_stm32_api);

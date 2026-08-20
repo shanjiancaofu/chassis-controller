@@ -185,7 +185,8 @@ static bool InitializeHardware(uint32_t now_ms)
   if (!device_is_ready(left_encoder_device) ||
       !device_is_ready(right_encoder_device) ||
       encoder_start(left_encoder_device) < 0 ||
-      encoder_start(right_encoder_device) < 0 || !PowerSample_Init()) {
+      encoder_start(right_encoder_device) < 0 ||
+      !device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER))) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "board",
                                "MOTION_IO_INIT_FAILED", "code=UNAVAILABLE");
     return false;
@@ -503,7 +504,7 @@ void ChassisApp_RunServiceCycle(void)
     TelemetrySnapshot snapshot;
     uint32_t supply_mv;
     const bool supply_valid =
-        PowerSample_ReadMillivolts(&supply_mv);
+        power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), &supply_mv);
 
     taskENTER_CRITICAL();
     WheelController_GetSnapshot(&wheel_snapshot);
@@ -665,7 +666,7 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     LatchChassisInternalFault(CHASSIS_FAULT_ENCODER);
     return;
   }
-  if (PowerSample_GetLatestMillivolts(&latest_supply_mv) &&
+  if (power_sample_get_latest_millivolts(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), &latest_supply_mv) &&
       latest_supply_mv < MOTOR_CONTROL_MIN_SUPPLY_MV) {
     LatchChassisInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
     return;
