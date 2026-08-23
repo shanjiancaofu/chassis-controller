@@ -1,27 +1,18 @@
 #ifndef CHASSIS_FLASH_STM32_QSPI_PRIVATE_H
 #define CHASSIS_FLASH_STM32_QSPI_PRIVATE_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#include "drivers/flash.h"
+#include "stm32g4xx_hal.h"
 
-typedef enum
-{
-  FLASH_STM32_QSPI_TRANSFER_IDLE = 0,
-  FLASH_STM32_QSPI_TRANSFER_BUSY,
-  FLASH_STM32_QSPI_TRANSFER_COMPLETE,
-  FLASH_STM32_QSPI_TRANSFER_FAILED
-} FlashStm32QspiTransferStatus;
+typedef struct {
+  QSPI_HandleTypeDef *handle;
+} FlashStm32QspiConfig;
 
-bool FlashStm32QspiReadJedecId(uint8_t jedec_id[3]);
-bool FlashStm32QspiRead(uint32_t address, uint8_t *data, uint32_t size);
-bool FlashStm32QspiReadDma(uint32_t address, uint8_t *data,
-                          uint32_t size);
-bool FlashStm32QspiEraseSector(uint32_t address);
-bool FlashStm32QspiProgramPageDma(uint32_t address,
-                                 const uint8_t *data,
-                                 uint32_t size);
-bool FlashStm32QspiIsBusy(bool *busy);
-FlashStm32QspiTransferStatus FlashStm32QspiGetTransferStatus(void);
-void FlashStm32QspiAbort(void);
+typedef struct {
+  volatile FlashTransferStatus transfer_status;
+} FlashStm32QspiData;
+
+extern const FlashDriverApi flash_stm32_qspi_api;
+int FlashStm32Qspi_Init(const struct device *device);
 
 #endif

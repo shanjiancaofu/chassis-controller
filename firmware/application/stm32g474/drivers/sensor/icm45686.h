@@ -50,14 +50,6 @@ typedef struct {
   float sample_period_s;
 } Icm45686Stm32Snapshot;
 
-void Icm45686Stm32_Init(uint32_t now_ms);
-bool Icm45686Stm32_SetSampleSink(const Icm45686Stm32SampleSink *sink);
-void Icm45686Stm32_Run(uint32_t now_ms);
-void Icm45686Stm32_OnDataReadyInterrupt(void);
-void Icm45686Stm32_OnSpiTransferComplete(void);
-void Icm45686Stm32_OnSpiTransferError(void);
-void Icm45686Stm32_GetSnapshot(Icm45686Stm32Snapshot *snapshot);
-
 typedef struct {
   bool (*set_sample_sink)(const struct device *device,
                           const Icm45686Stm32SampleSink *sink);
@@ -77,7 +69,5 @@ void sensor_get_snapshot(const struct device *device,
 void sensor_on_data_ready(const struct device *device);
 void sensor_on_transfer_complete(const struct device *device);
 void sensor_on_transfer_error(const struct device *device);
-extern const SensorDriverApi icm45686_stm32_api;
-int Icm45686Device_Init(const struct device *device);
 
 #endif

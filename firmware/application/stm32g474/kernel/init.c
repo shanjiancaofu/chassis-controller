@@ -39,11 +39,12 @@ int SystemInit_RunLevel(InitLevel level)
   }
   for (const InitEntry *entry = ranges[level].start;
        entry < ranges[level].end; ++entry) {
-    int result = entry->device != NULL
-                     ? device_init(entry->device)
-                     : entry->init_fn != NULL ? entry->init_fn() : 0;
-
-    if (result < 0 && result != -EALREADY) {
+    if (entry->device != NULL) {
+      (void)device_init(entry->device);
+      continue;
+    }
+    const int result = entry->init_fn != NULL ? entry->init_fn() : 0;
+    if (result < 0) {
       return result;
     }
   }

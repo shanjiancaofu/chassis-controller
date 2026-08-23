@@ -22,7 +22,6 @@ add_library(chassis_drivers STATIC
   can/can_stm32_fdcan.c
   uart/uart_common.c
   uart/uart_stm32.c
-  uart/uart_stm32_device.c
   flash/flash_common.c
   flash/flash_stm32_qspi.c
   rtc/rtc_common.c

@@ -128,9 +128,6 @@ int main(void)
   if (!AppWatchdog_ConfigureNormal()) {
     Error_Handler();
   }
-  if (!ChassisApp_Init()) {
-    Error_Handler();
-  }
   /* USER CODE END 2 */
 
   /* Init scheduler */

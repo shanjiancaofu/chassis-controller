@@ -4,7 +4,6 @@
 
 #include "device.h"
 #include "devicetree.h"
-#include "drivers/uart/uart_stm32.h"
 
 static const struct device *DefaultDevice(void)
 {

@@ -1,9 +1,9 @@
 #include "app/chassis_console_commands.h"
+#include "kernel/critical.h"
 
 #include <stddef.h>
 #include <stdio.h>
 
-#include "FreeRTOS.h"
 #include "communication/can_transport/can_transport.h"
 #include "config/control_config.h"
 #include "subsys/console/diagnostic_report.h"
@@ -13,7 +13,6 @@
 #include "modules/chassis/odometry.h"
 #include "modules/parameters/parameter_manager.h"
 #include "modules/safety/safety_manager.h"
-#include "task.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/qspi_target_test.h"
 
@@ -89,7 +88,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
       bool accepted;
       ParameterSnapshot requested_parameters;
 
-      taskENTER_CRITICAL();
+      kernel_critical_enter();
       accepted = ParameterManager_StagePidGains(
           command->type == CONSOLE_COMMAND_PID_SET_LEFT
               ? PARAMETER_WHEEL_LEFT
@@ -97,7 +96,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
           command->arguments.pid.kp, command->arguments.pid.ki,
           command->arguments.pid.kd);
       ParameterManager_GetRequested(&requested_parameters);
-      taskEXIT_CRITICAL();
+      kernel_critical_exit();
       if (accepted) {
         accepted = ParameterStorage_RequestSave(&requested_parameters);
       }
@@ -118,9 +117,9 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
                                         "state=RUNNING");
       } else {
         if (submit_result == COMMAND_SUBMIT_ACCEPTED) {
-          taskENTER_CRITICAL();
+          kernel_critical_enter();
           CommandManager_Release(COMMAND_SOURCE_CONSOLE);
-          taskEXIT_CRITICAL();
+          kernel_critical_exit();
         }
         (void)snprintf(fields, sizeof(fields), "code=%s",
                        MotionCommandErrorCode(submit_result));
@@ -130,9 +129,9 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
     }
     case CONSOLE_COMMAND_PID_STOP:
       command_port.stop_control();
-      taskENTER_CRITICAL();
+      kernel_critical_enter();
       CommandManager_Release(COMMAND_SOURCE_CONSOLE);
-      taskEXIT_CRITICAL();
+      kernel_critical_exit();
       (void)UartProtocol_SendResponse(now_ms, "pid_stop", true,
                                       "state=STOPPED");
       break;
@@ -167,9 +166,9 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
     case CONSOLE_COMMAND_QSPI_TEST:
       if (!command_port.acquire_target_test_lock() ||
           !QspiTargetTest_Start()) {
-        taskENTER_CRITICAL();
+        kernel_critical_enter();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
-        taskEXIT_CRITICAL();
+        kernel_critical_exit();
         (void)UartProtocol_SendResponse(now_ms, "qspi_test", false,
                                         "code=BUSY");
       } else {
@@ -181,9 +180,9 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
     case CONSOLE_COMMAND_IWDG_RESET:
       if (!command_port.acquire_target_test_lock() ||
           !IwdgTargetTest_Start()) {
-        taskENTER_CRITICAL();
+        kernel_critical_enter();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
-        taskEXIT_CRITICAL();
+        kernel_critical_exit();
         (void)UartProtocol_SendResponse(now_ms, "iwdg_reset_test", false,
                                         "code=BUSY");
       } else {
@@ -222,17 +221,17 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
 
       if (action == MOTOR_TARGET_TEST_STOP) {
         command_port.stop_control();
-        taskENTER_CRITICAL();
+        kernel_critical_enter();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
-        taskEXIT_CRITICAL();
+        kernel_critical_exit();
         accepted = true;
       } else {
         accepted = command_port.acquire_target_test_lock() &&
                    command_port.start_motor_target_test(action, now_ms);
         if (!accepted) {
-          taskENTER_CRITICAL();
+          kernel_critical_enter();
           CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
-          taskEXIT_CRITICAL();
+          kernel_critical_exit();
         }
       }
       (void)UartProtocol_SendResponse(
@@ -271,9 +270,9 @@ static void SendPidParameterReport(uint32_t now_ms, const char *command_name,
   ParameterSnapshot parameters;
   ParameterStorageSnapshot storage;
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   ParameterManager_GetRequested(&parameters);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   ParameterStorage_GetSnapshot(&storage);
   if (accepted) {
     (void)snprintf(
@@ -306,9 +305,9 @@ static void SendEncoderResult(uint32_t now_ms)
   char left_total[24];
   char right_total[24];
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   Odometry_GetSnapshot(now_ms, &snapshot);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   (void)UartProtocol_FormatSigned64(left_total, sizeof(left_total),
                                     snapshot.left_total);
   (void)UartProtocol_FormatSigned64(right_total, sizeof(right_total),

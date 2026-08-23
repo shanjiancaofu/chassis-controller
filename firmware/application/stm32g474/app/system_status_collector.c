@@ -1,6 +1,6 @@
 #include "app/system_status_collector.h"
+#include "kernel/critical.h"
 
-#include "FreeRTOS.h"
 #include "drivers/button/button.h"
 #include "drivers/sensor/icm45686.h"
 #include "drivers/adc/power_sample.h"
@@ -22,7 +22,6 @@
 #include "modules/safety/safety_manager.h"
 #include "modules/sensors/imu_orientation.h"
 #include "rtos/rtos_app.h"
-#include "task.h"
 #include "tests/target/motor_target_test.h"
 #include "tests/target/qspi_target_test.h"
 #include "ui/lcd/lcd_ui.h"
@@ -224,7 +223,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   status.can_drop_count = OtaCanTransport_GetDroppedCount();
   status.telemetry_mode = (uint32_t)Telemetry_GetMode();
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   WheelController_GetSnapshot(&status.wheels);
   Odometry_GetSnapshot(now_ms, &status.odometry);
   MotorTargetTest_GetSnapshot(&motor_test);
@@ -233,7 +232,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   status.motor_test.right_duty = motor_test.right_duty;
   ParameterManager_GetActive(&status.parameters);
   status.control_state = SafetyManager_GetState();
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
 
   status.rtc_valid = rtc_read_datetime(&date_time);
   status.rtc_year = date_time.year;

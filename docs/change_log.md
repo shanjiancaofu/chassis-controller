@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-23：原生平台化第二批收口
+
+- UART、QSPI、ICM45686 和 E-STOP 运行状态迁入设备实例；HAL 回调按 handle 路由到 DTS device。
+- LED 去除静态 config 指针，motor/encoder STM32 配置与数据类型移入 private header。
+- `ChassisApp_Init()` 注册到 APPLICATION init level；device init error 与 required/optional 产品策略分离。
+- app 层 FreeRTOS 临界区实现集中到 kernel runtime，架构检查禁止业务层再次直接包含 FreeRTOS。
+- Debug/Release、Kconfig/DTS/架构/OTA 测试和 LCD C 预览通过；未烧录、未新增硬件结论。
+
 ## 2026-08-23：DT/device data 第一批收口
 
 - 新增公共 Devicetree API，禁止 app/modules/communication/subsys/ui/rtos 直接包含生成头；

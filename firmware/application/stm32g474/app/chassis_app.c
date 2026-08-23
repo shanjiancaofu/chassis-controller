@@ -1,14 +1,15 @@
+#include "kernel/critical.h"
 #include "app/chassis_app.h"
 #include "app/chassis_console_commands.h"
 #include "app/chassis_maintenance.h"
 #include "app/system_status_collector.h"
 
 #include <limits.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
-#include "FreeRTOS.h"
 #include "drivers/button/button.h"
 #include "drivers/safety/emergency_stop.h"
 #include "drivers/encoder/encoder.h"
@@ -45,12 +46,12 @@
 #include "modules/sensors/imu_orientation.h"
 #include "device.h"
 #include "devicetree.h"
+#include "init.h"
 #include "drivers/uart.h"
 #include "ui/lcd/lcd_status_presenter.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/motor_target_test.h"
 #include "tests/target/qspi_target_test.h"
-#include "task.h"
 
 #if MOTOR_CONTROL_OUTPUT_LIMIT > MOTOR_COMPARE_MAX
 #error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
@@ -193,7 +194,11 @@ static bool InitializeHardware(uint32_t now_ms)
   }
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
                              "MOTION_IO_READY", NULL);
-  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)))) return false;
+  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons))) ||
+      !device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_estop))) ||
+      !device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_watchdog)))) {
+    return false;
+  }
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
 #if CONFIG_ICM45686
@@ -318,6 +323,13 @@ bool ChassisApp_Init(void)
   return true;
 }
 
+static int ChassisAppSystemInit(void)
+{
+  return ChassisApp_Init() ? 0 : -EIO;
+}
+
+SYS_INIT(ChassisAppSystemInit, APPLICATION, 90);
+
 void ChassisApp_RunServiceCycle(void)
 {
   ConsoleCommand console_command;
@@ -336,9 +348,9 @@ void ChassisApp_RunServiceCycle(void)
 
 #if CONFIG_MOTOR_DEMO
   if (demo_stage < 6U) {
-    taskENTER_CRITICAL();
+    kernel_critical_enter();
     (void)CommandManager_Refresh(COMMAND_SOURCE_TARGET_TEST, now_ms);
-    taskEXIT_CRITICAL();
+    kernel_critical_exit();
   }
   switch (demo_stage) {
     case 0U:
@@ -387,9 +399,9 @@ void ChassisApp_RunServiceCycle(void)
     case 5U:
       if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
         StopControl();
-        taskENTER_CRITICAL();
+        kernel_critical_enter();
         CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
-        taskEXIT_CRITICAL();
+        kernel_critical_exit();
         demo_stage = 6U;
       }
       break;
@@ -402,15 +414,15 @@ void ChassisApp_RunServiceCycle(void)
   if (CanTransport_TakeSessionInvalidated()) {
     OtaCanTransport_Invalidate();
     OtaSession_AbortSource(OTA_SOURCE_CAN_FD, now_ms);
-    taskENTER_CRITICAL();
+    kernel_critical_enter();
     if (CommandManager_GetOwner() == COMMAND_SOURCE_CAN_REMOTE) {
-      taskEXIT_CRITICAL();
+      kernel_critical_exit();
       StopControl();
-      taskENTER_CRITICAL();
+      kernel_critical_enter();
       CommandManager_Release(COMMAND_SOURCE_CAN_REMOTE);
-      taskEXIT_CRITICAL();
+      kernel_critical_exit();
     } else {
-      taskEXIT_CRITICAL();
+      kernel_critical_exit();
     }
   }
   ChassisMaintenance_Run(now_ms);
@@ -426,9 +438,9 @@ void ChassisApp_RunServiceCycle(void)
     } else if (CommandManager_GetOwner() ==
                COMMAND_SOURCE_CAN_REMOTE) {
       StopControl();
-      taskENTER_CRITICAL();
+      kernel_critical_enter();
       CommandManager_Release(COMMAND_SOURCE_CAN_REMOTE);
-      taskEXIT_CRITICAL();
+      kernel_critical_exit();
     }
   }
 
@@ -506,11 +518,11 @@ void ChassisApp_RunServiceCycle(void)
     const bool supply_valid =
         power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &supply_mv);
 
-    taskENTER_CRITICAL();
+    kernel_critical_enter();
     WheelController_GetSnapshot(&wheel_snapshot);
     MotorTargetTest_GetSnapshot(&motor_test_snapshot);
     Odometry_GetSnapshot(now_ms, &odometry_snapshot);
-    taskEXIT_CRITICAL();
+    kernel_critical_exit();
     snapshot.left_target = wheel_snapshot.left_target;
     snapshot.left_delta = odometry_snapshot.left_delta;
     snapshot.left_total = odometry_snapshot.left_total;
@@ -591,21 +603,21 @@ static bool StartControl(void)
   CommandManagerCommand command;
   bool accepted;
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   accepted = CommandManager_Get(&command) &&
              SafetyManager_RequestRun(true);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   return accepted;
 }
 
 static void StopControl(void)
 {
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   CommandManager_ClearCommand();
   MotorTargetTest_Stop();
   WheelController_Stop();
   SafetyManager_Stop();
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
 }
 
 static void ReleaseMotionOwner(void)
@@ -680,19 +692,19 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
   right_measurement = right_delta / (int32_t)notification_count;
   ApplyPendingControlParameters();
   if (SafetyManager_IsEmergencyStopLatched()) {
-    taskENTER_CRITICAL();
+    kernel_critical_enter();
     CommandManager_ClearCommand();
     ReleaseMotionOwner();
-    taskEXIT_CRITICAL();
+    kernel_critical_exit();
     WheelController_EmergencyStop();
     return;
   }
 
   if (FaultManager_HasCritical()) {
-    taskENTER_CRITICAL();
+    kernel_critical_enter();
     CommandManager_ClearCommand();
     ReleaseMotionOwner();
-    taskEXIT_CRITICAL();
+    kernel_critical_exit();
     WheelController_EmergencyStop();
     SafetyManager_LatchInternalFault();
     return;
@@ -708,14 +720,14 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     return;
   }
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   command_available = !CommandManager_IsTimedOut(now_ms) &&
                       CommandManager_Get(&command);
   if (!command_available) {
     CommandManager_ClearCommand();
     ReleaseMotionOwner();
   }
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   if (!command_available) {
     WheelController_Stop();
     SafetyManager_EnterCommandTimeout();
@@ -735,9 +747,9 @@ static bool StartMotorTargetTest(MotorTargetTestAction action,
   if (!SafetyManager_RequestOpenLoopTest()) {
     return false;
   }
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   WheelController_Stop();
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   if (!MotorTargetTest_Start(action, now_ms)) {
     SafetyManager_Stop();
     return false;
@@ -767,11 +779,11 @@ static bool AcquireTargetTestLock(void)
     return false;
   }
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   ReleaseMotionOwner();
   const bool acquired =
       CommandManager_Acquire(COMMAND_SOURCE_TARGET_TEST);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   return acquired;
 }
 
@@ -796,18 +808,18 @@ static bool AcquireOtaMaintenanceLock(void)
     return false;
   }
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   ReleaseMotionOwner();
   const bool acquired = CommandManager_Acquire(COMMAND_SOURCE_OTA);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   return acquired;
 }
 
 static void ReleaseOtaMaintenanceLock(void)
 {
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   CommandManager_Release(COMMAND_SOURCE_OTA);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
 }
 
 
@@ -824,32 +836,32 @@ static void ReleaseFinishedTargetTestLock(void)
     return;
   }
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   CommandManager_Release(COMMAND_SOURCE_TARGET_TEST);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
 }
 
 static void LatchChassisInternalFault(uint32_t fault)
 {
   FaultManager_Raise(fault);
   SafetyManager_LatchInternalFault();
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   CommandManager_ClearCommand();
   ReleaseMotionOwner();
   WheelController_EmergencyStop();
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
 }
 
 static void ApplyPendingControlParameters(void)
 {
   ParameterSnapshot parameters;
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   if (!ParameterManager_ApplyPending(&parameters)) {
-    taskEXIT_CRITICAL();
+    kernel_critical_exit();
     return;
   }
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
 
   WheelController_ApplyPidGains(
       WHEEL_CONTROLLER_LEFT, parameters.left_pid.kp,
@@ -865,9 +877,9 @@ static bool ResetWheelOdometry(void)
     return false;
   }
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   Odometry_Reset();
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   return true;
 }
 
@@ -885,9 +897,9 @@ static CommandManagerSubmitResult SubmitMotionCommand(
       .has_sequence = has_sequence,
   };
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   result = CommandManager_Submit(&command);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
   return result;
 }
 
@@ -899,7 +911,7 @@ void ChassisApp_FatalError(void)
 
 void ChassisApp_PanicStopFromException(void)
 {
-  taskDISABLE_INTERRUPTS();
+  kernel_interrupts_disable();
   motor_emergency_stop(drive_device);
 }
 
@@ -909,14 +921,14 @@ bool ChassisApp_ClearEmergencyStop(void)
     return false;
   }
 
-  taskENTER_CRITICAL();
+  kernel_critical_enter();
   if (emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)))) {
-    taskEXIT_CRITICAL();
+    kernel_critical_exit();
     return false;
   }
   (void)SafetyManager_ClearEmergencyStop();
   motor_clear_emergency_stop(drive_device);
-  taskEXIT_CRITICAL();
+  kernel_critical_exit();
 
   StopControl();
   return true;

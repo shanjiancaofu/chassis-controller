@@ -1,10 +1,9 @@
-#include "drivers/sensor/icm45686.h"
+#include "drivers/sensor/icm45686_stm32_private.h"
 
 #include <stddef.h>
 #include <string.h>
 
-#include "main.h"
-#include "spi.h"
+#include "devicetree.h"
 #include "components/icm45686/icm45686.h"
 
 #define ICM45686_SPI_READ 0x80U
@@ -23,12 +22,10 @@
 #define ICM45686_MIN_SAMPLE_PERIOD_SECONDS 0.002f
 #define ICM45686_MAX_SAMPLE_PERIOD_SECONDS 0.05f
 
-typedef enum {
-  DMA_IDLE = 0,
-  DMA_BUSY,
-  DMA_COMPLETE,
-  DMA_ERROR
-} DmaState;
+#define DMA_IDLE ICM45686_DMA_IDLE
+#define DMA_BUSY ICM45686_DMA_BUSY
+#define DMA_COMPLETE ICM45686_DMA_COMPLETE
+#define DMA_ERROR ICM45686_DMA_ERROR
 
 static const Icm45686Config imu_config = {
     .accel_full_scale = ICM45686_ACCEL_FS_4_G,
@@ -40,24 +37,39 @@ static const Icm45686Config imu_config = {
     .fifo_watermark_frames = ICM45686_FIFO_WATERMARK_FRAMES,
 };
 
-static Icm45686Device imu_device;
-static Icm45686Stm32Snapshot imu_snapshot;
-static Icm45686Stm32SampleSink sample_sink;
-static volatile bool fifo_interrupt;
-static volatile uint32_t interrupt_count;
-static volatile DmaState dma_state;
-static uint8_t dma_tx[ICM45686_FIFO_TRANSFER_SIZE];
-static uint8_t dma_rx[ICM45686_FIFO_TRANSFER_SIZE];
-static uint16_t dma_frame_count;
-static uint16_t dma_remaining_frame_count;
-static bool drain_pending;
-static uint32_t dma_started_ms;
-static uint32_t ready_after_ms;
-static uint32_t last_attempt_ms;
-static uint32_t last_fifo_poll_ms;
-static uint32_t consecutive_errors;
-static uint16_t last_fifo_timestamp;
-static bool fifo_timestamp_valid;
+static const struct device *DefaultDevice(void)
+{
+  return DEVICE_DT_GET(DT_NODELABEL(imu0));
+}
+
+static Icm45686Stm32Data *DriverData(void)
+{
+  return (Icm45686Stm32Data *)DefaultDevice()->data;
+}
+
+static const Icm45686Stm32Config *DriverConfig(void)
+{
+  return DefaultDevice()->config;
+}
+
+#define imu_device (DriverData()->chip)
+#define imu_snapshot (DriverData()->snapshot)
+#define sample_sink (DriverData()->sample_sink)
+#define fifo_interrupt (DriverData()->fifo_interrupt)
+#define driver_interrupt_count (DriverData()->interrupt_count)
+#define dma_state (DriverData()->dma_state)
+#define dma_tx (DriverData()->dma_tx)
+#define dma_rx (DriverData()->dma_rx)
+#define dma_frame_count (DriverData()->dma_frame_count)
+#define dma_remaining_frame_count (DriverData()->dma_remaining_frame_count)
+#define drain_pending (DriverData()->drain_pending)
+#define dma_started_ms (DriverData()->dma_started_ms)
+#define ready_after_ms (DriverData()->ready_after_ms)
+#define last_attempt_ms (DriverData()->last_attempt_ms)
+#define last_fifo_poll_ms (DriverData()->last_fifo_poll_ms)
+#define consecutive_errors (DriverData()->consecutive_errors)
+#define last_fifo_timestamp (DriverData()->last_fifo_timestamp)
+#define fifo_timestamp_valid (DriverData()->fifo_timestamp_valid)
 
 static bool SpiRead(void *context, uint8_t reg, uint8_t *data, size_t length);
 static bool SpiWrite(void *context, uint8_t reg, const uint8_t *data,
@@ -71,7 +83,7 @@ static void RecordTransferError(uint32_t now_ms);
 static bool FlushFifo(void);
 static float GetSamplePeriod(uint16_t timestamp);
 
-bool Icm45686Stm32_SetSampleSink(const Icm45686Stm32SampleSink *sink)
+static bool Icm45686Stm32_SetSampleSink(const Icm45686Stm32SampleSink *sink)
 {
   if (sink == NULL || sink->reset == NULL || sink->process_sample == NULL) {
     return false;
@@ -80,14 +92,13 @@ bool Icm45686Stm32_SetSampleSink(const Icm45686Stm32SampleSink *sink)
   return true;
 }
 
-void Icm45686Stm32_Init(uint32_t now_ms)
+static void Icm45686Stm32_Init(uint32_t now_ms)
 {
-  memset(&imu_snapshot, 0, sizeof(imu_snapshot));
-  memset(&imu_device, 0, sizeof(imu_device));
+  memset(DriverData(), 0, sizeof(*DriverData()));
   imu_snapshot.status = ICM45686_UNINITIALIZED;
   imu_snapshot.fifo_enabled = true;
   fifo_interrupt = false;
-  interrupt_count = 0U;
+  driver_interrupt_count = 0U;
   dma_state = DMA_IDLE;
   dma_frame_count = 0U;
   dma_remaining_frame_count = 0U;
@@ -102,9 +113,9 @@ void Icm45686Stm32_Init(uint32_t now_ms)
   (void)ConfigureDevice(now_ms);
 }
 
-void Icm45686Stm32_Run(uint32_t now_ms)
+static void Icm45686Stm32_Run(uint32_t now_ms)
 {
-  const DmaState state = dma_state;
+  const Icm45686DmaState state = dma_state;
 
   if (state == DMA_COMPLETE) {
     dma_state = DMA_IDLE;
@@ -116,8 +127,8 @@ void Icm45686Stm32_Run(uint32_t now_ms)
   } else if (state == DMA_BUSY &&
              now_ms - dma_started_ms >= ICM45686_DMA_TIMEOUT_MS) {
     if (dma_state == DMA_BUSY) {
-      (void)HAL_SPI_Abort(&hspi3);
-      HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+      (void)HAL_SPI_Abort(DriverConfig()->spi);
+      HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_SET);
       dma_state = DMA_IDLE;
       ++imu_snapshot.dma_timeout_count;
       (void)FlushFifo();
@@ -151,34 +162,34 @@ void Icm45686Stm32_Run(uint32_t now_ms)
   }
 }
 
-void Icm45686Stm32_OnDataReadyInterrupt(void)
+static void Icm45686Stm32_OnDataReadyInterrupt(void)
 {
-  (void)__atomic_fetch_add(&interrupt_count, 1U, __ATOMIC_RELAXED);
+  (void)__atomic_fetch_add(&driver_interrupt_count, 1U, __ATOMIC_RELAXED);
   __atomic_store_n(&fifo_interrupt, true, __ATOMIC_RELAXED);
 }
 
-void Icm45686Stm32_OnSpiTransferComplete(void)
+static void Icm45686Stm32_OnSpiTransferComplete(void)
 {
   if (dma_state == DMA_BUSY) {
-    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_SET);
     dma_state = DMA_COMPLETE;
   }
 }
 
-void Icm45686Stm32_OnSpiTransferError(void)
+static void Icm45686Stm32_OnSpiTransferError(void)
 {
   if (dma_state == DMA_BUSY) {
-    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_SET);
     dma_state = DMA_ERROR;
   }
 }
 
-void Icm45686Stm32_GetSnapshot(Icm45686Stm32Snapshot *snapshot)
+static void Icm45686Stm32_GetSnapshot(Icm45686Stm32Snapshot *snapshot)
 {
   if (snapshot != NULL) {
     *snapshot = imu_snapshot;
     snapshot->interrupt_count =
-        __atomic_load_n(&interrupt_count, __ATOMIC_RELAXED);
+        __atomic_load_n(&driver_interrupt_count, __ATOMIC_RELAXED);
     snapshot->dma_busy = dma_state == DMA_BUSY;
   }
 }
@@ -217,7 +228,10 @@ const SensorDriverApi icm45686_stm32_api = {
 
 int Icm45686Device_Init(const struct device *device)
 {
-  (void)device;
+  if (device == NULL || device != DefaultDevice() || device->data == NULL ||
+      device->config == NULL) {
+    return -1;
+  }
   Icm45686Stm32_Init(0U);
   return 0;
 }
@@ -233,10 +247,10 @@ static bool SpiRead(void *context, uint8_t reg, uint8_t *data, size_t length)
     return false;
   }
   tx[0] = reg | ICM45686_SPI_READ;
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_RESET);
   const HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(
       spi, tx, rx, (uint16_t)(length + 1U), ICM45686_SPI_TIMEOUT_MS);
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_SET);
   if (status != HAL_OK) {
     return false;
   }
@@ -256,10 +270,10 @@ static bool SpiWrite(void *context, uint8_t reg, const uint8_t *data,
   }
   tx[0] = reg & (uint8_t)~ICM45686_SPI_READ;
   memcpy(&tx[1], data, length);
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_RESET);
   const HAL_StatusTypeDef status = HAL_SPI_Transmit(
       spi, tx, (uint16_t)(length + 1U), ICM45686_SPI_TIMEOUT_MS);
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_SET);
   return status == HAL_OK;
 }
 
@@ -290,7 +304,7 @@ static void DelayUs(void *context, uint32_t delay_us)
 static bool ConfigureDevice(uint32_t now_ms)
 {
   const Icm45686Transport transport = {
-      .context = &hspi3,
+      .context = DriverConfig()->spi,
       .read = SpiRead,
       .write = SpiWrite,
       .delay_ms = DelayMs,
@@ -360,10 +374,10 @@ static bool StartFifoDma(uint32_t now_ms)
   dma_tx[0] = ICM45686_FIFO_DATA_REGISTER | ICM45686_SPI_READ;
   dma_started_ms = now_ms;
   dma_state = DMA_BUSY;
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
-  if (HAL_SPI_TransmitReceive_DMA(&hspi3, dma_tx, dma_rx,
+  HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_RESET);
+  if (HAL_SPI_TransmitReceive_DMA(DriverConfig()->spi, dma_tx, dma_rx,
                                  transfer_length) != HAL_OK) {
-    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(DriverConfig()->cs_port, DriverConfig()->cs_pin, GPIO_PIN_SET);
     dma_state = DMA_IDLE;
     return false;
   }

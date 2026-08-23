@@ -1,39 +1,87 @@
-#include "drivers/safety/emergency_stop.h"
-#include "device.h"
+#include "drivers/safety/emergency_stop_stm32_private.h"
+
+#include <errno.h>
+
 #include "devicetree.h"
 #include "drivers/motor/motor.h"
 
-#include "drivers/gpio.h"
-
-static EmergencyStopLatchedCallback latched_callback;
-static GpioSpec estop_input;
-
-void EmergencyStop_Init(EmergencyStopLatchedCallback callback)
+static const EmergencyStopStm32Config *Config(const struct device *device)
 {
-  latched_callback = callback;
+  return device != NULL ? device->config : NULL;
 }
 
-bool EmergencyStop_IsAsserted(void)
+static EmergencyStopStm32Data *Data(const struct device *device)
 {
-  return gpio_get(&estop_input) > 0;
+  return device != NULL ? (EmergencyStopStm32Data *)device->data : NULL;
 }
-static bool Asserted(const struct device*d){(void)d;return EmergencyStop_IsAsserted();}
-static void Callback(const struct device*d,EmergencyStopLatchedCallback c){(void)d;EmergencyStop_Init(c);}
-static void Interrupt(const struct device*d){(void)d;EmergencyStop_OnInterrupt();}
-const EmergencyStopDriverApi emergency_stop_stm32_api={.asserted=Asserted,.set_callback=Callback,.on_interrupt=Interrupt};
-int EmergencyStopStm32_Init(const struct device*d){const EmergencyStopStm32Config*c=d?d->config:NULL;if(!c)return -1;estop_input=c->input;latched_callback=NULL;return 0;}
-static const EmergencyStopDriverApi *Api(const struct device*d){return device_is_ready(d)?d->api:NULL;}
-bool emergency_stop_is_asserted(const struct device*d){const EmergencyStopDriverApi*a=Api(d);return a&&a->asserted&&a->asserted(d);}
-void emergency_stop_set_callback(const struct device*d,EmergencyStopLatchedCallback c){const EmergencyStopDriverApi*a=Api(d);if(a&&a->set_callback)a->set_callback(d,c);}
-void emergency_stop_on_interrupt(const struct device*d){const EmergencyStopDriverApi*a=Api(d);if(a&&a->on_interrupt)a->on_interrupt(d);}
 
-void EmergencyStop_OnInterrupt(void)
+static bool Asserted(const struct device *device)
 {
-  if (!EmergencyStop_IsAsserted()) {
+  const EmergencyStopStm32Config *config = Config(device);
+  return config != NULL && gpio_get(&config->input) > 0;
+}
+
+static void SetCallback(const struct device *device,
+                        EmergencyStopLatchedCallback callback)
+{
+  EmergencyStopStm32Data *data = Data(device);
+  if (data != NULL) {
+    data->latched_callback = callback;
+  }
+}
+
+static void OnInterrupt(const struct device *device)
+{
+  const EmergencyStopStm32Data *data = Data(device);
+  if (!Asserted(device)) {
     return;
   }
   motor_emergency_stop(DEVICE_DT_GET(DT_NODELABEL(drive0)));
-  if (latched_callback != NULL) {
-    latched_callback();
+  if (data != NULL && data->latched_callback != NULL) {
+    data->latched_callback();
+  }
+}
+
+const EmergencyStopDriverApi emergency_stop_stm32_api = {
+    .asserted = Asserted,
+    .set_callback = SetCallback,
+    .on_interrupt = OnInterrupt,
+};
+
+int EmergencyStopStm32_Init(const struct device *device)
+{
+  EmergencyStopStm32Data *data = Data(device);
+  if (Config(device) == NULL || data == NULL) {
+    return -EINVAL;
+  }
+  data->latched_callback = NULL;
+  return 0;
+}
+
+static const EmergencyStopDriverApi *Api(const struct device *device)
+{
+  return device_is_ready(device) ? device->api : NULL;
+}
+
+bool emergency_stop_is_asserted(const struct device *device)
+{
+  const EmergencyStopDriverApi *api = Api(device);
+  return api != NULL && api->asserted != NULL && api->asserted(device);
+}
+
+void emergency_stop_set_callback(const struct device *device,
+                                 EmergencyStopLatchedCallback callback)
+{
+  const EmergencyStopDriverApi *api = Api(device);
+  if (api != NULL && api->set_callback != NULL) {
+    api->set_callback(device, callback);
+  }
+}
+
+void emergency_stop_on_interrupt(const struct device *device)
+{
+  const EmergencyStopDriverApi *api = Api(device);
+  if (api != NULL && api->on_interrupt != NULL) {
+    api->on_interrupt(device);
   }
 }

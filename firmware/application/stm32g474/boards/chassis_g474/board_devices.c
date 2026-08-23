@@ -2,24 +2,26 @@
 
 #include "devicetree.h"
 #include "drivers/can/can_stm32_fdcan.h"
-#include "drivers/uart/uart_stm32.h"
-#include "drivers/motor/motor.h"
-#include "drivers/encoder/encoder.h"
+#include "drivers/uart/uart_stm32_private.h"
+#include "drivers/motor/motor_stm32_private.h"
+#include "drivers/encoder/encoder_stm32_private.h"
 #include "drivers/adc/power_sample_stm32_private.h"
 #include "drivers/display/lcd_stm32_private.h"
-#include "drivers/sensor/icm45686.h"
-#include "drivers/flash.h"
+#include "drivers/sensor/icm45686_stm32_private.h"
+#include "drivers/flash/flash_stm32_qspi_private.h"
 #include "drivers/watchdog.h"
 #include "drivers/rtc.h"
 #include "drivers/time.h"
 #include "drivers/gpio.h"
 #include "drivers/button/button_stm32_private.h"
-#include "drivers/led/led.h"
+#include "drivers/led/led_stm32_private.h"
 #include "drivers/sensor/sr501_stm32_private.h"
-#include "drivers/safety/emergency_stop.h"
+#include "drivers/safety/emergency_stop_stm32_private.h"
 #include "main.h"
 #include "adc.h"
 #include "fdcan.h"
+#include "quadspi.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 
@@ -32,10 +34,14 @@ static CanStm32FdcanData can0_data;
 DEVICE_DT_DEFINE(can0, CanStm32Fdcan_Init, &can0_data, &can0_config,
                  PRE_KERNEL_2, 50, &can_stm32_fdcan_api);
 
-DEVICE_DT_DEFINE(uart0, UartStm32_Init, NULL, NULL,
+static const UartStm32Config uart0_config = {.handle = &huart1};
+static UartStm32Data uart0_data;
+DEVICE_DT_DEFINE(uart0, UartStm32_Init, &uart0_data, &uart0_config,
                  PRE_KERNEL_2, 60, &uart_stm32_api);
 
-DEVICE_DT_DEFINE(flash0, FlashStm32Qspi_Init, NULL, NULL,
+static const FlashStm32QspiConfig flash0_config = {.handle = &hqspi1};
+static FlashStm32QspiData flash0_data;
+DEVICE_DT_DEFINE(flash0, FlashStm32Qspi_Init, &flash0_data, &flash0_config,
                  PRE_KERNEL_2, 70, &flash_stm32_qspi_api);
 DEVICE_DT_DEFINE(watchdog0, WatchdogStm32_Init, NULL, NULL,
                  PRE_KERNEL_2, 71, &watchdog_stm32_api);
@@ -78,7 +84,13 @@ DEVICE_DT_DEFINE(power0, PowerSampleStm32_Init, &power0_data, NULL,
 static DisplayStm32Data display0_data;
 DEVICE_DT_DEFINE(display0, DisplayStm32_Init, &display0_data, NULL,
                  PRE_KERNEL_2, 84, &display_stm32_api);
-DEVICE_DT_DEFINE(imu0, Icm45686Device_Init, NULL, NULL,
+static const Icm45686Stm32Config imu0_config = {
+    .spi = &hspi3,
+    .cs_port = IMU_CS_GPIO_Port,
+    .cs_pin = IMU_CS_Pin,
+};
+static Icm45686Stm32Data imu0_data;
+DEVICE_DT_DEFINE(imu0, Icm45686Device_Init, &imu0_data, &imu0_config,
                  PRE_KERNEL_2, 85, &icm45686_stm32_api);
 
 static const GpioStm32Config gpioa_config={.port=GPIOA};
@@ -108,4 +120,5 @@ static Sr501Stm32Data sr5010_data;
 DEVICE_DT_DEFINE(sr5010,Sr501Stm32_Init,&sr5010_data,&sr5010_config,PRE_KERNEL_2,92,&sr501_stm32_api);
 static const EmergencyStopStm32Config estop0_config={
     .input=GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(estop0),gpios,0)};
-DEVICE_DT_DEFINE(estop0,EmergencyStopStm32_Init,NULL,&estop0_config,PRE_KERNEL_2,93,&emergency_stop_stm32_api);
+static EmergencyStopStm32Data estop0_data;
+DEVICE_DT_DEFINE(estop0,EmergencyStopStm32_Init,&estop0_data,&estop0_config,PRE_KERNEL_2,93,&emergency_stop_stm32_api);

@@ -56,13 +56,35 @@
 
 ### 原生平台化迁移完成度审计（2026-08-23）
 
-按当前源码与 `docs/重构.md` Phase 逐项核对：Phase 1/4/5/6/9 已完成；Phase 2 部分完成；
-Phase 3 已在本批完成，Phase 7/8 尚未完成。当前主要设备均已有 device/API，公共 DT API、
-status-aware instance、controller/child 拓扑和 GPIO phandle-array 已构建验证；仍存在 UART/QSPI/IMU
-静态全局状态和 app FreeRTOS critical section。
-这些属于软件迁移剩余项，不改变既有硬件证据，也不构成新的目标板 `PASS`。
+按当前源码与 `docs/重构.md` Phase 逐项核对：Phase 1--9 的代码迁移项均已落地。剩余工作为
+Device/init optional failure、UART/QSPI DMA 并发和 OTA recovery 测试，以及目标板回归；这些
+不改变既有硬件证据，也不构成新的目标板 `PASS`。
 
-预计还需 1 个代码收口大批次；完成后另行执行 1～2 个目标板回归批次。
+### 原生平台化第二批收口（2026-08-23）
+
+UART RX/TX 队列、QSPI DMA 状态、ICM45686 FIFO/DMA/重试/快照，以及 E-STOP 回调均已迁入
+对应 `device->data`；HAL handle/CS 进入实例 config。LED 不再保存全局 config 指针，motor/encoder
+的 STM32 类型已移入 private header。`ChassisApp_Init()` 通过 APPLICATION linker entry 执行；
+device init 失败只记录状态并继续，required/optional 由产品 APPLICATION 阶段判断。app/modules/
+communication/subsys/ui 不再直接包含或调用 FreeRTOS primitive。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 120376 | 96 | 55352 | `BUILD PASS` |
+| Release | 106160 | 96 | 55352 | `BUILD PASS` |
+
+Kconfig 3 项、DTS 3 项、架构边界 4 项、OTA Python 13 项、LCD C 预览、ELF APPLICATION init
+section 检查及 `git diff --check` 均通过。Release 产物：
+
+```text
+application.bin=106264 bytes
+payload_crc32=0x5F53527E
+application.bin sha256=94128251846bef4abf1925d6dbd9bfbf31fe1782d7801b825a6b9e91028e3c46
+app-v0.15.0-b1.ota=106328 bytes
+ota sha256=241fa5b108ee4ff78d96fde919574561886dcefbe29f191c26115e4ed6235803
+```
+
+本批未烧录，以上结果不构成 UART、QSPI、IMU、E-STOP、电机或 OTA 的新硬件 `PASS`。
 
 ### DT/device data 第一批收口（2026-08-23）
 

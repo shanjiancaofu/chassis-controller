@@ -34,6 +34,16 @@ class ArchitectureCheckTest(unittest.TestCase):
             self.assertEqual(len(violations), 1)
             self.assertIn("generated Devicetree include", violations[0].message)
 
+    def test_freertos_include_outside_runtime_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "app" / "bad.c"
+            source.parent.mkdir()
+            source.write_text('#include "FreeRTOS.h"\n', encoding="utf-8")
+            violations = scan(root, ["app"])
+            self.assertEqual(len(violations), 1)
+            self.assertIn("outside runtime", violations[0].message)
+
 
 if __name__ == "__main__":
     unittest.main()

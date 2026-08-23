@@ -20,6 +20,7 @@ FORBIDDEN_SYMBOLS = (
     re.compile(r"\b[A-Z][A-Za-z0-9]*_HandleTypeDef\b"),
     re.compile(r"\bh(?:fdcan|spi|tim|uart|qspi|rtc|iwdg|adc|dma)[A-Za-z0-9_]*\b"),
 )
+FREERTOS_INCLUDE = re.compile(r'#\s*include\s*[<"](?:FreeRTOS|task)\.h[>"]')
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,9 @@ class Violation:
 def scan_file(path: Path) -> list[Violation]:
     violations: list[Violation] = []
     for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if FREERTOS_INCLUDE.search(raw) and "rtos" not in path.parts:
+            violations.append(Violation(path, number,
+                                        "FreeRTOS include outside runtime"))
         if FORBIDDEN_INCLUDE.search(raw):
             message = ("generated Devicetree include" if
                        "devicetree_generated.h" in raw else

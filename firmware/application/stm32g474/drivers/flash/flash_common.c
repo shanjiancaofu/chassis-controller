@@ -1,6 +1,5 @@
 #include "drivers/flash.h"
 
-#include "drivers/flash/flash_stm32_qspi_private.h"
 #include "device.h"
 #include "devicetree.h"
 

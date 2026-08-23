@@ -1,4 +1,4 @@
-#include "drivers/encoder/encoder.h"
+#include "drivers/encoder/encoder_stm32_private.h"
 
 static const EncoderStm32Config *config(const struct device *device)
 {

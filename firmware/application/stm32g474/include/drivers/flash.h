@@ -33,7 +33,4 @@ typedef struct {
   void (*abort)(const struct device *device);
 } FlashDriverApi;
 
-extern const FlashDriverApi flash_stm32_qspi_api;
-int FlashStm32Qspi_Init(const struct device *device);
-
 #endif

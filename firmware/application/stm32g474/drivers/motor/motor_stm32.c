@@ -1,4 +1,4 @@
-#include "drivers/motor/motor.h"
+#include "drivers/motor/motor_stm32_private.h"
 
 static const MotorStm32Config *config(const struct device *device)
 {
