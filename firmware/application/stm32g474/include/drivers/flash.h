@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "device.h"
 
 typedef enum {
   FLASH_TRANSFER_IDLE = 0,
@@ -20,5 +21,19 @@ bool flash_program_page_dma(uint32_t address, const uint8_t *data,
 bool flash_is_busy(bool *busy);
 FlashTransferStatus flash_get_transfer_status(void);
 void flash_abort(void);
+
+typedef struct {
+  bool (*read_jedec_id)(const struct device *device, uint8_t id[3]);
+  bool (*read)(const struct device *device, uint32_t address, uint8_t *data, uint32_t size);
+  bool (*read_dma)(const struct device *device, uint32_t address, uint8_t *data, uint32_t size);
+  bool (*erase_sector)(const struct device *device, uint32_t address);
+  bool (*program_page_dma)(const struct device *device, uint32_t address, const uint8_t *data, uint32_t size);
+  bool (*is_busy)(const struct device *device, bool *busy);
+  FlashTransferStatus (*get_status)(const struct device *device);
+  void (*abort)(const struct device *device);
+} FlashDriverApi;
+
+extern const FlashDriverApi flash_stm32_qspi_api;
+int FlashStm32Qspi_Init(const struct device *device);
 
 #endif

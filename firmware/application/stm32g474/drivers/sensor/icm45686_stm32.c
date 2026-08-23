@@ -3,7 +3,8 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "boards/chassis_g474/board_config.h"
+#include "main.h"
+#include "spi.h"
 #include "components/icm45686/icm45686.h"
 
 #define ICM45686_SPI_READ 0x80U
@@ -115,8 +116,8 @@ void Icm45686Stm32_Run(uint32_t now_ms)
   } else if (state == DMA_BUSY &&
              now_ms - dma_started_ms >= ICM45686_DMA_TIMEOUT_MS) {
     if (dma_state == DMA_BUSY) {
-      (void)HAL_SPI_Abort(&BOARD_IMU_SPI);
-      HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
+      (void)HAL_SPI_Abort(&hspi3);
+      HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
       dma_state = DMA_IDLE;
       ++imu_snapshot.dma_timeout_count;
       (void)FlushFifo();
@@ -159,7 +160,7 @@ void Icm45686Stm32_OnDataReadyInterrupt(void)
 void Icm45686Stm32_OnSpiTransferComplete(void)
 {
   if (dma_state == DMA_BUSY) {
-    HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
     dma_state = DMA_COMPLETE;
   }
 }
@@ -167,7 +168,7 @@ void Icm45686Stm32_OnSpiTransferComplete(void)
 void Icm45686Stm32_OnSpiTransferError(void)
 {
   if (dma_state == DMA_BUSY) {
-    HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
     dma_state = DMA_ERROR;
   }
 }
@@ -226,10 +227,10 @@ static bool SpiRead(void *context, uint8_t reg, uint8_t *data, size_t length)
     return false;
   }
   tx[0] = reg | ICM45686_SPI_READ;
-  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
   const HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(
       spi, tx, rx, (uint16_t)(length + 1U), ICM45686_SPI_TIMEOUT_MS);
-  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
   if (status != HAL_OK) {
     return false;
   }
@@ -249,10 +250,10 @@ static bool SpiWrite(void *context, uint8_t reg, const uint8_t *data,
   }
   tx[0] = reg & (uint8_t)~ICM45686_SPI_READ;
   memcpy(&tx[1], data, length);
-  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
   const HAL_StatusTypeDef status = HAL_SPI_Transmit(
       spi, tx, (uint16_t)(length + 1U), ICM45686_SPI_TIMEOUT_MS);
-  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
   return status == HAL_OK;
 }
 
@@ -283,7 +284,7 @@ static void DelayUs(void *context, uint32_t delay_us)
 static bool ConfigureDevice(uint32_t now_ms)
 {
   const Icm45686Transport transport = {
-      .context = &BOARD_IMU_SPI,
+      .context = &hspi3,
       .read = SpiRead,
       .write = SpiWrite,
       .delay_ms = DelayMs,
@@ -353,10 +354,10 @@ static bool StartFifoDma(uint32_t now_ms)
   dma_tx[0] = ICM45686_FIFO_DATA_REGISTER | ICM45686_SPI_READ;
   dma_started_ms = now_ms;
   dma_state = DMA_BUSY;
-  HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_RESET);
-  if (HAL_SPI_TransmitReceive_DMA(&BOARD_IMU_SPI, dma_tx, dma_rx,
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
+  if (HAL_SPI_TransmitReceive_DMA(&hspi3, dma_tx, dma_rx,
                                  transfer_length) != HAL_OK) {
-    HAL_GPIO_WritePin(BOARD_IMU_CS_GPIO_PORT, BOARD_IMU_CS_GPIO_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
     dma_state = DMA_IDLE;
     return false;
   }

@@ -5,14 +5,14 @@
 #include <stdint.h>
 
 typedef enum {
-  BOARD_BUTTON_1 = 0,
-  BOARD_BUTTON_2,
-  BOARD_BUTTON_COUNT
+  BUTTON_1 = 0,
+  BUTTON_2,
+  BUTTON_COUNT
 } ButtonId;
 
 typedef struct {
-  bool pressed[BOARD_BUTTON_COUNT];
-  uint32_t pressed_count[BOARD_BUTTON_COUNT];
+  bool pressed[BUTTON_COUNT];
+  uint32_t pressed_count[BUTTON_COUNT];
 } ButtonSnapshot;
 
 void Button_Init(void);

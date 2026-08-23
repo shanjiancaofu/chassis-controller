@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "device.h"
 
 typedef struct {
   uint8_t year;
@@ -14,5 +15,8 @@ typedef struct {
 } RtcDateTime;
 
 bool rtc_read_datetime(RtcDateTime *date_time);
+typedef struct { bool (*read_datetime)(const struct device *device, RtcDateTime *date_time); } RtcDriverApi;
+extern const RtcDriverApi rtc_stm32_api;
+int RtcStm32_Init(const struct device *device);
 
 #endif

@@ -1,19 +1,19 @@
 #include "drivers/led/led.h"
 
-#include "boards/chassis_g474/board_config.h"
+#include "main.h"
 
 static GPIO_TypeDef *LedPort(Led led)
 {
-  return led == LED_BLUE ? BOARD_LED_BLUE_GPIO_PORT
-       : led == LED_GREEN ? BOARD_LED_GREEN_GPIO_PORT
-                              : BOARD_LED_RED_GPIO_PORT;
+  return led == LED_BLUE ? LED_B_GPIO_Port
+       : led == LED_GREEN ? LED_G_GPIO_Port
+                              : LED_R_GPIO_Port;
 }
 
 static uint16_t LedPin(Led led)
 {
-  return led == LED_BLUE ? BOARD_LED_BLUE_GPIO_PIN
-       : led == LED_GREEN ? BOARD_LED_GREEN_GPIO_PIN
-                              : BOARD_LED_RED_GPIO_PIN;
+  return led == LED_BLUE ? LED_B_Pin
+       : led == LED_GREEN ? LED_G_Pin
+                              : LED_R_Pin;
 }
 
 void Led_Set(Led led, bool on)

@@ -3,8 +3,7 @@
 #include "devicetree_generated.h"
 #include "drivers/motor/motor.h"
 
-#include "drivers/motor/motor.h"
-#include "boards/chassis_g474/board_config.h"
+#include "main.h"
 
 static EmergencyStopLatchedCallback latched_callback;
 
@@ -15,7 +14,7 @@ void EmergencyStop_Init(EmergencyStopLatchedCallback callback)
 
 bool EmergencyStop_IsAsserted(void)
 {
-  return HAL_GPIO_ReadPin(BOARD_EMERGENCY_STOP_GPIO_PORT, BOARD_EMERGENCY_STOP_GPIO_PIN) == GPIO_PIN_RESET;
+  return HAL_GPIO_ReadPin(E_STOP_GPIO_Port, E_STOP_Pin) == GPIO_PIN_RESET;
 }
 
 void EmergencyStop_OnInterrupt(void)

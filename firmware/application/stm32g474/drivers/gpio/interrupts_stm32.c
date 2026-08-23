@@ -2,17 +2,17 @@
 #include "drivers/safety/emergency_stop.h"
 #include "drivers/sensor/icm45686.h"
 #include "drivers/display/lcd.h"
-#include "boards/chassis_g474/board_config.h"
+#include "main.h"
 
 void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin)
 {
-  if (gpio_pin == BOARD_BUTTON_1_GPIO_PIN || gpio_pin == BOARD_BUTTON_2_GPIO_PIN) {
+  if (gpio_pin == BUTTON_1_Pin || gpio_pin == BUTTON_2_Pin) {
     Button_OnInterrupt(gpio_pin);
-  } else if (gpio_pin == BOARD_IMU_INTERRUPT_GPIO_PIN) {
+  } else if (gpio_pin == IMU_INT1_Pin) {
     Icm45686Stm32_OnDataReadyInterrupt();
-  } else if (gpio_pin == BOARD_DISPLAY_KEY_GPIO_PIN) {
+  } else if (gpio_pin == KEY_Pin) {
     Button_OnDisplayKeyInterrupt();
-  } else if (gpio_pin == BOARD_EMERGENCY_STOP_GPIO_PIN) {
+  } else if (gpio_pin == E_STOP_Pin) {
     EmergencyStop_OnInterrupt();
   }
 }

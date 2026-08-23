@@ -18,8 +18,8 @@
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
-- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于 motor/encoder/power/sensor/display Device Model
-  迁移后的 ELF 重新打包：payload `105092` 字节、CRC32 `0xF6AE2833`，OTA 包 `105156` 字节；仅完成构建和
+- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于硬件 Device Model 收口后的 ELF
+  重新打包：payload `105468` 字节、CRC32 `0x84E12E94`，OTA 包 `105532` 字节；仅完成构建和
   主机格式校验，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
@@ -106,6 +106,7 @@
 - motor/encoder 已完成首批 Device Model 迁移：`drive0`、`left_encoder`、`right_encoder` 由
   `DEVICE_DT_DEFINE()` 注册，WheelController 通过 generic motor API 装配，编码器按左右 device
   分别读取；源码构建通过，电机安全和编码器方向仍需目标板回归。
+- `board_config.h` 和全部 `BOARD_*` 依赖已删除；`flash0/watchdog0/rtc0/time0` 已从 dummy device 改为真实 API/vtable/init。button/LED/SR501/E-STOP GPIO consumer 仍待下一批完成。
 - UART v1 的消息外壳和已有字段语义保持兼容，字段及分区集合不冻结。四分区只承担当前完整
   诊断，不要求所有新功能都往其中堆字段；周期遥测按实际观察需求保持精简。
 - 编码器在 100 Hz 控制采样点记录本地单调时间和实际累计周期，ADC 记录转换完成时间，IMU
@@ -261,23 +262,14 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角也�
 
 ## 下一步
 
-1. 为 motor、encoder、sensor、display 和 GPIO consumer 补齐真实 `struct device + api + data`
-   实例，不等待目标板验收。
-2. 将 `ChassisApp_Init()` 中剩余的直接 driver 函数装配逐步替换为 device/subsystem API，保持
-   PWM 零输出、E-STOP 优先级和可选传感器不阻塞启动的现有行为。
-3. 并行补齐 UART/CAN OTA、断电恢复、TRIAL 回滚、rollback 中断恢复和确认失败清理的主机测试矩阵。
-4. 在危险目标板测试前先完成主机故障注入、日志断言、维护锁和四路零 PWM 断言。
-5. 基于当前 Release ELF 重新生成并打包 `app-v0.15.0-b1.ota`；烧录前仅记录构建结果，不写
-   硬件 PASS。
-6. 在用户明确确认后，通过 UART OTA 安装新的 `build/arm-release/app-v0.15.0-b1.ota`，复核
-   `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED`、四任务、
-   `fault=0`、`control=STOPPED`、左右 PWM 为零和 LCD 四页。
-7. 有硬件条件时检查编码器增量、里程计方向、采样时间戳/年龄和 `odometry reset`。
-8. 有硬件条件时进行已知直线距离和原地旋转角度测量，校准 65 mm 有效轮径与 220 mm 轮距；IMU 安装
-   固定前不接入航向融合。
-9. 确认电池化学体系、串数和放电曲线后校准 9.0--12.6 V 百分比窗口；软件估算和测试工具不等待实物。
-10. 在架空轮短时响应通过的基础上，继续做低速 PID 稳定性、停车、负载阶跃、编码器异常和
-   欠压注入验证；方向不重复测试。
+1. 完成 button/LED/SR501/E-STOP GPIO consumer device、DTS `gpios` 和统一中断路由。
+2. 将 power/IMU/display 的静态运行状态迁入 `device->data`，并继续清理 concrete 全局函数。
+3. 将 `ChassisApp_Init()` 中剩余的直接 driver 函数装配替换为 device/subsystem API，保持 PWM 零输出、E-STOP 优先级和可选传感器不阻塞启动。
+4. 并行补齐 UART/CAN OTA、断电恢复、TRIAL 回滚、rollback 中断恢复和确认失败清理的主机测试矩阵。
+5. 在危险目标板测试前先完成主机故障注入、日志断言、维护锁和四路零 PWM 断言。
+6. 基于当前 Release ELF 重新打包 OTA；烧录前仅记录构建结果，不写硬件 PASS。
+7. 在用户明确确认后执行 UART OTA 并复核任务、fault、control、PWM、LCD、QSPI、RTC 和 IWDG。
+8. 有硬件条件时继续编码器、里程计、PID、欠压、IMU 动态轴向和 SR501 高电平验收。
 
 当前路线：
 

@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "boards/chassis_g474/board_config.h"
+#include "main.h"
 
 #define BUTTON_DEBOUNCE_MS 20U
 
@@ -13,9 +13,9 @@ typedef struct {
   uint32_t debounce_started_ms;
 } ButtonState;
 
-static ButtonState buttons[BOARD_BUTTON_COUNT] = {
-    [BOARD_BUTTON_1] = {BOARD_BUTTON_1_GPIO_PORT, BOARD_BUTTON_1_GPIO_PIN, false, 0U},
-    [BOARD_BUTTON_2] = {BOARD_BUTTON_2_GPIO_PORT, BOARD_BUTTON_2_GPIO_PIN, false, 0U},
+static ButtonState buttons[BUTTON_COUNT] = {
+    [BUTTON_1] = {BUTTON_1_GPIO_Port, BUTTON_1_Pin, false, 0U},
+    [BUTTON_2] = {BUTTON_2_GPIO_Port, BUTTON_2_Pin, false, 0U},
 };
 static volatile uint32_t pending_interrupts;
 static volatile bool display_key_interrupt_pending;
@@ -23,7 +23,7 @@ static bool display_key_debounce_pending;
 static bool display_key_pressed_event;
 static uint32_t display_key_debounce_started_ms;
 static uint32_t pressed_events;
-static uint32_t pressed_counts[BOARD_BUTTON_COUNT];
+static uint32_t pressed_counts[BUTTON_COUNT];
 
 void Button_Init(void)
 {
@@ -33,7 +33,7 @@ void Button_Init(void)
   display_key_pressed_event = false;
   display_key_debounce_started_ms = 0U;
   pressed_events = 0U;
-  for (uint32_t index = 0U; index < BOARD_BUTTON_COUNT; ++index) {
+  for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
     buttons[index].debounce_pending = false;
     buttons[index].debounce_started_ms = 0U;
     pressed_counts[index] = 0U;
@@ -42,11 +42,11 @@ void Button_Init(void)
 
 void Button_OnInterrupt(uint16_t gpio_pin)
 {
-  if (gpio_pin == BOARD_BUTTON_1_GPIO_PIN) {
-    (void)__atomic_fetch_or(&pending_interrupts, 1UL << BOARD_BUTTON_1,
+  if (gpio_pin == BUTTON_1_Pin) {
+    (void)__atomic_fetch_or(&pending_interrupts, 1UL << BUTTON_1,
                             __ATOMIC_RELAXED);
-  } else if (gpio_pin == BOARD_BUTTON_2_GPIO_PIN) {
-    (void)__atomic_fetch_or(&pending_interrupts, 1UL << BOARD_BUTTON_2,
+  } else if (gpio_pin == BUTTON_2_Pin) {
+    (void)__atomic_fetch_or(&pending_interrupts, 1UL << BUTTON_2,
                             __ATOMIC_RELAXED);
   }
 }
@@ -61,7 +61,7 @@ void Button_Run(uint32_t now_ms)
   const uint32_t interrupts =
       __atomic_exchange_n(&pending_interrupts, 0U, __ATOMIC_RELAXED);
 
-  for (uint32_t index = 0U; index < BOARD_BUTTON_COUNT; ++index) {
+  for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
     ButtonState *button = &buttons[index];
 
     if ((interrupts & (1UL << index)) != 0U) {
@@ -86,7 +86,7 @@ void Button_Run(uint32_t now_ms)
   if (display_key_debounce_pending &&
       now_ms - display_key_debounce_started_ms >= BUTTON_DEBOUNCE_MS) {
     display_key_debounce_pending = false;
-    if (HAL_GPIO_ReadPin(BOARD_DISPLAY_KEY_GPIO_PORT, BOARD_DISPLAY_KEY_GPIO_PIN) == GPIO_PIN_SET) {
+    if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_SET) {
       display_key_pressed_event = true;
     }
   }
@@ -96,7 +96,7 @@ bool Button_TakePressed(ButtonId button)
 {
   uint32_t mask;
 
-  if (button >= BOARD_BUTTON_COUNT) {
+  if (button >= BUTTON_COUNT) {
     return false;
   }
   mask = 1UL << (uint32_t)button;
@@ -121,7 +121,7 @@ void Button_GetSnapshot(ButtonSnapshot *snapshot)
   if (snapshot == NULL) {
     return;
   }
-  for (uint32_t index = 0U; index < BOARD_BUTTON_COUNT; ++index) {
+  for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
     snapshot->pressed[index] =
         HAL_GPIO_ReadPin(buttons[index].port, buttons[index].pin) ==
         GPIO_PIN_RESET;

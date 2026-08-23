@@ -8,16 +8,14 @@
 #include "drivers/adc/power_sample.h"
 #include "drivers/display/lcd.h"
 #include "drivers/sensor/icm45686.h"
+#include "drivers/flash.h"
+#include "drivers/watchdog.h"
+#include "drivers/rtc.h"
+#include "drivers/time.h"
 #include "adc.h"
 #include "fdcan.h"
 #include "tim.h"
 #include "usart.h"
-
-static int PeripheralDevice_Init(const struct device *device)
-{
-  (void)device;
-  return 0;
-}
 
 static const CanStm32FdcanConfig can0_config = {
     .handle = &hfdcan2,
@@ -31,14 +29,14 @@ DEVICE_DT_DEFINE(can0, CanStm32Fdcan_Init, &can0_data, &can0_config,
 DEVICE_DT_DEFINE(uart0, UartStm32_Init, NULL, NULL,
                  PRE_KERNEL_2, 60, &uart_stm32_api);
 
-DEVICE_DT_DEFINE(flash0, PeripheralDevice_Init, NULL, NULL,
-                 PRE_KERNEL_2, 70, NULL);
-DEVICE_DT_DEFINE(watchdog0, PeripheralDevice_Init, NULL, NULL,
-                 PRE_KERNEL_2, 71, NULL);
-DEVICE_DT_DEFINE(rtc0, PeripheralDevice_Init, NULL, NULL,
-                 PRE_KERNEL_2, 72, NULL);
-DEVICE_DT_DEFINE(time0, PeripheralDevice_Init, NULL, NULL,
-                 PRE_KERNEL_2, 73, NULL);
+DEVICE_DT_DEFINE(flash0, FlashStm32Qspi_Init, NULL, NULL,
+                 PRE_KERNEL_2, 70, &flash_stm32_qspi_api);
+DEVICE_DT_DEFINE(watchdog0, WatchdogStm32_Init, NULL, NULL,
+                 PRE_KERNEL_2, 71, &watchdog_stm32_api);
+DEVICE_DT_DEFINE(rtc0, RtcStm32_Init, NULL, NULL,
+                 PRE_KERNEL_2, 72, &rtc_stm32_api);
+DEVICE_DT_DEFINE(time0, TimeStm32_Init, NULL, NULL,
+                 PRE_KERNEL_2, 73, &time_stm32_api);
 
 static const MotorStm32Config motor0_config = {
     .timer = &htim8,

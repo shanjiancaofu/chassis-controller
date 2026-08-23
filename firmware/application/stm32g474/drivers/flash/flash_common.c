@@ -4,62 +4,57 @@
 #include "device.h"
 #include "devicetree_generated.h"
 
-static bool Ready(void)
+static const FlashDriverApi *Api(const struct device **selected)
 {
-  return device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_FLASH));
+  const struct device *device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_FLASH);
+  if (selected != NULL) *selected = device;
+  return device_is_ready(device) ? device->api : NULL;
 }
 
 bool flash_read_jedec_id(uint8_t jedec_id[3])
 {
-  return Ready() && FlashStm32QspiReadJedecId(jedec_id);
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  return api && api->read_jedec_id && api->read_jedec_id(dev, jedec_id);
 }
 
 bool flash_read(uint32_t address, uint8_t *data, uint32_t size)
 {
-  return Ready() && FlashStm32QspiRead(address, data, size);
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  return api && api->read && api->read(dev, address, data, size);
 }
 
 bool flash_read_dma(uint32_t address, uint8_t *data, uint32_t size)
 {
-  return Ready() && FlashStm32QspiReadDma(address, data, size);
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  return api && api->read_dma && api->read_dma(dev, address, data, size);
 }
 
 bool flash_erase_sector(uint32_t address)
 {
-  return Ready() && FlashStm32QspiEraseSector(address);
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  return api && api->erase_sector && api->erase_sector(dev, address);
 }
 
 bool flash_program_page_dma(uint32_t address, const uint8_t *data, uint32_t size)
 {
-  return Ready() && FlashStm32QspiProgramPageDma(address, data, size);
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  return api && api->program_page_dma && api->program_page_dma(dev, address, data, size);
 }
 
 bool flash_is_busy(bool *busy)
 {
-  return Ready() && FlashStm32QspiIsBusy(busy);
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  return api && api->is_busy && api->is_busy(dev, busy);
 }
 
 FlashTransferStatus flash_get_transfer_status(void)
 {
-  if (!Ready()) {
-    return FLASH_TRANSFER_FAILED;
-  }
-  switch (FlashStm32QspiGetTransferStatus()) {
-    case FLASH_STM32_QSPI_TRANSFER_BUSY:
-      return FLASH_TRANSFER_BUSY;
-    case FLASH_STM32_QSPI_TRANSFER_COMPLETE:
-      return FLASH_TRANSFER_COMPLETE;
-    case FLASH_STM32_QSPI_TRANSFER_FAILED:
-      return FLASH_TRANSFER_FAILED;
-    case FLASH_STM32_QSPI_TRANSFER_IDLE:
-    default:
-      return FLASH_TRANSFER_IDLE;
-  }
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  return api && api->get_status ? api->get_status(dev) : FLASH_TRANSFER_FAILED;
 }
 
 void flash_abort(void)
 {
-  if (Ready()) {
-    FlashStm32QspiAbort();
-  }
+  const struct device *dev; const FlashDriverApi *api = Api(&dev);
+  if (api && api->abort) api->abort(dev);
 }

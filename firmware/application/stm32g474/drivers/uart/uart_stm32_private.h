@@ -1,5 +1,5 @@
-#ifndef CHASSIS_UART_STM32_BACKEND_H
-#define CHASSIS_UART_STM32_BACKEND_H
+#ifndef CHASSIS_UART_STM32_PRIVATE_H
+#define CHASSIS_UART_STM32_PRIVATE_H
 
 #include <stdbool.h>
 #include <stddef.h>

@@ -1,6 +1,6 @@
 #include "drivers/reset/reset.h"
 
-#include "boards/chassis_g474/board_config.h"
+#include "rtc.h"
 
 #define RESET_BACKUP_REGISTER_COUNT 32U
 
@@ -47,13 +47,13 @@ uint32_t Reset_ReadBackupRegister(uint32_t index)
   if (index >= RESET_BACKUP_REGISTER_COUNT) {
     return 0U;
   }
-  return HAL_RTCEx_BKUPRead(&BOARD_RTC, index);
+  return HAL_RTCEx_BKUPRead(&hrtc, index);
 }
 
 void Reset_WriteBackupRegister(uint32_t index, uint32_t value)
 {
   if (index < RESET_BACKUP_REGISTER_COUNT) {
-    HAL_RTCEx_BKUPWrite(&BOARD_RTC, index, value);
+    HAL_RTCEx_BKUPWrite(&hrtc, index, value);
   }
 }
 

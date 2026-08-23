@@ -2,7 +2,12 @@
 
 #include <stddef.h>
 
-#include "boards/chassis_g474/board_config.h"
+#include "adc.h"
+
+#define POWER_ADC_REFERENCE_MV 3300ULL
+#define POWER_DIVIDER_RATIO 11ULL
+#define POWER_ADC_MAX 4095ULL
+#define POWER_ADC_TIMEOUT_MS 2U
 
 typedef struct {
   volatile uint32_t latest_millivolts;
@@ -18,7 +23,7 @@ static int Init(const struct device *device)
   power_data.latest_millivolts = 0U;
   power_data.latest_sample_timestamp_ms = 0U;
   power_data.latest_valid = false;
-  return HAL_ADCEx_Calibration_Start(&BOARD_POWER_ADC, ADC_SINGLE_ENDED) ==
+  return HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) ==
          HAL_OK ? 0 : -1;
 }
 
@@ -27,17 +32,17 @@ static int ReadRaw(const struct device *device, uint16_t *raw)
   HAL_StatusTypeDef conversion_status;
   HAL_StatusTypeDef stop_status;
 
-  if (raw == NULL || HAL_ADC_Start(&BOARD_POWER_ADC) != HAL_OK) {
+  if (raw == NULL || HAL_ADC_Start(&hadc1) != HAL_OK) {
     return false;
   }
 
   conversion_status =
-      HAL_ADC_PollForConversion(&BOARD_POWER_ADC,
-                                BOARD_POWER_ADC_TIMEOUT_MS);
+      HAL_ADC_PollForConversion(&hadc1,
+                                POWER_ADC_TIMEOUT_MS);
   if (conversion_status == HAL_OK) {
-    *raw = (uint16_t)HAL_ADC_GetValue(&BOARD_POWER_ADC);
+    *raw = (uint16_t)HAL_ADC_GetValue(&hadc1);
   }
-  stop_status = HAL_ADC_Stop(&BOARD_POWER_ADC);
+  stop_status = HAL_ADC_Stop(&hadc1);
   return conversion_status == HAL_OK && stop_status == HAL_OK ? 0 : -1;
 }
 
@@ -50,9 +55,9 @@ static int ReadMillivolts(const struct device *device, uint32_t *vin_mv)
     return -1;
   }
 
-  scaled = (uint64_t)raw * BOARD_POWER_ADC_REFERENCE_MV *
-           BOARD_POWER_DIVIDER_RATIO;
-  *vin_mv = (uint32_t)(scaled / BOARD_POWER_ADC_MAX);
+  scaled = (uint64_t)raw * POWER_ADC_REFERENCE_MV *
+           POWER_DIVIDER_RATIO;
+  *vin_mv = (uint32_t)(scaled / POWER_ADC_MAX);
   power_data.latest_millivolts = *vin_mv;
   power_data.latest_sample_timestamp_ms = HAL_GetTick();
   power_data.latest_valid = true;

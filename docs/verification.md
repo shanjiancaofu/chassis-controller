@@ -125,7 +125,7 @@ UART、QSPI、watchdog、RTC、time 的 HAL 适配源码已从旧 `bsp/*` 目录
 `103400 / 491520`、RAM `55296 / 131072`。架构、Kconfig、DTS 和 OTA Python 测试继续通过。
 本轮没有目标板硬件结论。
 
-### Motor/encoder/power/sensor/display Device Model migration（2026-08-20）
+### Hardware Device Model migration（2026-08-20）
 
 新增真实设备实例：
 
@@ -139,12 +139,12 @@ power0
 motor/encoder 的公共操作现在通过 `motor_*`、`encoder_*` API 和 `const struct device *` 进入，
 CubeMX `htim8/htim2/htim4` 只在 board device config 和 STM32 driver 内可见。WheelController
 仍保留业务 port，但 port 内部只调用 generic motor API；编码器读取改为分别读取左右两个 device。
-power sample 的 API 现在通过 `power0` device 访问；ICM45686 通过 `imu0` sensor device 访问，LCD 通过 `display0` display device 访问。
+power sample 的 API 现在通过 `power0` device 访问；ICM45686 通过 `imu0` sensor device 访问，LCD 通过 `display0` display device 访问。`flash0/watchdog0/rtc0/time0` 已移除 dummy init，改为真实 API/vtable/init；`board_config.h` 及全部 `BOARD_*` 引用已删除。
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
-| Debug | 118388 | 120 | 55256 | `BUILD PASS` |
-| Release | 104964 | 120 | 55248 | `BUILD PASS` |
+| Debug | 118872 | 120 | 55256 | `BUILD PASS` |
+| Release | 105340 | 120 | 55248 | `BUILD PASS` |
 
 架构、Kconfig、DTS、OTA Python 测试均通过；电机安全和编码器方向未因源码构建结果推断硬件
 `PASS`，仍需目标板回归。
@@ -152,11 +152,11 @@ power sample 的 API 现在通过 `power0` device 访问；ICM45686 通过 `imu0
 Release ELF 已重新生成 Application BIN 和 OTA 包：
 
 ```text
-application.bin=105092 bytes
-payload_crc32=0xF6AE2833
-application.bin sha256=7c36dc58a154221c4c10c23729af9e1e678ab3803d80b56d63d4ad5818912584
-app-v0.15.0-b1.ota=105156 bytes
-ota sha256=32370a8bc1520dc325a3fdc6cfd7618b6acb2a2aa612593d2dffd53663f32bcf
+application.bin=105468 bytes
+payload_crc32=0x84E12E94
+application.bin sha256=9a18604411d50b5fc15b9ab846e5e5252cfbcf6488056c6eb3ce6ed05027ee30
+app-v0.15.0-b1.ota=105532 bytes
+ota sha256=cffff895facaa2f5f998ee6d1ddf1c5097137a3b2bdce3979c1a120affa399af
 ```
 
 该 OTA 包只完成主机打包和格式校验，尚未烧录，不能记录硬件 `PASS`。

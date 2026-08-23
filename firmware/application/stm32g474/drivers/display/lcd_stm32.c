@@ -2,7 +2,9 @@
 
 #include <stddef.h>
 
-#include "boards/chassis_g474/board_config.h"
+#include "main.h"
+#include "spi.h"
+#include "tim.h"
 
 #define LCD_SPI_TIMEOUT_MS 100U
 #define LCD_BACKLIGHT_COMPARE 35U
@@ -24,22 +26,22 @@ static LcdStatus lcd_status;
 static bool LcdWriteCommand(uint8_t command, const uint8_t *data,
                             uint16_t data_size)
 {
-  HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(BOARD_LCD_DC_GPIO_PORT, BOARD_LCD_DC_GPIO_PIN, GPIO_PIN_RESET);
-  if (HAL_SPI_Transmit(&BOARD_LCD_SPI, &command, 1U, LCD_SPI_TIMEOUT_MS) !=
+  HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_RESET);
+  if (HAL_SPI_Transmit(&hspi2, &command, 1U, LCD_SPI_TIMEOUT_MS) !=
       HAL_OK) {
-    HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
     return false;
   }
   if (data_size > 0U) {
-    HAL_GPIO_WritePin(BOARD_LCD_DC_GPIO_PORT, BOARD_LCD_DC_GPIO_PIN, GPIO_PIN_SET);
-    if (HAL_SPI_Transmit(&BOARD_LCD_SPI, (uint8_t *)data, data_size,
+    HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_SET);
+    if (HAL_SPI_Transmit(&hspi2, (uint8_t *)data, data_size,
                          LCD_SPI_TIMEOUT_MS) != HAL_OK) {
-      HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
       return false;
     }
   }
-  HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
   return true;
 }
 
@@ -66,16 +68,16 @@ bool Lcd_Init(void)
   lcd_dma_complete = false;
   lcd_dma_failed = false;
   lcd_dma_pending = false;
-  __HAL_TIM_SET_COMPARE(&BOARD_LCD_BACKLIGHT_TIMER,
-                        BOARD_LCD_BACKLIGHT_CHANNEL, 0U);
-  if (HAL_TIM_PWM_Start(&BOARD_LCD_BACKLIGHT_TIMER,
-                        BOARD_LCD_BACKLIGHT_CHANNEL) != HAL_OK) {
+  __HAL_TIM_SET_COMPARE(&htim3,
+                        TIM_CHANNEL_1, 0U);
+  if (HAL_TIM_PWM_Start(&htim3,
+                        TIM_CHANNEL_1) != HAL_OK) {
     return false;
   }
-  HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(BOARD_LCD_RESET_GPIO_PORT, BOARD_LCD_RESET_GPIO_PIN, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_RESET);
   HAL_Delay(20U);
-  HAL_GPIO_WritePin(BOARD_LCD_RESET_GPIO_PORT, BOARD_LCD_RESET_GPIO_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_SET);
   HAL_Delay(120U);
 
   if (!LcdWriteCommand(LCD_COMMAND_SLEEP_OUT, NULL, 0U)) {
@@ -117,15 +119,15 @@ bool Lcd_BeginFrame(void)
     lcd_status = LCD_FAILED;
     return false;
   }
-  HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(BOARD_LCD_DC_GPIO_PORT, BOARD_LCD_DC_GPIO_PIN, GPIO_PIN_RESET);
-  if (HAL_SPI_Transmit(&BOARD_LCD_SPI, &command, 1U, LCD_SPI_TIMEOUT_MS) !=
+  HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_RESET);
+  if (HAL_SPI_Transmit(&hspi2, &command, 1U, LCD_SPI_TIMEOUT_MS) !=
       HAL_OK) {
-    HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
     lcd_status = LCD_FAILED;
     return false;
   }
-  HAL_GPIO_WritePin(BOARD_LCD_DC_GPIO_PORT, BOARD_LCD_DC_GPIO_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_SET);
   lcd_dma_complete = false;
   lcd_dma_failed = false;
   lcd_dma_pending = false;
@@ -141,7 +143,7 @@ bool Lcd_TransmitRow(const uint8_t *row_data, uint16_t size)
   }
   lcd_dma_complete = false;
   lcd_dma_pending = true;
-  if (HAL_SPI_Transmit_DMA(&BOARD_LCD_SPI, (uint8_t *)row_data, size) !=
+  if (HAL_SPI_Transmit_DMA(&hspi2, (uint8_t *)row_data, size) !=
       HAL_OK) {
     lcd_dma_pending = false;
     lcd_status = LCD_FAILED;
@@ -167,9 +169,9 @@ void Lcd_EndFrame(void)
     lcd_status = LCD_FAILED;
     return;
   }
-  HAL_GPIO_WritePin(BOARD_LCD_CS_GPIO_PORT, BOARD_LCD_CS_GPIO_PIN, GPIO_PIN_SET);
-  __HAL_TIM_SET_COMPARE(&BOARD_LCD_BACKLIGHT_TIMER,
-                        BOARD_LCD_BACKLIGHT_CHANNEL,
+  HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
+  __HAL_TIM_SET_COMPARE(&htim3,
+                        TIM_CHANNEL_1,
                         LCD_BACKLIGHT_COMPARE);
   lcd_status = LCD_READY;
 }

@@ -1,10 +1,10 @@
 #include "drivers/watchdog/watchdog_stm32_private.h"
 
-#include "boards/chassis_g474/board_config.h"
+#include "iwdg.h"
 
 bool WatchdogStm32Refresh(void)
 {
-  return HAL_IWDG_Refresh(&BOARD_WATCHDOG) == HAL_OK;
+  return HAL_IWDG_Refresh(&hiwdg) == HAL_OK;
 }
 
 bool WatchdogStm32PrepareForBootloader(void)

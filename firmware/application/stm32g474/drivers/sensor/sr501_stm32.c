@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "boards/chassis_g474/board_config.h"
+#include "main.h"
 
 #define SR501_WARMUP_MS 60000U
 #define SR501_STABLE_FILTER_MS 50U
@@ -20,8 +20,8 @@ static uint32_t last_motion_ms;
 
 void Sr501_Init(uint32_t now_ms)
 {
-  raw_high = HAL_GPIO_ReadPin(BOARD_SR501_GPIO_PORT,
-                             BOARD_SR501_GPIO_PIN) == GPIO_PIN_SET;
+  raw_high = HAL_GPIO_ReadPin(SR501_OUT_GPIO_Port,
+                             SR501_OUT_Pin) == GPIO_PIN_SET;
   stable_high = raw_high;
   candidate_high = raw_high;
   candidate_countable = false;
@@ -38,8 +38,8 @@ void Sr501_Run(uint32_t now_ms)
   bool previous_stable_high;
 
   current_ms = now_ms;
-  raw_high = HAL_GPIO_ReadPin(BOARD_SR501_GPIO_PORT,
-                             BOARD_SR501_GPIO_PIN) == GPIO_PIN_SET;
+  raw_high = HAL_GPIO_ReadPin(SR501_OUT_GPIO_Port,
+                             SR501_OUT_Pin) == GPIO_PIN_SET;
 
   if (raw_high != candidate_high) {
     candidate_high = raw_high;

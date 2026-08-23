@@ -27,7 +27,7 @@
 #include "tests/target/qspi_target_test.h"
 #include "ui/lcd/lcd_ui.h"
 
-_Static_assert((uint32_t)BOARD_BUTTON_COUNT ==
+_Static_assert((uint32_t)BUTTON_COUNT ==
                    (uint32_t)SYSTEM_STATUS_BUTTON_COUNT,
                "button snapshot count mismatch");
 

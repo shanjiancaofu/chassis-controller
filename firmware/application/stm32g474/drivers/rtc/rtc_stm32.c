@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "boards/chassis_g474/board_config.h"
+#include "rtc.h"
 
 bool RtcStm32ReadDateTime(RtcStm32DateTime *date_time)
 {
@@ -10,8 +10,8 @@ bool RtcStm32ReadDateTime(RtcStm32DateTime *date_time)
   RTC_DateTypeDef date = {0};
 
   if (date_time == NULL ||
-      HAL_RTC_GetTime(&BOARD_RTC, &time, RTC_FORMAT_BIN) != HAL_OK ||
-      HAL_RTC_GetDate(&BOARD_RTC, &date, RTC_FORMAT_BIN) != HAL_OK ||
+      HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN) != HAL_OK ||
+      HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN) != HAL_OK ||
       time.Hours > 23U || time.Minutes > 59U || time.Seconds > 59U ||
       date.Month < 1U || date.Month > 12U || date.Date < 1U ||
       date.Date > 31U) {
