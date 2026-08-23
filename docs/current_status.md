@@ -18,8 +18,8 @@
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
-- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于 motor/encoder/power Device Model
-  迁移后的 ELF 重新打包：payload `104520` 字节、CRC32 `0x407AA832`，OTA 包 `104584` 字节；仅完成构建和
+- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于 motor/encoder/power/sensor/display Device Model
+  迁移后的 ELF 重新打包：payload `105092` 字节、CRC32 `0xF6AE2833`，OTA 包 `105156` 字节；仅完成构建和
   主机格式校验，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的

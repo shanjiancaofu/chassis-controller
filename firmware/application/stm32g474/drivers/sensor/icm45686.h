@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "device.h"
 
 typedef enum {
   ICM45686_UNINITIALIZED = 0,
@@ -56,5 +57,21 @@ void Icm45686Stm32_OnDataReadyInterrupt(void);
 void Icm45686Stm32_OnSpiTransferComplete(void);
 void Icm45686Stm32_OnSpiTransferError(void);
 void Icm45686Stm32_GetSnapshot(Icm45686Stm32Snapshot *snapshot);
+
+typedef struct {
+  bool (*set_sample_sink)(const struct device *device,
+                          const Icm45686Stm32SampleSink *sink);
+  void (*run)(const struct device *device, uint32_t now_ms);
+  void (*get_snapshot)(const struct device *device,
+                       Icm45686Stm32Snapshot *snapshot);
+} SensorDriverApi;
+
+bool sensor_set_sample_sink(const struct device *device,
+                            const Icm45686Stm32SampleSink *sink);
+void sensor_run(const struct device *device, uint32_t now_ms);
+void sensor_get_snapshot(const struct device *device,
+                         Icm45686Stm32Snapshot *snapshot);
+extern const SensorDriverApi icm45686_stm32_api;
+int Icm45686Device_Init(const struct device *device);
 
 #endif

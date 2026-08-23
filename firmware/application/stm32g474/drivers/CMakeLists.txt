@@ -7,7 +7,9 @@ add_library(chassis_drivers STATIC
   gpio/interrupts_stm32.c
   led/led_stm32.c
   display/lcd_stm32.c
+  display/display_common.c
   sensor/icm45686_stm32.c
+  sensor/sensor_common.c
   motor/motor_stm32.c
   motor/motor_common.c
   adc/power_sample_stm32.c

@@ -6,6 +6,8 @@
 #include "drivers/motor/motor.h"
 #include "drivers/encoder/encoder.h"
 #include "drivers/adc/power_sample.h"
+#include "drivers/display/lcd.h"
+#include "drivers/sensor/icm45686.h"
 #include "adc.h"
 #include "fdcan.h"
 #include "tim.h"
@@ -68,3 +70,7 @@ DEVICE_DT_DEFINE(right_encoder, EncoderStm32_Init, &right_encoder_data,
 
 DEVICE_DT_DEFINE(power0, PowerSampleStm32_Init, NULL, NULL,
                  PRE_KERNEL_2, 83, &power_sample_stm32_api);
+DEVICE_DT_DEFINE(display0, DisplayStm32_Init, NULL, NULL,
+                 PRE_KERNEL_2, 84, &display_stm32_api);
+DEVICE_DT_DEFINE(imu0, Icm45686Device_Init, NULL, NULL,
+                 PRE_KERNEL_2, 85, &icm45686_stm32_api);

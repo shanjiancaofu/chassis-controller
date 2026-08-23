@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "device.h"
 
 typedef enum
 {
@@ -111,7 +112,7 @@ typedef struct
   uint32_t display_stack_free_words;
 } LcdUiStatusData;
 
-bool LcdUi_Init(void);
+bool LcdUi_Init(const struct device *display);
 void LcdUi_Run(void);
 void LcdUi_SetPage(LcdUiPage page);
 void LcdUi_SetStatusData(const LcdUiStatusData *data);

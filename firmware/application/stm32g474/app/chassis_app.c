@@ -67,6 +67,7 @@ static const OdometryConfig odometry_config = {
 static const struct device *drive_device;
 static const struct device *left_encoder_device;
 static const struct device *right_encoder_device;
+static const struct device *imu_device;
 
 static int16_t GetLeftMotorAppliedDuty(void)
 {
@@ -203,11 +204,11 @@ static bool InitializeHardware(uint32_t now_ms)
     char fields[48];
 
     ImuOrientation_Init();
-    if (!Icm45686Stm32_SetSampleSink(&imu_sample_sink)) {
+    if (!device_is_ready(imu_device) ||
+        !sensor_set_sample_sink(imu_device, &imu_sample_sink)) {
       return false;
     }
-    Icm45686Stm32_Init(now_ms);
-    Icm45686Stm32_GetSnapshot(&imu);
+    sensor_get_snapshot(imu_device, &imu);
     (void)snprintf(fields, sizeof(fields),
                    "device=ICM45686 who_am_i=0x%02X",
                    (unsigned int)imu.who_am_i);
@@ -294,6 +295,7 @@ bool ChassisApp_Init(void)
   drive_device = DEVICE_DT_GET(DT_NODE_DRIVE0);
   left_encoder_device = DEVICE_DT_GET(DT_NODE_LEFT_ENCODER);
   right_encoder_device = DEVICE_DT_GET(DT_NODE_RIGHT_ENCODER);
+  imu_device = DEVICE_DT_GET(DT_NODE_IMU0);
 
   if (!InitializeCommunication(can_device, now_ms) ||
       !InitializeHardware(now_ms) || !InitializeProductModules()) {
@@ -549,7 +551,7 @@ void ChassisApp_RunDiagnosticsCycle(void)
 
   Sr501_Run(now_ms);
 #if CONFIG_ICM45686
-  Icm45686Stm32_Run(now_ms);
+  sensor_run(imu_device, now_ms);
 #endif
   SystemStatusCollector_Update(now_ms);
 

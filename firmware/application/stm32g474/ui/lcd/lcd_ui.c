@@ -70,6 +70,7 @@ static const LcdGlyph lcd_glyphs[] = {
 static uint8_t lcd_line_buffer[LCD_UI_WIDTH * 2U];
 static uint16_t lcd_next_row;
 static LcdUiStatus lcd_status;
+static const struct device *lcd_display;
 static LcdUiPage lcd_requested_page;
 static bool lcd_redraw_requested;
 static LcdUiStatusData lcd_status_data;
@@ -865,14 +866,14 @@ static void LcdRenderRow(uint16_t row)
 static bool LcdTransmitRow(uint16_t row)
 {
   LcdRenderRow(row);
-  return Lcd_TransmitRow(lcd_line_buffer, sizeof(lcd_line_buffer));
+  return display_transmit_row(lcd_display, lcd_line_buffer, sizeof(lcd_line_buffer));
 }
 
 static bool LcdStartDrawing(void)
 {
   lcd_redraw_requested = false;
   LcdPreparePage(lcd_requested_page);
-  if (!Lcd_BeginFrame()) {
+  if (!display_begin_frame(lcd_display)) {
     return false;
   }
 
@@ -881,13 +882,14 @@ static bool LcdStartDrawing(void)
   return LcdTransmitRow(0U);
 }
 
-bool LcdUi_Init(void)
+bool LcdUi_Init(const struct device *display)
 {
+  lcd_display = display;
   lcd_status = LCD_UI_FAILED;
   lcd_requested_page = LCD_UI_PAGE_OVERVIEW;
   lcd_redraw_requested = true;
   lcd_status_data = (LcdUiStatusData){0};
-  if (!Lcd_Init()) {
+  if (!device_is_ready(lcd_display)) {
     return false;
   }
   if (!LcdStartDrawing()) {
@@ -908,16 +910,16 @@ void LcdUi_Run(void)
   if (lcd_status != LCD_UI_DRAWING) {
     return;
   }
-  if (Lcd_HasTransferError()) {
+  if (display_has_error(lcd_display)) {
     lcd_status = LCD_UI_FAILED;
     return;
   }
-  if (!Lcd_IsRowTransferComplete()) {
+  if (!display_row_complete(lcd_display)) {
     return;
   }
   if (lcd_next_row >= LCD_UI_HEIGHT) {
-    Lcd_EndFrame();
-    lcd_status = Lcd_GetStatus() == LCD_READY
+    display_end_frame(lcd_display);
+    lcd_status = display_get_status(lcd_display) == LCD_READY
                      ? LCD_UI_READY
                      : LCD_UI_FAILED;
     return;

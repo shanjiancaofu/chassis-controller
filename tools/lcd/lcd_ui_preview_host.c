@@ -6,6 +6,48 @@
 #include "ui/lcd/lcd_ui.h"
 #include "ui/lcd/lcd_ui_layout.h"
 
+static struct device_state preview_state = {.init_res = 0, .initialized = true};
+static const struct device preview_device = {
+    .name = "preview_display", .state = &preview_state,
+};
+
+bool device_is_ready(const struct device *device)
+{
+  return device == &preview_device;
+}
+
+bool display_begin_frame(const struct device *device)
+{
+  return device_is_ready(device);
+}
+
+bool display_transmit_row(const struct device *device, const uint8_t *data,
+                          uint16_t size)
+{
+  (void)data;
+  return device_is_ready(device) && size == LCD_UI_WIDTH * 2U;
+}
+
+bool display_row_complete(const struct device *device)
+{
+  return device_is_ready(device);
+}
+
+bool display_has_error(const struct device *device)
+{
+  return !device_is_ready(device);
+}
+
+void display_end_frame(const struct device *device)
+{
+  (void)device;
+}
+
+LcdStatus display_get_status(const struct device *device)
+{
+  return device_is_ready(device) ? LCD_READY : LCD_FAILED;
+}
+
 bool Lcd_Init(void)
 {
   return true;

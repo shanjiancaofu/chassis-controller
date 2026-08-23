@@ -202,7 +202,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   CopyRuntimeSnapshot(&status.runtime, &runtime);
 
   Button_GetSnapshot(&buttons);
-  Icm45686Stm32_GetSnapshot(&imu);
+  sensor_get_snapshot(DEVICE_DT_GET(DT_NODE_IMU0), &imu);
   ImuOrientation_GetSnapshot(&orientation);
   Sr501_GetSnapshot(&sr501);
   power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), now_ms, &power_sample);

@@ -47,6 +47,7 @@ def build_renderer(output: pathlib.Path) -> None:
             "-Werror",
             "-DLCD_UI_HOST_PREVIEW",
             f"-I{APP_ROOT}",
+            f"-I{APP_ROOT / 'include'}",
             str(UI_C),
             str(HOST_C),
             "-o",

@@ -182,6 +182,39 @@ void Icm45686Stm32_GetSnapshot(Icm45686Stm32Snapshot *snapshot)
   }
 }
 
+static bool SetSink(const struct device *device,
+                    const Icm45686Stm32SampleSink *sink)
+{
+  (void)device;
+  return Icm45686Stm32_SetSampleSink(sink);
+}
+
+static void RunDevice(const struct device *device, uint32_t now_ms)
+{
+  (void)device;
+  Icm45686Stm32_Run(now_ms);
+}
+
+static void GetDeviceSnapshot(const struct device *device,
+                              Icm45686Stm32Snapshot *snapshot)
+{
+  (void)device;
+  Icm45686Stm32_GetSnapshot(snapshot);
+}
+
+const SensorDriverApi icm45686_stm32_api = {
+    .set_sample_sink = SetSink,
+    .run = RunDevice,
+    .get_snapshot = GetDeviceSnapshot,
+};
+
+int Icm45686Device_Init(const struct device *device)
+{
+  (void)device;
+  Icm45686Stm32_Init(0U);
+  return 0;
+}
+
 static bool SpiRead(void *context, uint8_t reg, uint8_t *data, size_t length)
 {
   uint8_t tx[ICM45686_MAX_REGISTER_TRANSFER_SIZE + 1U] = {0};
