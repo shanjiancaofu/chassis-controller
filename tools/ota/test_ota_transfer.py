@@ -40,6 +40,44 @@ class OtaProtocolTest(unittest.TestCase):
         self.assertEqual(response[3], len(package))
         self.assertEqual(device.received, package)
 
+    def test_resume_from_reported_offset(self):
+        package = bytes(range(100))
+        device = SimulatedDevice()
+        device.received = package[:37]
+        ota.transfer_package(device.exchange, package, 16, 3, lambda _text: None)
+        self.assertEqual(device.received, package)
+
+    def test_busy_data_is_recovered_through_status(self):
+        package = bytes(range(80))
+        device = BusyDataDevice()
+        response = ota.transfer_package(
+            device.exchange, package, 20, 4, lambda _text: None
+        )
+        self.assertEqual(response[2], ota.TransferState.STAGED)
+        self.assertEqual(device.received, package)
+
+    def test_invalid_sequence_with_committed_offset_is_accepted(self):
+        package = bytes(range(64))
+        device = InvalidSequenceAckDevice()
+        ota.transfer_package(device.exchange, package, 16, 5, lambda _text: None)
+        self.assertEqual(device.received, package)
+
+    def test_invalid_resume_offset_is_rejected(self):
+        def exchange(message_type, session_id, argument=0, data=b""):
+            del argument, data
+            return (session_id, ota.Result.OK, ota.TransferState.RECEIVING, 999)
+
+        with self.assertRaisesRegex(ota.OtaError, "invalid offset"):
+            ota.transfer_package(exchange, b"abc", 2, 6, lambda _text: None)
+
+    def test_session_mismatch_is_rejected(self):
+        def exchange(message_type, session_id, argument=0, data=b""):
+            del message_type, argument, data
+            return (session_id + 1, ota.Result.OK, ota.TransferState.RECEIVING, 0)
+
+        with self.assertRaisesRegex(ota.OtaError, "session mismatch"):
+            ota.transfer_package(exchange, b"abc", 2, 7, lambda _text: None)
+
 
 class SimulatedDevice:
     def __init__(self):
@@ -88,6 +126,34 @@ class SimulatedDevice:
             raise AssertionError(
                 f"expected offset {len(self.received)}, received {offset}"
             )
+
+
+class BusyDataDevice(SimulatedDevice):
+    def __init__(self):
+        super().__init__()
+        self.busy_once = True
+
+    def exchange(self, message_type, session_id, argument=0, data=b""):
+        if ota.MessageType(message_type) == ota.MessageType.DATA and self.busy_once:
+            self.assert_offset(argument)
+            self.received += data
+            self.busy_once = False
+            return (session_id, ota.Result.BUSY, ota.TransferState.RECEIVING,
+                    len(self.received))
+        if ota.MessageType(message_type) == ota.MessageType.STATUS and not self.preparing:
+            return (session_id, ota.Result.OK, ota.TransferState.RECEIVING,
+                    len(self.received))
+        return super().exchange(message_type, session_id, argument, data)
+
+
+class InvalidSequenceAckDevice(SimulatedDevice):
+    def exchange(self, message_type, session_id, argument=0, data=b""):
+        if ota.MessageType(message_type) == ota.MessageType.DATA:
+            self.assert_offset(argument)
+            self.received += data
+            return (session_id, ota.Result.INVALID_SEQUENCE,
+                    ota.TransferState.RECEIVING, len(self.received))
+        return super().exchange(message_type, session_id, argument, data)
 
 
 if __name__ == "__main__":

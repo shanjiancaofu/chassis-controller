@@ -5,13 +5,13 @@
 
 ## 当前基线
 
-迁移状态（2026-08-23）：代码架构约完成 `95%`。DT/device data 第一批已完成：公共
+迁移状态（2026-08-23）：软件迁移约完成 `98%`。DT/device data 第一批已完成：公共
 `devicetree.h`、controller/child 拓扑、status-aware instance、GPIO phandle-array 和
 power/button/SR501/display 运行态均已落地。第二批又完成 UART/QSPI/IMU 实例状态、LED/E-STOP
-状态、motor/encoder 私有头、APPLICATION init entry 和业务层 FreeRTOS 隔离。剩余为验证收尾：
+状态、motor/encoder 私有头、APPLICATION init entry 和业务层 FreeRTOS 隔离。主机故障矩阵已
+覆盖 device/init、UART/QSPI、OTA resume/BUSY/重复确认/错误 offset/session。剩余为目标板收尾：
 
-1. Device/init optional failure、UART/QSPI DMA 并发、OTA recovery 主机与故障注入测试。
-2. 用户确认后的 UART OTA、静态状态、LCD/IMU/GPIO 和电机安全目标板回归。
+1. 用户确认后的 UART OTA、静态状态、LCD/IMU/GPIO 和电机安全目标板回归。
 
 上述代码批次完成后进入目标板回归；`NOT VERIFIED` 不阻塞代码迁移，但不能据此记录硬件通过。
 

@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2026-08-23：原生平台化主机故障矩阵收口
+
+- 新增统一 `application-host-tests` 目标，一次编译执行 13 个 HAL-independent/fake-HAL C 测试。
+- 新增 device init failure 隔离测试，验证 optional device 失败不阻塞后续 device，system init
+  function 失败仍终止当前 level。
+- 使用真实 UART/QSPI driver 源码和 fake HAL 验证 UART RX/TX/队列满/错误恢复及 QSPI DMA
+  complete/error/abort/range guard。
+- OTA 工具增加 resume、BUSY、重复确认、错误 offset 和 session mismatch 回归；本批未烧录。
+
 ## 2026-08-23：原生平台化第二批收口
 
 - UART、QSPI、ICM45686 和 E-STOP 运行状态迁入设备实例；HAL 回调按 handle 路由到 DTS device。

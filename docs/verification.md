@@ -57,8 +57,35 @@
 ### 原生平台化迁移完成度审计（2026-08-23）
 
 按当前源码与 `docs/重构.md` Phase 逐项核对：Phase 1--9 的代码迁移项均已落地。剩余工作为
-Device/init optional failure、UART/QSPI DMA 并发和 OTA recovery 测试，以及目标板回归；这些
-不改变既有硬件证据，也不构成新的目标板 `PASS`。
+目标板回归；主机故障测试不改变既有硬件证据，也不构成新的目标板 `PASS`。
+
+### 原生平台化主机故障矩阵收口（2026-08-23）
+
+新增 `application-host-tests` CMake 目标，使用宿主机 `cc -std=c11 -Wall -Wextra -Werror` 一次
+编译执行 13 项 C 测试。新增覆盖：
+
+- device init error 隔离、后续 device 继续初始化、system init function fail-stop；
+- UART tracked TX、DMA complete、RX idle、队列满、error/restart；
+- QSPI DMA busy/complete/error、abort success/failure 和越界拒绝；
+- OTA resume offset、DATA BUSY、已提交块的 INVALID_SEQUENCE、错误 offset、session mismatch。
+
+全量结果：C 主机测试 13 项、OTA/Python 18 项、Kconfig 3 项、DTS 3 项、架构边界 4 项和 LCD C
+预览均通过。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 120408 | 96 | 55352 | `BUILD PASS` |
+| Release | 106180 | 96 | 55352 | `BUILD PASS` |
+
+```text
+application.bin=106284 bytes
+payload_crc32=0xAAC63DFA
+application.bin sha256=4fab76abce1c4f9be2a8dbda3f4e2cd8ec0fd7362ee395bae8b3d64a804f79b4
+app-v0.15.0-b1.ota=106348 bytes
+ota sha256=bac4e573d750e9cef5633a07928aedc832535ebef2956a255d24acccc22871db
+```
+
+本批未烧录，所有本轮目标板项目继续保持 `NOT VERIFIED`。
 
 ### 原生平台化第二批收口（2026-08-23）
 

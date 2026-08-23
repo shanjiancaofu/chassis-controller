@@ -22,6 +22,7 @@ typedef struct {
 } InitEntry;
 
 int SystemInit_RunLevel(InitLevel level);
+int SystemInit_RunEntries(const InitEntry *start, const InitEntry *end);
 
 #define INIT_STRINGIFY_INNER(value) #value
 #define INIT_STRINGIFY(value) INIT_STRINGIFY_INNER(value)

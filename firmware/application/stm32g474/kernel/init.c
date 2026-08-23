@@ -20,6 +20,24 @@ typedef struct {
   const InitEntry *end;
 } InitRange;
 
+int SystemInit_RunEntries(const InitEntry *start, const InitEntry *end)
+{
+  if (start == NULL || end == NULL || end < start) {
+    return -EINVAL;
+  }
+  for (const InitEntry *entry = start; entry < end; ++entry) {
+    if (entry->device != NULL) {
+      (void)device_init(entry->device);
+      continue;
+    }
+    const int result = entry->init_fn != NULL ? entry->init_fn() : 0;
+    if (result < 0) {
+      return result;
+    }
+  }
+  return 0;
+}
+
 int SystemInit_RunLevel(InitLevel level)
 {
   static const InitRange ranges[INIT_LEVEL_COUNT] = {
@@ -37,16 +55,5 @@ int SystemInit_RunLevel(InitLevel level)
   if (level >= INIT_LEVEL_COUNT) {
     return -EINVAL;
   }
-  for (const InitEntry *entry = ranges[level].start;
-       entry < ranges[level].end; ++entry) {
-    if (entry->device != NULL) {
-      (void)device_init(entry->device);
-      continue;
-    }
-    const int result = entry->init_fn != NULL ? entry->init_fn() : 0;
-    if (result < 0) {
-      return result;
-    }
-  }
-  return 0;
+  return SystemInit_RunEntries(ranges[level].start, ranges[level].end);
 }

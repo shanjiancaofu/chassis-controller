@@ -136,3 +136,10 @@ add_custom_command(TARGET application POST_BUILD
           --flash-limit 491520
           --ram-limit 131072
   VERBATIM)
+
+add_custom_target(application-host-tests
+  COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/build/run_host_tests.py"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMENT "Running Application C host tests"
+  VERBATIM)
