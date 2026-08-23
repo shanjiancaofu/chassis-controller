@@ -19,30 +19,30 @@ TESTS = {
     ),
     "can_transport": (
         "CAN_TRANSPORT_HOST_TEST",
-        ["tests/unit/test_can_transport.c", "communication/can_transport/can_transport.c",
+        ["tests/unit/test_can_transport.c", "subsys/communication/can_transport/can_transport.c",
          "drivers/can/can_common.c"],
     ),
     "command_manager": (
         "COMMAND_MANAGER_HOST_TEST",
-        ["tests/unit/test_command_manager.c", "modules/chassis/command_manager.c"],
+        ["tests/unit/test_command_manager.c", "app/modules/chassis/command_manager.c"],
     ),
     "icm45686": (
         "ICM45686_HOST_TEST",
-        ["tests/unit/test_icm45686.c", "components/icm45686/icm45686.c"],
+        ["tests/unit/test_icm45686.c", "lib/icm45686/icm45686.c"],
     ),
     "imu_fusion": (
         "IMU_FUSION_HOST_TEST",
-        ["tests/unit/test_imu_fusion.c", "components/imu_fusion/imu_fusion.c"],
+        ["tests/unit/test_imu_fusion.c", "lib/imu_fusion/imu_fusion.c"],
     ),
     "odometry": (
         "ODOMETRY_HOST_TEST",
-        ["tests/unit/test_odometry.c", "modules/chassis/odometry.c",
-         "modules/chassis/differential_drive.c"],
+        ["tests/unit/test_odometry.c", "app/modules/chassis/odometry.c",
+         "app/modules/chassis/differential_drive.c"],
     ),
     "ota_metadata": (
         "OTA_METADATA_HOST_TEST",
-        ["tests/unit/test_ota_metadata.c", "communication/ota_transport/ota_metadata.c",
-         "components/crc/crc32.c"],
+        ["tests/unit/test_ota_metadata.c", "subsys/communication/ota_transport/ota_metadata.c",
+         "lib/crc/crc32.c"],
     ),
     "ota_uart_arm_guard": (
         "OTA_UART_ARM_GUARD_HOST_TEST",
@@ -51,16 +51,16 @@ TESTS = {
     "parameter_record": (
         "PARAMETER_RECORD_HOST_TEST",
         ["tests/unit/test_parameter_record.c", "subsys/settings/parameter_record.c",
-         "components/crc/crc32.c"],
+         "lib/crc/crc32.c"],
     ),
     "uart_protocol": (
         "UART_PROTOCOL_HOST_TEST",
-        ["tests/unit/test_uart_protocol.c", "communication/uart_protocol/uart_protocol.c"],
+        ["tests/unit/test_uart_protocol.c", "subsys/communication/uart_protocol/uart_protocol.c"],
     ),
     "wheel_controller": (
         "WHEEL_CONTROLLER_HOST_TEST",
-        ["tests/unit/test_wheel_controller.c", "modules/chassis/wheel_controller.c",
-         "components/pid/speed_pid.c"],
+        ["tests/unit/test_wheel_controller.c", "app/modules/chassis/wheel_controller.c",
+         "lib/pid/speed_pid.c"],
     ),
     "uart_stm32": (
         "UART_STM32_HOST_TEST",

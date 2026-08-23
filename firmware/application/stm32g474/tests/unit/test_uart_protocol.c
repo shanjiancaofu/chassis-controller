@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include "drivers/uart.h"
-#include "communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/uart_protocol/uart_protocol.h"
 
 bool uart_write(const void *data, size_t length)
 {

@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "components/icm45686/icm45686.h"
+#include "lib/icm45686/icm45686.h"
 
 #define REG_ACCEL_DATA_X1 0x00U
 #define REG_FIFO_COUNT_0 0x12U

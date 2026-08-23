@@ -1,5 +1,30 @@
 # 变更记录
 
+## 2026-08-23：Application 手写目录收敛
+
+- 顶层目录由 16 个降为 11 个，删除空 `infrastructure/` 和单文件 `linker/`。
+- `modules` 迁入 `app/modules`，`components` 重命名为 `lib`，`communication` 迁入
+  `subsys/communication`，`rtos_app` 迁入 `kernel/freertos`。
+- `app` 保留 8 个装配/协调源文件在根目录，只有达到真实集合规模的 `modules/` 和 `ui/` 使用
+  子目录；Application linker script 跟随板级配置放到 `boards/chassis_g474/application.ld`。
+- CMake target 边界保持独立，业务源码内容未改；Release、13 项 C 主机测试和 LCD 预览通过，
+  最终 BIN 与目录整理前逐哈希一致。
+
+## 2026-08-23：Application CubeMX 工程目录收口
+
+- 新增 `firmware/application/stm32g474/cubemx/`，集中 `.ioc`、CubeIDE 元数据、`Core/`、
+  `Drivers/`、`Middlewares/` 和 `Application/User/`。
+- Application Flash linker script 独立为 `linker/application.ld`；布局保持
+  `FLASH 0x08008000 / 480K`、`RAM 0x20000000 / 128K`。
+- CMake、CubeIDE linker 配置和 CubeMX/DTS 校验路径已同步；Release 完整构建通过，BIN 哈希不变。
+- 本批只移动目录和修改构建路径，没有修改业务逻辑，也没有烧录。
+
+## 2026-08-23：UI 归入 Application 产品层
+
+- 将顶层 `ui/` 移入 `app/ui/`，LCD renderer、presenter、布局和 Logo 文件内容不变。
+- `chassis_ui` 继续作为独立静态 target；CMake、源码 include、架构检查和预览工具路径已同步。
+- Release 构建尺寸和 BIN 哈希保持不变；本批未烧录。
+
 ## 2026-08-23：原生平台化主机故障矩阵收口
 
 - 新增统一 `application-host-tests` 目标，一次编译执行 13 个 HAL-independent/fake-HAL C 测试。
@@ -57,7 +82,7 @@
 - IMU SPI/FIFO/DMA 与姿态融合拆分：BSP 通过注入采样 sink 上报每个 FIFO 样本，
   `modules/sensors/imu_orientation` 持有 Mahony/Kalman 状态。
 - 将 Console 命令执行、OTA 维护协调从 `chassis_app.c` 拆入独立 Application 文件；LCD 状态
-  presenter 从 infrastructure 迁入 `ui/lcd`，电池估算阈值迁入 Application 配置。
+  presenter 从 infrastructure 迁入 `app/ui/lcd`，电池估算阈值迁入 Application 配置。
 - 新增 CanTransport 主机测试，覆盖握手、控制帧、OTA 分发、bus-off 会话撤销和恢复。
 
 ### 验证结果
@@ -78,7 +103,7 @@
 ### 变更内容
 
 - 将 LCD 控制器/SPI DMA 留在 `bsp/lcd`，把主题、字模、Logo、DTO、四页布局和逐行渲染移到
-  `ui/lcd`；Motor/System 分区断带和 Pose 极值文本溢出已修复。
+  `app/ui/lcd`；Motor/System 分区断带和 Pose 极值文本溢出已修复。
 - 预览工具改为主机编译真实 `lcd_ui.c`，Python 只负责 RGB565 转换和 2 倍最近邻 PNG 输出。
 - 新增 `app/system_status_collector`，统一映射 BSP/RTOS 状态到诊断 DTO；公共
   `SystemStatusSnapshot` 不再暴露按钮、IMU、SR501 和 ADC 的 BSP 快照类型。

@@ -6,10 +6,10 @@
 #include "drivers/reset/reset.h"
 #include "config/build_info.h"
 #include "config/storage_layout.h"
-#include "communication/ota_transport/ota_confirmation.h"
+#include "subsys/communication/ota_transport/ota_confirmation.h"
 #include "subsys/telemetry/telemetry.h"
-#include "communication/uart_protocol/uart_protocol.h"
-#include "modules/diagnostics/system_status.h"
+#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "app/modules/diagnostics/system_status.h"
 #include "tests/target/qspi_target_test.h"
 
 #define SELF_TEST_REPORT_DELAY_MS 100U

@@ -1,7 +1,7 @@
 #ifndef CHASSIS_ICM45686_STM32_PRIVATE_H
 #define CHASSIS_ICM45686_STM32_PRIVATE_H
 
-#include "components/icm45686/icm45686.h"
+#include "lib/icm45686/icm45686.h"
 #include "drivers/sensor/icm45686.h"
 #include "stm32g4xx_hal.h"
 

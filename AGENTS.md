@@ -10,16 +10,18 @@
 
 ## 代码结构
 
-- CubeMX 生成代码保留在 `Core/`、`Drivers/`、`Middlewares/` 和 `Application/`。
-- 手写代码放入现有的 `app`、`board`、`bsp`、`components`、`communication`、
-  `infrastructure`、`modules`、`rtos`、`tests` 或 `config` 边界。
+- Application 的 CubeMX/CubeIDE 工程统一保留在 `cubemx/`，其中包含 `.ioc`、工程元数据、
+  `Core/`、`Drivers/`、`Middlewares/` 和 `Application/User/`。
+- 手写代码放入现有的 `app`、`boards`、`drivers`、`lib`、`subsys`、`kernel`、`tests`、
+  `config` 或 `dts` 边界；产品装配文件、模块和 UI 位于 `app/`，通信位于 `subsys/communication/`，
+  FreeRTOS runtime 位于 `kernel/freertos/`。
 - 只有存在真实的职责或依赖边界时才创建目录或目标。
 - 少量且只使用一次的逻辑优先留在调用方，不为此拆出辅助函数。
 - 必须防御用户输入、外部协议、持久化数据以及硬件/资源边界；对硬编码常量或本地已保证
   的值不添加重复检查。
 - 不提交 `__pycache__/`、`*.pyc`、测试可执行文件、IDE 工作区或构建产物等宿主机生成
   文件。`_output/` 下只跟踪 `README.md`。
-- `Drivers/` 和 `Middlewares/` 视为供应商代码；仅在明确审查过的供应商补丁中修改，
+- `cubemx/Drivers/` 和 `cubemx/Middlewares/` 视为供应商代码；仅在明确审查过的供应商补丁中修改，
   普通应用修改必须放在手写目录。
 
 ## 固件安全

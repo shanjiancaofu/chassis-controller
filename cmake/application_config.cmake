@@ -52,7 +52,7 @@ execute_process(
 execute_process(
   COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/tools/dts/verify_hw_config.py"
-          --ioc "${APP_ROOT}/chassis_controller.ioc"
+          --ioc "${APP_CUBEMX_ROOT}/chassis_controller.ioc"
           --manifest "${APP_DTS_MANIFEST}"
   COMMAND_ERROR_IS_FATAL ANY)
 execute_process(
@@ -66,9 +66,6 @@ execute_process(
           "${CMAKE_SOURCE_DIR}/tools/build/check_architecture.py"
           --root "${APP_ROOT}"
           --scope app
-          --scope modules
-          --scope communication
+          --scope lib
           --scope subsys
-          --scope ui
-          --scope rtos
   COMMAND_ERROR_IS_FATAL ANY)

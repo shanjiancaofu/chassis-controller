@@ -1,18 +1,19 @@
 set(APP_ROOT "${CMAKE_SOURCE_DIR}/firmware/application/stm32g474")
+set(APP_CUBEMX_ROOT "${APP_ROOT}/cubemx")
 include("${CMAKE_SOURCE_DIR}/cmake/application_config.cmake")
 
 set(APP_COMMON_INCLUDES
   "${APP_ROOT}"
   "${APP_ROOT}/include"
   "${APP_GENERATED_DIR}"
-  "${APP_ROOT}/Core/Inc"
-  "${APP_ROOT}/Drivers/STM32G4xx_HAL_Driver/Inc"
-  "${APP_ROOT}/Drivers/STM32G4xx_HAL_Driver/Inc/Legacy"
-  "${APP_ROOT}/Drivers/CMSIS/Device/ST/STM32G4xx/Include"
-  "${APP_ROOT}/Drivers/CMSIS/Include"
-  "${APP_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/include"
-  "${APP_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2"
-  "${APP_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F")
+  "${APP_CUBEMX_ROOT}/Core/Inc"
+  "${APP_CUBEMX_ROOT}/Drivers/STM32G4xx_HAL_Driver/Inc"
+  "${APP_CUBEMX_ROOT}/Drivers/STM32G4xx_HAL_Driver/Inc/Legacy"
+  "${APP_CUBEMX_ROOT}/Drivers/CMSIS/Device/ST/STM32G4xx/Include"
+  "${APP_CUBEMX_ROOT}/Drivers/CMSIS/Include"
+  "${APP_CUBEMX_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/include"
+  "${APP_CUBEMX_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2"
+  "${APP_CUBEMX_ROOT}/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F")
 
 function(chassis_target_setup target)
   target_include_directories(${target} PRIVATE ${APP_COMMON_INCLUDES})
@@ -94,20 +95,20 @@ set(APP_VENDOR_SOURCES
   Middlewares/Third_Party/FreeRTOS/Source/timers.c
   Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c
   Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c)
-list(TRANSFORM APP_VENDOR_SOURCES PREPEND "${APP_ROOT}/")
+list(TRANSFORM APP_VENDOR_SOURCES PREPEND "${APP_CUBEMX_ROOT}/")
 
 add_library(chassis_vendor STATIC ${APP_VENDOR_SOURCES})
 chassis_target_setup(chassis_vendor)
 
 add_subdirectory("${APP_ROOT}/kernel" "${CMAKE_BINARY_DIR}/application/kernel")
-add_subdirectory("${APP_ROOT}/components" "${CMAKE_BINARY_DIR}/application/components")
+add_subdirectory("${APP_ROOT}/lib" "${CMAKE_BINARY_DIR}/application/lib")
 add_subdirectory("${APP_ROOT}/drivers" "${CMAKE_BINARY_DIR}/application/drivers")
-add_subdirectory("${APP_ROOT}/communication" "${CMAKE_BINARY_DIR}/application/communication")
+add_subdirectory("${APP_ROOT}/subsys/communication" "${CMAKE_BINARY_DIR}/application/communication")
 add_subdirectory("${APP_ROOT}/subsys" "${CMAKE_BINARY_DIR}/application/subsys")
-add_subdirectory("${APP_ROOT}/modules" "${CMAKE_BINARY_DIR}/application/modules")
-add_subdirectory("${APP_ROOT}/ui" "${CMAKE_BINARY_DIR}/application/ui")
+add_subdirectory("${APP_ROOT}/app/modules" "${CMAKE_BINARY_DIR}/application/modules")
+add_subdirectory("${APP_ROOT}/app/ui" "${CMAKE_BINARY_DIR}/application/ui")
 add_subdirectory("${APP_ROOT}/app" "${CMAKE_BINARY_DIR}/application/app")
-add_subdirectory("${APP_ROOT}/rtos" "${CMAKE_BINARY_DIR}/application/rtos")
+add_subdirectory("${APP_ROOT}/kernel/freertos" "${CMAKE_BINARY_DIR}/application/rtos")
 add_subdirectory("${APP_ROOT}/tests" "${CMAKE_BINARY_DIR}/application/tests")
 
 add_executable(application)
@@ -127,7 +128,7 @@ target_link_libraries(application PRIVATE
 
 chassis_target_setup(application)
 stm32g474_target(application
-  "${APP_ROOT}/STM32G474VETX_FLASH.ld" "application.map")
+  "${APP_ROOT}/boards/chassis_g474/application.ld" "application.map")
 add_custom_command(TARGET application POST_BUILD
   COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/tools/build/check_image_size.py"

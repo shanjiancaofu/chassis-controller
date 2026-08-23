@@ -13,6 +13,12 @@
 - 已完成：Device/Init/linker、Kconfiglib、模块化 CMake、`board_config.h` 删除、dummy device
   清除，以及 CAN/UART/motor/encoder/power/IMU/display/flash/watchdog/RTC/time/GPIO consumer
   的 device/API 接入。
+- Application 的 CubeMX/CubeIDE 管理内容已集中到 `firmware/application/stm32g474/cubemx/`；
+  Application linker script 位于 `boards/chassis_g474/application.ld`，继续使用 `0x08008000 / 480K`。
+- 产品 UI 已从顶层 `ui/` 收入 `app/ui/`；`chassis_ui` 仍为独立 target，LCD renderer、presenter
+  和主机预览共用实现保持不变。
+- 顶层目录已收敛为 11 个：产品模块归入 `app/modules/`，纯算法归入 `lib/`，通信归入
+  `subsys/communication/`，FreeRTOS runtime 归入 `kernel/freertos/`；空 `infrastructure/` 已删除。
 - 尚未完成：本轮架构代码的 UART OTA、启动静态状态、UART/QSPI/IMU/GPIO/LCD 和电机零输出目标板回归。
 
 - Application 工作树：`0.15.0 build1`；板上 confirmed 镜像：`0.14.0 build1`。
@@ -29,14 +35,14 @@
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
 - 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于主机故障矩阵收口后的 ELF
-  重新打包：payload `106284` 字节、CRC32 `0xAAC63DFA`，OTA 包 `106348` 字节；仅完成构建和
+  并在目录收敛后重新打包：payload `106284` 字节、CRC32 `0xAAC63DFA`，OTA 包 `106348` 字节；仅完成构建和
   主机格式校验，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
   目标板条件。上述硬件项目继续按机会单独验收，未实测内容保持 `NOT VERIFIED`。SR501 代码、
   接线、60 秒预热和低电平零误计数已有上板证据；模块指示灯和 OUT 高电平仍需实测。当前代码主线已完成
   FreeRTOS 四任务、统一状态快照和正式 UART 消息实现，
-  LCD 四页代码与 DMA 调度修复已完成；0.14.0 已按暗色工业仪表规范重排层级、状态颜色、卡片和页脚，目标板视觉已人工确认正常。0.15.0 将页面渲染从 LCD BSP 拆到 `ui/lcd`，预览工具直接编译同一 C 渲染器，当前重构尚未上板。
+  LCD 四页代码与 DMA 调度修复已完成；0.14.0 已按暗色工业仪表规范重排层级、状态颜色、卡片和页脚，目标板视觉已人工确认正常。0.15.0 将页面渲染从 LCD BSP 拆到 `app/ui/lcd`，预览工具直接编译同一 C 渲染器，当前重构尚未上板。
   ICM45686 已读取 `WHO_AM_I=0xE9`，FIFO/DMA、10 ms timestamp、静止零偏、Mahony 和 Kalman
   静态输出已上板通过；因模块安装位置和方向尚未固定，安装轴向和动态姿态验证标记为 `NOT VERIFIED`。
   目标加减速限制、
@@ -64,8 +70,8 @@
   使用 50 ms 稳定滤波，只统计 READY 后的稳定低到高事件，并通过 `status` 输出原始电平、
   稳定运动状态、事件计数、最近事件时间和剩余预热时间。状态已进入统一快照、UART 和 LCD，
   但不绑定电机、安全或具体业务。
-- ICM45686 已拆分为 HAL 无关的 `components/icm45686` 寄存器/FIFO 驱动、HAL 无关的
-  `components/imu_fusion` 六轴融合组件，以及 `drivers/sensor/icm45686_stm32.c` STM32 HAL SPI3/DMA 适配层。
+- ICM45686 已拆分为 HAL 无关的 `lib/icm45686` 寄存器/FIFO 驱动、HAL 无关的
+  `lib/imu_fusion` 六轴融合组件，以及 `drivers/sensor/icm45686_stm32.c` STM32 HAL SPI3/DMA 适配层。
   当前支持 WHO_AM_I、软复位、MREG 字节序、量程/ODR、ODR/4 内部低通、FIFO watermark、
   16 字节帧、DMA批量读取、FIFO full/非法帧/传输失败flush恢复、16位timestamp动态采样周期、
   静止窗口零偏标定、Mahony 四元数和 roll/pitch/yaw 诊断输出。当前不启用20-bit、压缩FIFO
@@ -100,22 +106,22 @@
   和 LCD 四页读取同一快照；正式 `[RSP]`、`[LOG]`、`[TEL]` UART emitter 已实现。VOFA 数字流
   保留为显式兼容模式。`display_task` 以 1 ms 周期推进 LCD 逐行 DMA，保持页面 1 s 刷新。总览页新增
   9.0--12.6 V 电压窗口估算百分比和电量条；该值不是电池 SOC，阈值需按最终电池规格校准。
-- 0.15.0 已收敛实际依赖边界：`ui/lcd` 持有主题、字模、Logo、四页布局和逐行像素生成，
+- 0.15.0 已收敛实际依赖边界：`app/ui/lcd` 持有主题、字模、Logo、四页布局和逐行像素生成，
   `drivers/display/lcd_stm32.c` 只持有控制器命令、SPI DMA、片选和背光；`app/system_status_collector` 负责 driver/RTOS
   状态到诊断 DTO 的组装；RTOS 通过 Core 注入的周期回调调用 Application，不再反向包含 `app`；
   `wheel_controller` 通过电机端口装配，不再直接依赖电机 BSP。
 - 2026-08-20 继续完成全仓库边界收敛：FDCAN ISR 只把原始帧写入 drivers/can 固定队列，握手、运动命令和
   OTA 解码均在 service task 执行；上层新增 UART、Flash、watchdog、time、RTC 通用 driver API，
   UART 通过 device/DTS chosen 接入，QSPI/watchdog/RTC/time 的 HAL 实现已移动到 STM32 driver；
-  `app/modules/communication/subsys/ui/rtos` 不再直接包含 UART/QSPI/RTC/watchdog/time 的
+  `app/subsys/lib` 不再直接包含 UART/QSPI/RTC/watchdog/time 的
   旧 BSP 头文件；Application CMake 已拆为 vendor、drivers、components、communication、subsys、
-  modules、ui、kernel、app、rtos 和 target-tests 静态目标。
+  app/modules、app/ui、kernel/freertos、app 和 target-tests 静态目标。
   头文件。
   OTA 解码全部在 `service_task` 执行；communication 公共接口不再暴露 HAL。RTC、单调时间、LED、
   E-STOP、IWDG、SPI/GPIO 回调和复位已通过 drivers/Core 边界访问；TIM6 启动由 Core 回调注入 RTOS。
-  IMU SPI/FIFO/DMA 保留在 `drivers/sensor/icm45686_stm32.c`，Mahony/Kalman 状态迁入 `modules/sensors/imu_orientation`；Console
+  IMU SPI/FIFO/DMA 保留在 `drivers/sensor/icm45686_stm32.c`，Mahony/Kalman 状态迁入 `app/modules/sensors/imu_orientation`；Console
   命令执行和 OTA 维护协调分别拆到 `app/chassis_console_commands` 与 `app/chassis_maintenance`，
-  LCD 状态 presenter 迁入 `ui/lcd`。
+  LCD 状态 presenter 迁入 `app/ui/lcd`。
 - motor/encoder 已完成首批 Device Model 迁移：`drive0`、`left_encoder`、`right_encoder` 由
   `DEVICE_DT_DEFINE()` 注册，WheelController 通过 generic motor API 装配，编码器按左右 device
   分别读取；源码构建通过，电机安全和编码器方向仍需目标板回归。

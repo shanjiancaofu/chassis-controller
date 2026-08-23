@@ -7,7 +7,7 @@
 
 #include "drivers/motor/motor.h"
 #include "config/target_test_config.h"
-#include "modules/safety/safety_manager.h"
+#include "app/modules/safety/safety_manager.h"
 
 static MotorTargetTestSnapshot test_snapshot;
 static uint32_t test_started_ms;

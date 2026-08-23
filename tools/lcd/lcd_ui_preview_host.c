@@ -3,8 +3,8 @@
 #include <stdio.h>
 
 #include "drivers/display/lcd.h"
-#include "ui/lcd/lcd_ui.h"
-#include "ui/lcd/lcd_ui_layout.h"
+#include "app/ui/lcd/lcd_ui.h"
+#include "app/ui/lcd/lcd_ui_layout.h"
 
 static struct device_state preview_state = {.init_res = 0, .initialized = true};
 static const struct device preview_device = {

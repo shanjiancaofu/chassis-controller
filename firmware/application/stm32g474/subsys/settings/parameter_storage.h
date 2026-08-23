@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "modules/parameters/parameter_manager.h"
+#include "app/modules/parameters/parameter_manager.h"
 
 typedef enum {
   PARAMETER_STORAGE_DEFAULTS = 0,

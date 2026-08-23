@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "devicetree.h"
-#include "components/icm45686/icm45686.h"
+#include "lib/icm45686/icm45686.h"
 
 #define ICM45686_SPI_READ 0x80U
 #define ICM45686_MAX_REGISTER_TRANSFER_SIZE 16U

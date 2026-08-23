@@ -4,7 +4,7 @@
 
 #include "drivers/flash.h"
 #include "config/storage_layout.h"
-#include "modules/diagnostics/board_health.h"
+#include "app/modules/diagnostics/board_health.h"
 
 #define QSPI_ERASE_TIMEOUT_MS 5000U
 #define QSPI_PROGRAM_TIMEOUT_MS 500U

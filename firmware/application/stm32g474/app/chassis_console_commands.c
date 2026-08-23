@@ -4,15 +4,15 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "communication/can_transport/can_transport.h"
+#include "subsys/communication/can_transport/can_transport.h"
 #include "config/control_config.h"
 #include "subsys/console/diagnostic_report.h"
 #include "subsys/settings/parameter_storage.h"
 #include "subsys/telemetry/telemetry.h"
-#include "communication/uart_protocol/uart_protocol.h"
-#include "modules/chassis/odometry.h"
-#include "modules/parameters/parameter_manager.h"
-#include "modules/safety/safety_manager.h"
+#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "app/modules/chassis/odometry.h"
+#include "app/modules/parameters/parameter_manager.h"
+#include "app/modules/safety/safety_manager.h"
 #include "tests/target/iwdg_target_test.h"
 #include "tests/target/qspi_target_test.h"
 

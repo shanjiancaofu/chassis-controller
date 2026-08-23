@@ -54,6 +54,41 @@
 
 ## 构建基线
 
+### Application CubeMX 工程目录收口（2026-08-23）
+
+CubeMX/CubeIDE 管理内容已迁入 `firmware/application/stm32g474/cubemx/`，Application linker
+script 最终随板级配置放在 `boards/chassis_g474/application.ld`。CMake 的 vendor source、include、`.ioc` 校验和 linker
+路径全部切换到新位置。
+
+`cmake --preset arm-release` 和 `cmake --build --preset arm-release --parallel` 完整通过：
+
+```text
+Release text=106180 data=96 bss=55352
+application.bin=106284 bytes
+application.bin sha256=4fab76abce1c4f9be2a8dbda3f4e2cd8ec0fd7362ee395bae8b3d64a804f79b4
+FLASH origin=0x08008000 length=480K
+RAM origin=0x20000000 length=128K
+```
+
+目录迁移前后 Release BIN 哈希一致；本批未修改业务逻辑、未烧录，不产生新的硬件结论。
+
+顶层 `ui/` 随后移动到 `app/ui/`，`chassis_ui` target 和依赖关系不变。Release 再次构建通过，
+仍为 `text=106180 data=96 bss=55352`；真实 C LCD 预览也从新路径编译通过，BIN 哈希保持不变。
+
+其余手写目录继续收敛：`app/modules`、`lib`、`subsys/communication`、`kernel/freertos` 分别承载
+产品模块、纯算法、通信服务和 RTOS runtime；`app` 的 8 个装配/协调文件保留在根目录，避免
+为每两个文件创建过细层级。
+Release、13 项 C 主机测试和 LCD C 预览通过。撤回过细的 `app/core/console/maintenance`
+分层后，最终 BIN 与目录整理前逐哈希一致；最新产物为：
+
+```text
+application.bin=106284 bytes
+payload_crc32=0xAAC63DFA
+application.bin sha256=4fab76abce1c4f9be2a8dbda3f4e2cd8ec0fd7362ee395bae8b3d64a804f79b4
+app-v0.15.0-b1.ota=106348 bytes
+ota sha256=bac4e573d750e9cef5633a07928aedc832535ebef2956a255d24acccc22871db
+```
+
 ### 原生平台化迁移完成度审计（2026-08-23）
 
 按当前源码与 `docs/重构.md` Phase 逐项核对：Phase 1--9 的代码迁移项均已落地。剩余工作为
@@ -93,7 +128,7 @@ UART RX/TX 队列、QSPI DMA 状态、ICM45686 FIFO/DMA/重试/快照，以及 E
 对应 `device->data`；HAL handle/CS 进入实例 config。LED 不再保存全局 config 指针，motor/encoder
 的 STM32 类型已移入 private header。`ChassisApp_Init()` 通过 APPLICATION linker entry 执行；
 device init 失败只记录状态并继续，required/optional 由产品 APPLICATION 阶段判断。app/modules/
-communication/subsys/ui 不再直接包含或调用 FreeRTOS primitive。
+app（含 modules/ui）、subsys 和 lib 不再直接包含或调用 FreeRTOS primitive。
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
@@ -155,7 +190,7 @@ Release BIN   4ba6193c9ab28bf59da732cbccf313dc0321833ba2372f22a20d8423a3d369f2
 
 ### CubeMX 初始化入口恢复（2026-08-20）
 
-按仓库规则恢复 CubeMX 生成的 `Core/Src/main.c`、`gpio.c`、`dma.c` 及对应头文件，并重新纳入
+按仓库规则恢复 CubeMX 生成的 `cubemx/Core/Src/main.c`、`gpio.c`、`dma.c` 及对应头文件，并重新纳入
 Application CMake。Device Model 的 `EARLY/PRE_KERNEL_1/PRE_KERNEL_2` 初始化调用保留在
 `main.c` 用户代码区，`POST_KERNEL/APPLICATION` 仍由 FreeRTOS 生成入口调用；CubeMX `.ioc`
 继续作为时钟、GPIO、DMA、NVIC 和外设初始化的硬件配置源。
@@ -182,8 +217,8 @@ Debug/Release 构建通过，13 项 OTA Python 测试通过。此项只验证主
 
 ### Architecture boundary checker（2026-08-20）
 
-新增 `tools/build/check_architecture.py`，在 CMake configure 阶段扫描 `app/`、`modules/`、
-`communication/`、`subsys/`、`ui/` 和 `rtos/`，禁止直接包含 CubeMX/HAL 外设头、调用
+新增 `tools/build/check_architecture.py`，在 CMake configure 阶段扫描 `app/`（包含 `app/ui/`）、
+`app/`（包含 modules/ui）、`subsys/`（包含 communication）和 `kernel/freertos/`，禁止业务代码直接包含 CubeMX/HAL 外设头、调用
 `HAL_*`、使用 `*_HandleTypeDef` 或暴露 `hfdcan*`、`hspi*`、`htim*` 等硬件句柄。当前源码扫描
 通过；架构检查单元测试 2 项、Debug/Release 构建和 OTA Python 测试 13 项通过。本轮没有目标板
 硬件结论。
@@ -290,7 +325,7 @@ DTS 单元测试 2 项、Kconfig 单元测试 4 项、Debug/Release 构建和 OT
 本轮在 0.15.0 首版基础上继续移除 CAN ISR 协议解析和上层 HAL/CubeMX 依赖，拆分 Console、
 OTA 维护、IMU orientation 与 LCD presenter。FDCAN ISR 仅执行一次有界 HAL 收帧、固定队列写入
 和原子计数；握手、运动命令与 OTA 解码均由 `service_task` 推进。依赖扫描确认
-Application 的 `app/communication/components/subsys/modules/rtos/ui` 不再直接包含
+Application 的 `app`（含 modules/ui）、`lib`、`subsys` 和 `kernel/freertos` 不再由业务代码直接包含
 `main.h`/CubeMX 外设头、调用 HAL 或定义 HAL 回调。
 
 | 配置 | text | data | bss | 结果 |
@@ -678,10 +713,10 @@ CubeMX 重新生成后必须重新检查自定义 source folder、include path �
 2026-08-15 目标板检查：ST-Link `0483:3748` 和 CH340 已在 Ubuntu 虚拟机枚举；OpenOCD
 不使用 `sudo` 启动，通过 ST-Link SWD 识别 STM32G47/G48、目标电压约 3.24 V，并在
 3333 端口提供 GDB server。`arm-none-eabi-gdb build/arm-debug/application.elf` 已完成
-`load` 烧写 Debug ELF，命中 `main()` 源码断点 `Core/Src/main.c:77`。
+`load` 烧写 Debug ELF；源码现位于 `cubemx/Core/Src/main.c`，当时命中 `main():77`。
 
 同一会话继续验证源码断点和运行状态：`ChassisApp_Init()` 在 `app/chassis_app.c:80` 命中，
-Call Stack 回到 `main.c:121`；`ControlTaskMain(argument=0x0)` 在 `rtos/rtos_app.c:72`
+Call Stack 回到 `main.c:121`；`ControlTaskMain(argument=0x0)` 源码现位于 `kernel/freertos/rtos_app.c`
 命中，`pxCurrentTCB = 0x20007a0c <control_task_buffer>`。断点暂停时读取
 `DBGMCU->APB1FZR1 = 0x1800`，包含 `DBG_IWDG_STOP` 位 `0x1000`；保持暂停 12 秒后仍停在
 同一 FreeRTOS 任务栈，未发生 IWDG 复位。因此底层 OpenOCD/GDB 自动烧写、源码断点、

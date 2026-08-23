@@ -4,8 +4,8 @@
 #include <errno.h>
 #include <string.h>
 
-#include "communication/can_transport/can_transport.h"
-#include "communication/ota_transport/ota_can_transport.h"
+#include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/ota_transport/ota_can_transport.h"
 #include "drivers/can.h"
 #include "drivers/time.h"
 #include "../../../../shared/ota_protocol.h"

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "subsys/console/console.h"
-#include "modules/chassis/command_manager.h"
+#include "app/modules/chassis/command_manager.h"
 #include "tests/target/motor_target_test.h"
 
 typedef struct {

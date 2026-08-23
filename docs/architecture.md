@@ -39,14 +39,16 @@ chassis-controller/
 │  │
 │  ├─ application/
 │  │  └─ stm32g474/                  # 正式底盘 Application，独立 CubeMX 工程
-│  │     ├─ Core/                    # CubeMX 生成
-│  │     ├─ Drivers/                 # STM32 HAL、CMSIS
-│  │     ├─ Middlewares/             # CubeMX 第三方中间件，如 FreeRTOS
-│  │     ├─ Application/User/        # CubeMX/CubeIDE 工程入口
-│  │     ├─ chassis_controller.ioc
-│  │     │
+│  │     ├─ cubemx/                  # CubeMX/CubeIDE 管理边界
+│  │     │  ├─ Core/
+│  │     │  ├─ Drivers/
+│  │     │  ├─ Middlewares/
+│  │     │  ├─ Application/User/
+│  │     │  ├─ chassis_controller.ioc
+│  │     │  └─ .project/.cproject/.mxproject/.settings/
 │  │     ├─ boards/
 │  │     │  └─ chassis_g474/         # DTS、板级设备实例和 CubeMX handle 绑定
+│  │     │     ├─ application.ld     # Application 0x08008000 / 480K
 │  │     │     ├─ chassis_g474.dts
 │  │     │     └─ board_devices.c
 │  │     │
@@ -69,83 +71,38 @@ chassis-controller/
 │  │     │  ├─ uart/
 │  │     │  └─ watchdog/
 │  │     │
-│  │     ├─ components/              # 不依赖 HAL 的通用算法组件
-│  │     │  ├─ pid/
-│  │     │  ├─ ring_buffer/
+│  │     ├─ lib/                     # 无 HAL 的算法和协议组件
+│  │     │  ├─ crc/
 │  │     │  ├─ icm45686/
 │  │     │  ├─ imu_fusion/
-│  │     │  └─ crc/
-│  │     │
-│  │     ├─ communication/           # 通信协议、编解码和传输
-│  │     │  ├─ can_transport/
-│  │     │  ├─ chassis_protocol/
-│  │     │  └─ ota_transport/
-│  │     │
-│  │     ├─ subsys/                  # 非实时公共子系统
+│  │     │  └─ pid/
+│  │     ├─ subsys/                  # 平台服务
+│  │     │  ├─ communication/
+│  │     │  │  ├─ can_transport/
+│  │     │  │  ├─ ota_transport/
+│  │     │  │  └─ uart_protocol/
 │  │     │  ├─ console/
 │  │     │  ├─ settings/
 │  │     │  └─ telemetry/
-│  │     │
-│  │     ├─ kernel/                  # Device/Init/linker integration
-│  │     ├─ ui/                      # 产品界面和像素渲染
-│  │     │  └─ lcd/
-│  │     │     ├─ lcd_ui.c
-│  │     │     ├─ lcd_ui.h
-│  │     │     ├─ lcd_ui_layout.h
-│  │     │     ├─ lcd_status_presenter.c
-│  │     │     └─ lcd_status_presenter.h
-│  │     │
-│  │     ├─ modules/                 # 底盘产品业务模块
-│  │     │  ├─ chassis/
-│  │     │  │  ├─ command_manager.c
-│  │     │  │  ├─ command_manager.h
-│  │     │  │  ├─ differential_drive.c
-│  │     │  │  ├─ differential_drive.h
-│  │     │  │  ├─ wheel_controller.c
-│  │     │  │  ├─ wheel_controller.h
-│  │     │  │  ├─ odometry.c
-│  │     │  │  └─ odometry.h
-│  │     │  ├─ diagnostics/
-│  │     │  │  ├─ board_health.c
-│  │     │  │  └─ board_health.h
-│  │     │  │  ├─ system_status.c
-│  │     │  │  └─ system_status.h
-│  │     │  ├─ parameters/
-│  │     │  │  ├─ parameter_manager.c
-│  │     │  │  └─ parameter_manager.h
-│  │     │  ├─ safety/
-│  │     │  │  ├─ safety_manager.c
-│  │     │  │  ├─ safety_manager.h
-│  │     │  │  ├─ fault_manager.c
-│  │     │  │  └─ fault_manager.h
-│  │     │  └─ sensors/
-│  │     │     ├─ imu_orientation.c
-│  │     │     └─ imu_orientation.h
-│  │     │
-│  │     ├─ rtos/                    # FreeRTOS 对象、任务和 hooks
-│  │     │  ├─ rtos_app.c
-│  │     │  ├─ rtos_app.h
-│  │     │  ├─ rtos_objects.c
-│  │     │  ├─ rtos_objects.h
-│  │     │  ├─ tasks/
-│  │     │  │  ├─ control_task.c
-│  │     │  │  ├─ communication_task.c
-│  │     │  │  ├─ diagnostics_task.c
-│  │     │  │  ├─ console_task.c
-│  │     │  │  ├─ display_task.c
-│  │     │  │  └─ storage_task.c
-│  │     │  └─ hooks/
-│  │     │     └─ freertos_hooks.c
-│  │     │
-│  │     ├─ app/                     # 初始化、组装和调度
-│  │     │  ├─ chassis_app.c
-│  │     │  ├─ chassis_app.h
-│  │     │  ├─ chassis_console_commands.c
-│  │     │  ├─ chassis_console_commands.h
-│  │     │  ├─ chassis_maintenance.c
-│  │     │  ├─ chassis_maintenance.h
-│  │     │  ├─ system_status_collector.c
-│  │     │  └─ system_status_collector.h
+│  │     ├─ kernel/                  # Device/Init 和 FreeRTOS runtime
+│  │     │  ├─ device.c
+│  │     │  ├─ init.c
+│  │     │  └─ freertos/
+│  │     │     ├─ critical.c
+│  │     │     ├─ rtos_app.c
+│  │     │     └─ rtos_app.h
+│  │     ├─ app/                     # 产品逻辑和装配
+│  │     │  ├─ chassis_app.c/.h
+│  │     │  ├─ chassis_console_commands.c/.h
+│  │     │  ├─ chassis_maintenance.c/.h
+│  │     │  ├─ system_status_collector.c/.h
+│  │     │  ├─ modules/
+│  │     │  │  ├─ chassis/
+│  │     │  │  ├─ diagnostics/
+│  │     │  │  ├─ parameters/
+│  │     │  │  ├─ safety/
+│  │     │  │  └─ sensors/
+│  │     │  └─ ui/lcd/
 │  │     │
 │  │     ├─ config/                  # Application 软件配置和版本信息
 │  │     │  ├─ app_config.h
@@ -155,9 +112,6 @@ chassis-controller/
 │  │     │  ├─ storage_layout.h
 │  │     │  ├─ target_test_config.h
 │  │     │  └─ build_info.h
-│  │     │
-│  │     ├─ app/                     # 产品装配和维护协调
-│  │     ├─ rtos/                    # FreeRTOS task runtime
 │  │     └─ tests/
 │  │        ├─ unit/                 # PC 单元测试
 │  │        └─ target/               # STM32 板上测试
@@ -207,7 +161,8 @@ chassis-controller/
 
 ### CubeMX/CubeIDE 目录
 
-`Core/`、`Drivers/`、`Middlewares/` 和 `Application/User/` 由 CubeMX/CubeIDE 管理。
+`cubemx/Core/`、`cubemx/Drivers/`、`cubemx/Middlewares/` 和
+`cubemx/Application/User/` 由 CubeMX/CubeIDE 管理。
 自定义业务代码不得长期堆入这些目录；生成文件只在 `USER CODE BEGIN/END` 区域修改。
 
 ### `firmware/shared`
@@ -223,61 +178,61 @@ chassis-controller/
 `chassis_maintenance` 协调 OTA transport、会话和维护锁。`chassis_app.c` 保留任务周期、控制安全
 编排和端口装配，不实现寄存器驱动、协议解析或通用算法。
 
-### `board`
+### `boards`
 
-保存当前开发板的引脚、外设句柄和板级映射。它是 CubeMX 生成层与手写 BSP 之间的适配层。
+保存当前开发板的 DTS、设备实例、CubeMX handle 绑定和 Application linker script。
 
-### `bsp`
+### `drivers`
 
 封装一种硬件如何操作，包括电机、编码器、FDCAN、UART、LCD、QSPI、ADC、RTC、LED、E-STOP、
 单调时间、watchdog 和复位辅助。FDCAN ISR 只把原始帧放入固定队列并记录错误事件；协议解析
-必须在 `service_task` 执行。共享 SPI/GPIO HAL 回调由 BSP interrupt router 分发。
-BSP 不决定是否允许车辆运动，也不持有业务状态机。LCD BSP 只负责控制器初始化、帧窗口、
+必须在 `service_task` 执行。共享 SPI/GPIO HAL 回调由 driver interrupt router 分发。
+driver 不决定是否允许车辆运动，也不持有业务状态机。LCD driver 只负责控制器初始化、帧窗口、
 SPI DMA、片选和背光，不持有页面、字体或产品状态 DTO。
 
-### `components`
+### `lib`
 
 保存可独立测试、无 HAL 依赖的组件。当前包括速度 PID、Application CRC32、ICM45686
 寄存器/FIFO 协议组件，以及 `imu_fusion` 静止零偏、六轴 Mahony 和独立 roll/pitch
 角度+陀螺零偏两状态 Kalman。Mahony 与 Kalman 当前并行输出用于诊断对照，不绑定控制或
 安全逻辑；组件不直接持有 SPI、DMA 或 CubeMX 句柄。
 
-### `communication`
+### `subsys/communication`
 
 处理总线帧、字段校验、序号、握手和链路状态。当前 `ota_transport/` 已包含
 UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提交和 Application
 试运行确认状态机。communication 公共接口不暴露 HAL 类型，CAN 解码只在任务上下文执行。线协议以
 `protocol/canfd_protocol.md` 和 `protocol/ota_canfd_protocol.md` 为准。
 
-### `infrastructure`
+### `subsys`
 
 提供 Console、诊断文本、遥测和参数存储。这些能力不得进入实时控制任务。
 
-### `ui`
+### `app/ui`
 
-保存产品界面状态语义和渲染实现。当前 `ui/lcd` 持有四页 DTO、主题颜色、5x7 字模、Logo、
+保存产品界面状态语义和渲染实现。当前 `app/ui/lcd` 持有四页 DTO、主题颜色、5x7 字模、Logo、
 布局坐标、状态 presenter 和逐行 RGB565 像素生成，通过 LCD BSP 发送帧；主机预览直接编译同一渲染器，不维护
 第二份页面坐标或颜色实现。
 
-### `modules`
+### `app/modules`
 
 按 `chassis`、`safety`、`parameters`、`diagnostics` 和 `sensors` 业务域聚合相关状态和规则。
 域内文件职责明确，域之间通过接口协作，不直接操作 CubeMX 句柄。IMU 硬件访问属于
-BSP/组件能力；`modules/sensors/imu_orientation` 通过 BSP 注入的 sample sink 接收每个 FIFO 样本，
-持有 Mahony/Kalman 状态并把姿态结果送入诊断快照。SPI、FIFO 和 DMA 状态仍只属于 BSP。
+driver/lib 能力；`app/modules/sensors/imu_orientation` 通过 driver 注入的 sample sink 接收每个 FIFO 样本，
+持有 Mahony/Kalman 状态并把姿态结果送入诊断快照。SPI、FIFO 和 DMA 状态仍只属于 driver。
 
-`modules/diagnostics/system_status` 保存 Application task 组装的统一状态快照。它不读取
-硬件或 FreeRTOS 全局对象，也不在公共头中暴露 BSP 快照类型；`app` 负责映射和更新，
+`app/modules/diagnostics/system_status` 保存 Application task 组装的统一状态快照。它不读取
+硬件或 FreeRTOS 全局对象，也不在公共头中暴露 driver 快照类型；`app` 负责映射和更新，
 Console/LCD/后续 UART 协议只读取诊断 DTO，避免各输出路径重复采集同一状态。
 
-### `rtos`
+### `kernel/freertos`
 
 只负责任务创建、优先级、通知和任务健康。CubeMX `USER CODE` 入口注入四个 Application 周期
-回调，RTOS 层不反向包含 `app`；业务逻辑仍由 `app` 和 `modules` 提供。
+回调，RTOS runtime 不反向包含具体业务实现；业务逻辑由 `app` 和 `app/modules` 提供。
 
 ### `config`
 
-保存 Application 的功能开关、控制参数、协议参数和构建版本。硬件引脚属于 `board`，
+保存 Application 的功能开关、控制参数、协议参数和构建版本。硬件引脚属于 `boards`，
 可运行时修改并持久化的参数由 `parameter_manager` 和 `parameter_storage` 管理。
 
 ### `tests/target`
@@ -302,9 +257,11 @@ Jetson 和主机工具，不属于某个固件工程。LCD 图片素材跟随使
 
 ## 命名规则
 
-- CubeMX 已使用 `Drivers/` 和 `Middlewares/`，自定义层不再使用同名小写目录。
-- Application 自定义代码统一使用 `boards/`、`drivers/`、`components/`、`communication/`、
-  `subsys/`、`kernel/`、`ui/`、`modules/`、`rtos/`、`app/`、`tests/` 和 `config/`；不再创建
+- CubeMX 供应商目录集中在 `cubemx/Drivers/` 和 `cubemx/Middlewares/`；项目自维护的
+  小写 `drivers/` 保持在 `cubemx/` 外部。
+- Application 自定义代码统一使用 `boards/`、`drivers/`、`lib/`、`subsys/`、`kernel/`、
+  `app/`、`tests/`、`config/` 和 `dts/`；产品模块/UI 归入 `app/`，通信归入 `subsys/`，
+  RTOS runtime 归入 `kernel/freertos/`；不再创建
   Application `bsp/` 或 `infrastructure/` 目录。
 - 文件名使用 `snake_case`，目录按业务或设备命名。
 - FreeRTOS 入口使用 `RtosApp_<TaskName>TaskMain()`；任务每次调度调用的 Application 周期函数
@@ -337,7 +294,7 @@ bsp
 - `modules` 不直接操作 CubeMX 全局句柄。
 - `rtos` 不包含 `app`；由 composition root 注入周期回调。
 - ISR 只搬运硬件事件或原始数据，不解析握手、控制或 OTA 协议。
-- `app`、`communication`、`modules`、`infrastructure`、`rtos` 和 `ui` 不直接操作 CubeMX 句柄；
+- `app`（含 `app/ui`）、`communication`、`modules`、`infrastructure` 和 `rtos` 不直接操作 CubeMX 句柄；
   硬件时间、RTC、GPIO、watchdog 和复位通过 BSP，控制定时器启动由 composition root 注入。
 - `infrastructure` 可以读取模块快照，但不能决定电机安全状态。
 - Bootloader 与 Application 只共享固定 OTA 数据格式，不共享业务代码。

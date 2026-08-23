@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "modules/parameters/parameter_manager.h"
+#include "app/modules/parameters/parameter_manager.h"
 
 #define PARAMETER_RECORD_MAGIC 0x50494450UL
 #define PARAMETER_RECORD_FORMAT_VERSION 1U

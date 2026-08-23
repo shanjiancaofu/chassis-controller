@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 
-#include "components/crc/crc32.h"
+#include "lib/crc/crc32.h"
 #include "config/control_config.h"
 
 bool ParameterRecord_ParametersValid(const ParameterSnapshot *parameters)

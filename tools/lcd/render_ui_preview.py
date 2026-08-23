@@ -13,8 +13,8 @@ from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 APP_ROOT = ROOT / "firmware/application/stm32g474"
-UI_C = APP_ROOT / "ui/lcd/lcd_ui.c"
-LAYOUT_H = APP_ROOT / "ui/lcd/lcd_ui_layout.h"
+UI_C = APP_ROOT / "app/ui/lcd/lcd_ui.c"
+LAYOUT_H = APP_ROOT / "app/ui/lcd/lcd_ui_layout.h"
 HOST_C = ROOT / "tools/lcd/lcd_ui_preview_host.c"
 OUT = ROOT / "docs/lcd_previews"
 

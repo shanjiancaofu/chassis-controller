@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <math.h>
 
-#include "components/imu_fusion/imu_fusion.h"
+#include "lib/imu_fusion/imu_fusion.h"
 
 #define PI_F 3.14159265358979323846f
 
