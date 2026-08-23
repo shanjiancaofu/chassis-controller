@@ -5,6 +5,8 @@ add_library(chassis_drivers STATIC
   encoder/encoder_common.c
   safety/emergency_stop_stm32.c
   gpio/interrupts_stm32.c
+  gpio/gpio_common.c
+  gpio/gpio_stm32.c
   led/led_stm32.c
   display/lcd_stm32.c
   display/display_common.c

@@ -4,6 +4,9 @@ static const SensorDriverApi *api(const struct device *device)
 {
   return device_is_ready(device) ? device->api : NULL;
 }
+void sensor_on_data_ready(const struct device*d){const SensorDriverApi*a=api(d);if(a&&a->on_data_ready)a->on_data_ready(d);}
+void sensor_on_transfer_complete(const struct device*d){const SensorDriverApi*a=api(d);if(a&&a->on_transfer_complete)a->on_transfer_complete(d);}
+void sensor_on_transfer_error(const struct device*d){const SensorDriverApi*a=api(d);if(a&&a->on_transfer_error)a->on_transfer_error(d);}
 
 bool sensor_set_sample_sink(const struct device *device,
                             const Icm45686Stm32SampleSink *sink)

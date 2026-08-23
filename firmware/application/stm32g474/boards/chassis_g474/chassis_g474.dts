@@ -17,6 +17,10 @@
         chassis,left-encoder = <&left_encoder>;
         chassis,right-encoder = <&right_encoder>;
         chassis,power = <&power0>;
+        chassis,buttons = <&buttons0>;
+        chassis,leds = <&leds0>;
+        chassis,sr501 = <&sr5010>;
+        chassis,estop = <&estop0>;
     };
 
     aliases {
@@ -28,6 +32,16 @@
         left-encoder = &left_encoder;
         right-encoder = &right_encoder;
     };
+
+    gpioa: gpio-a { phandle = <20>; chassis,device-id = "gpioa"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+    gpiob: gpio-b { phandle = <21>; chassis,device-id = "gpiob"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+    gpioc: gpio-c { phandle = <22>; chassis,device-id = "gpioc"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+    gpiod: gpio-d { phandle = <23>; chassis,device-id = "gpiod"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+
+    buttons0: buttons { phandle = <24>; chassis,device-id = "buttons0"; compatible = "chassis,buttons"; status = "okay"; gpios = <&gpiod 3 1 &gpiod 4 1 &gpiob 8 0>; };
+    leds0: leds { phandle = <25>; chassis,device-id = "leds0"; compatible = "chassis,leds"; status = "okay"; gpios = <&gpioc 0 1 &gpioc 1 1 &gpioc 2 1>; };
+    estop0: emergency-stop { phandle = <26>; chassis,device-id = "estop0"; compatible = "chassis,emergency-stop"; status = "okay"; gpios = <&gpiod 2 1>; };
+    sr5010: motion-sensor { phandle = <27>; chassis,device-id = "sr5010"; compatible = "chassis,sr501"; status = "okay"; gpios = <&gpiod 5 0>; };
 
     can0: can {
         phandle = <1>;

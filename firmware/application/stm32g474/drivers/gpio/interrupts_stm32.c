@@ -3,31 +3,32 @@
 #include "drivers/sensor/icm45686.h"
 #include "drivers/display/lcd.h"
 #include "main.h"
+#include "devicetree_generated.h"
 
 void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin)
 {
   if (gpio_pin == BUTTON_1_Pin || gpio_pin == BUTTON_2_Pin) {
-    Button_OnInterrupt(gpio_pin);
+    button_on_interrupt(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS), gpio_pin);
   } else if (gpio_pin == IMU_INT1_Pin) {
-    Icm45686Stm32_OnDataReadyInterrupt();
+    sensor_on_data_ready(DEVICE_DT_GET(DT_NODE_IMU0));
   } else if (gpio_pin == KEY_Pin) {
-    Button_OnDisplayKeyInterrupt();
+    button_on_interrupt(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS), gpio_pin);
   } else if (gpio_pin == E_STOP_Pin) {
-    EmergencyStop_OnInterrupt();
+    emergency_stop_on_interrupt(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP));
   }
 }
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
   if (hspi != NULL && hspi->Instance == SPI2) {
-    Lcd_OnSpiTxComplete();
+    display_on_tx_complete(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_DISPLAY));
   }
 }
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
   if (hspi != NULL && hspi->Instance == SPI3) {
-    Icm45686Stm32_OnSpiTransferComplete();
+    sensor_on_transfer_complete(DEVICE_DT_GET(DT_NODE_IMU0));
   }
 }
 
@@ -37,8 +38,8 @@ void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
     return;
   }
   if (hspi->Instance == SPI2) {
-    Lcd_OnSpiError();
+    display_on_error(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_DISPLAY));
   } else if (hspi->Instance == SPI3) {
-    Icm45686Stm32_OnSpiTransferError();
+    sensor_on_transfer_error(DEVICE_DT_GET(DT_NODE_IMU0));
   }
 }

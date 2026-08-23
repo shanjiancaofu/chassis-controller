@@ -194,8 +194,7 @@ static bool InitializeHardware(uint32_t now_ms)
   }
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
                              "MOTION_IO_READY", NULL);
-  Button_Init();
-  Sr501_Init(now_ms);
+  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS))) return false;
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
 #if CONFIG_ICM45686
@@ -235,8 +234,8 @@ static bool InitializeProductModules(void)
 
   CommandManager_Init();
   FaultManager_Init();
-  SafetyManager_Init(EmergencyStop_IsAsserted());
-  EmergencyStop_Init(SafetyManager_LatchEmergencyStopFromIsr);
+  SafetyManager_Init(emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP)));
+  emergency_stop_set_callback(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP), SafetyManager_LatchEmergencyStopFromIsr);
   BoardHealth_Init();
   ParameterManager_Init(parameters_loaded ? &initial_parameters : NULL);
   if (!WheelController_Init(&wheel_controller_motor_port)) {
@@ -549,7 +548,7 @@ void ChassisApp_RunDiagnosticsCycle(void)
   static uint32_t last_heartbeat_ms;
   const uint32_t now_ms = time_uptime_ms();
 
-  Sr501_Run(now_ms);
+  sr501_run(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_SR501), now_ms);
 #if CONFIG_ICM45686
   sensor_run(imu_device, now_ms);
 #endif
@@ -557,14 +556,14 @@ void ChassisApp_RunDiagnosticsCycle(void)
 
   if (now_ms - last_heartbeat_ms >= 500U) {
     last_heartbeat_ms = now_ms;
-    Led_Toggle(LED_BLUE);
+    led_toggle(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_BLUE);
   }
-  Led_Set(LED_GREEN, false);
-  Led_Set(LED_RED, false);
+  led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_GREEN, false);
+  led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_RED, false);
   if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_PASSED) {
-    Led_Set(LED_GREEN, true);
+    led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_GREEN, true);
   } else if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_FAILED) {
-    Led_Set(LED_RED, true);
+    led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_RED, true);
   }
 
   {
@@ -584,7 +583,7 @@ void ChassisApp_RunDisplayCycle(void)
 {
   const uint32_t now_ms = time_uptime_ms();
 
-  Button_Run(now_ms);
+  button_run(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS), now_ms);
   LcdStatusPresenter_Run(now_ms);
 }
 
@@ -907,12 +906,12 @@ void ChassisApp_PanicStopFromException(void)
 
 bool ChassisApp_ClearEmergencyStop(void)
 {
-  if (EmergencyStop_IsAsserted()) {
+  if (emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP))) {
     return false;
   }
 
   taskENTER_CRITICAL();
-  if (EmergencyStop_IsAsserted()) {
+  if (emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP))) {
     taskEXIT_CRITICAL();
     return false;
   }

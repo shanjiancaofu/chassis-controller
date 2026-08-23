@@ -216,7 +216,7 @@ bool LcdStatusPresenter_Init(void)
 
 void LcdStatusPresenter_Run(uint32_t now_ms)
 {
-  if (Button_TakeDisplayKeyPressed() &&
+  if (button_take_display_key(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS)) &&
       now_ms - last_key_press_ms >= KEY_LOCKOUT_MS) {
     last_key_press_ms = now_ms;
     LcdUi_SetPage(NextPage(LcdUi_GetPage()));

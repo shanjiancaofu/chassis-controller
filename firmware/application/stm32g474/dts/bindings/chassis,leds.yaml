@@ -1,0 +1,9 @@
+compatible: "chassis,leds"
+required:
+  - status
+  - gpios
+properties:
+  status:
+    type: string
+  gpios:
+    type: array

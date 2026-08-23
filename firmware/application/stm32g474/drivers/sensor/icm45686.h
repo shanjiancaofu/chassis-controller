@@ -64,6 +64,9 @@ typedef struct {
   void (*run)(const struct device *device, uint32_t now_ms);
   void (*get_snapshot)(const struct device *device,
                        Icm45686Stm32Snapshot *snapshot);
+  void (*on_data_ready)(const struct device *device);
+  void (*on_transfer_complete)(const struct device *device);
+  void (*on_transfer_error)(const struct device *device);
 } SensorDriverApi;
 
 bool sensor_set_sample_sink(const struct device *device,
@@ -71,6 +74,9 @@ bool sensor_set_sample_sink(const struct device *device,
 void sensor_run(const struct device *device, uint32_t now_ms);
 void sensor_get_snapshot(const struct device *device,
                          Icm45686Stm32Snapshot *snapshot);
+void sensor_on_data_ready(const struct device *device);
+void sensor_on_transfer_complete(const struct device *device);
+void sensor_on_transfer_error(const struct device *device);
 extern const SensorDriverApi icm45686_stm32_api;
 int Icm45686Device_Init(const struct device *device);
 

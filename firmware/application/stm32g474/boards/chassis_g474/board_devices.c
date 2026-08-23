@@ -12,6 +12,12 @@
 #include "drivers/watchdog.h"
 #include "drivers/rtc.h"
 #include "drivers/time.h"
+#include "drivers/gpio.h"
+#include "drivers/button/button.h"
+#include "drivers/led/led.h"
+#include "drivers/sensor/sr501.h"
+#include "drivers/safety/emergency_stop.h"
+#include "main.h"
 #include "adc.h"
 #include "fdcan.h"
 #include "tim.h"
@@ -72,3 +78,28 @@ DEVICE_DT_DEFINE(display0, DisplayStm32_Init, NULL, NULL,
                  PRE_KERNEL_2, 84, &display_stm32_api);
 DEVICE_DT_DEFINE(imu0, Icm45686Device_Init, NULL, NULL,
                  PRE_KERNEL_2, 85, &icm45686_stm32_api);
+
+static const GpioStm32Config gpioa_config={.port=GPIOA};
+static const GpioStm32Config gpiob_config={.port=GPIOB};
+static const GpioStm32Config gpioc_config={.port=GPIOC};
+static const GpioStm32Config gpiod_config={.port=GPIOD};
+DEVICE_DT_DEFINE(gpioa,GpioStm32_Init,NULL,&gpioa_config,PRE_KERNEL_1,20,&gpio_stm32_api);
+DEVICE_DT_DEFINE(gpiob,GpioStm32_Init,NULL,&gpiob_config,PRE_KERNEL_1,21,&gpio_stm32_api);
+DEVICE_DT_DEFINE(gpioc,GpioStm32_Init,NULL,&gpioc_config,PRE_KERNEL_1,22,&gpio_stm32_api);
+DEVICE_DT_DEFINE(gpiod,GpioStm32_Init,NULL,&gpiod_config,PRE_KERNEL_1,23,&gpio_stm32_api);
+
+static const ButtonStm32Config buttons0_config={
+    .buttons={{.port=DEVICE_GET(gpiod),.pin=BUTTON_1_Pin,.flags=GPIO_ACTIVE_LOW},
+              {.port=DEVICE_GET(gpiod),.pin=BUTTON_2_Pin,.flags=GPIO_ACTIVE_LOW}},
+    .display_key={.port=DEVICE_GET(gpiob),.pin=KEY_Pin,.flags=0},
+};
+DEVICE_DT_DEFINE(buttons0,ButtonStm32_Init,NULL,&buttons0_config,PRE_KERNEL_2,90,&button_stm32_api);
+static const LedStm32Config leds0_config={.leds={
+    {.port=DEVICE_GET(gpioc),.pin=LED_B_Pin,.flags=GPIO_ACTIVE_LOW},
+    {.port=DEVICE_GET(gpioc),.pin=LED_G_Pin,.flags=GPIO_ACTIVE_LOW},
+    {.port=DEVICE_GET(gpioc),.pin=LED_R_Pin,.flags=GPIO_ACTIVE_LOW}}};
+DEVICE_DT_DEFINE(leds0,LedStm32_Init,NULL,&leds0_config,PRE_KERNEL_2,91,&led_stm32_api);
+static const Sr501Stm32Config sr5010_config={.input={.port=DEVICE_GET(gpiod),.pin=SR501_OUT_Pin,.flags=0}};
+DEVICE_DT_DEFINE(sr5010,Sr501Stm32_Init,NULL,&sr5010_config,PRE_KERNEL_2,92,&sr501_stm32_api);
+static const EmergencyStopStm32Config estop0_config={.input={.port=DEVICE_GET(gpiod),.pin=E_STOP_Pin,.flags=GPIO_ACTIVE_LOW}};
+DEVICE_DT_DEFINE(estop0,EmergencyStopStm32_Init,NULL,&estop0_config,PRE_KERNEL_2,93,&emergency_stop_stm32_api);

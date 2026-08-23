@@ -125,7 +125,7 @@ UART、QSPI、watchdog、RTC、time 的 HAL 适配源码已从旧 `bsp/*` 目录
 `103400 / 491520`、RAM `55296 / 131072`。架构、Kconfig、DTS 和 OTA Python 测试继续通过。
 本轮没有目标板硬件结论。
 
-### Hardware Device Model migration（2026-08-20）
+### Hardware Device Model migration（2026-08-23）
 
 新增真实设备实例：
 
@@ -134,17 +134,28 @@ drive0
 left_encoder
 right_encoder
 power0
+imu0
+display0
+flash0
+watchdog0
+rtc0
+time0
+gpioa/gpiob/gpioc/gpiod
+buttons0
+leds0
+sr5010
+estop0
 ```
 
 motor/encoder 的公共操作现在通过 `motor_*`、`encoder_*` API 和 `const struct device *` 进入，
 CubeMX `htim8/htim2/htim4` 只在 board device config 和 STM32 driver 内可见。WheelController
 仍保留业务 port，但 port 内部只调用 generic motor API；编码器读取改为分别读取左右两个 device。
-power sample 的 API 现在通过 `power0` device 访问；ICM45686 通过 `imu0` sensor device 访问，LCD 通过 `display0` display device 访问。`flash0/watchdog0/rtc0/time0` 已移除 dummy init，改为真实 API/vtable/init；`board_config.h` 及全部 `BOARD_*` 引用已删除。
+power sample 的 API 现在通过 `power0` device 访问；ICM45686 通过 `imu0` sensor device 访问，LCD 通过 `display0` display device 访问。`flash0/watchdog0/rtc0/time0` 已移除 dummy init，改为真实 API/vtable/init；`board_config.h` 及全部 `BOARD_*` 引用已删除。GPIO port 和 button/LED/SR501/E-STOP consumer 已使用真实 device API；DTS 使用 `gpios` phandle-array，中断路由通过 consumer/sensor/display API 分发。
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
-| Debug | 118872 | 120 | 55256 | `BUILD PASS` |
-| Release | 105340 | 120 | 55248 | `BUILD PASS` |
+| Debug | 120708 | 96 | 55384 | `BUILD PASS` |
+| Release | 107016 | 96 | 55376 | `BUILD PASS` |
 
 架构、Kconfig、DTS、OTA Python 测试均通过；电机安全和编码器方向未因源码构建结果推断硬件
 `PASS`，仍需目标板回归。
@@ -152,11 +163,11 @@ power sample 的 API 现在通过 `power0` device 访问；ICM45686 通过 `imu0
 Release ELF 已重新生成 Application BIN 和 OTA 包：
 
 ```text
-application.bin=105468 bytes
-payload_crc32=0x84E12E94
-application.bin sha256=9a18604411d50b5fc15b9ab846e5e5252cfbcf6488056c6eb3ce6ed05027ee30
-app-v0.15.0-b1.ota=105532 bytes
-ota sha256=cffff895facaa2f5f998ee6d1ddf1c5097137a3b2bdce3979c1a120affa399af
+application.bin=107120 bytes
+payload_crc32=0x191ECC45
+application.bin sha256=4ba6193c9ab28bf59da732cbccf313dc0321833ba2372f22a20d8423a3d369f2
+app-v0.15.0-b1.ota=107184 bytes
+ota sha256=3de2c8e3faddb734c3d9232dc084b13f4209be754530d385f246627c0075f80f
 ```
 
 该 OTA 包只完成主机打包和格式校验，尚未烧录，不能记录硬件 `PASS`。

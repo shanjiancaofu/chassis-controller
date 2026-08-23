@@ -1,0 +1,6 @@
+compatible: "st,stm32-gpio-port"
+required:
+  - status
+properties:
+  status:
+    type: string

@@ -11,3 +11,5 @@ bool display_row_complete(const struct device *device) { const DisplayDriverApi 
 bool display_has_error(const struct device *device) { const DisplayDriverApi *d=api(device); return !d || !d->has_error || d->has_error(device); }
 void display_end_frame(const struct device *device) { const DisplayDriverApi *d=api(device); if(d&&d->end_frame)d->end_frame(device); }
 LcdStatus display_get_status(const struct device *device) { const DisplayDriverApi *d=api(device); return d&&d->get_status?d->get_status(device):LCD_FAILED; }
+void display_on_tx_complete(const struct device*d){const DisplayDriverApi*a=api(d);if(a&&a->on_tx_complete)a->on_tx_complete(d);}
+void display_on_error(const struct device*d){const DisplayDriverApi*a=api(d);if(a&&a->on_error)a->on_error(d);}

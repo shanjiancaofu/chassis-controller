@@ -33,6 +33,8 @@ typedef struct {
   bool (*has_error)(const struct device *device);
   void (*end_frame)(const struct device *device);
   LcdStatus (*get_status)(const struct device *device);
+  void (*on_tx_complete)(const struct device *device);
+  void (*on_error)(const struct device *device);
 } DisplayDriverApi;
 
 bool display_begin_frame(const struct device *device);
@@ -41,6 +43,8 @@ bool display_row_complete(const struct device *device);
 bool display_has_error(const struct device *device);
 void display_end_frame(const struct device *device);
 LcdStatus display_get_status(const struct device *device);
+void display_on_tx_complete(const struct device *device);
+void display_on_error(const struct device *device);
 extern const DisplayDriverApi display_stm32_api;
 int DisplayStm32_Init(const struct device *device);
 

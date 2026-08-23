@@ -1,0 +1,9 @@
+compatible: "chassis,sr501"
+required:
+  - status
+  - gpios
+properties:
+  status:
+    type: string
+  gpios:
+    type: array

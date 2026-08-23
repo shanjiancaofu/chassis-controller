@@ -202,11 +202,17 @@ static void GetDeviceSnapshot(const struct device *device,
   (void)device;
   Icm45686Stm32_GetSnapshot(snapshot);
 }
+static void DataReady(const struct device*d){(void)d;Icm45686Stm32_OnDataReadyInterrupt();}
+static void TransferComplete(const struct device*d){(void)d;Icm45686Stm32_OnSpiTransferComplete();}
+static void TransferError(const struct device*d){(void)d;Icm45686Stm32_OnSpiTransferError();}
 
 const SensorDriverApi icm45686_stm32_api = {
     .set_sample_sink = SetSink,
     .run = RunDevice,
     .get_snapshot = GetDeviceSnapshot,
+    .on_data_ready = DataReady,
+    .on_transfer_complete = TransferComplete,
+    .on_transfer_error = TransferError,
 };
 
 int Icm45686Device_Init(const struct device *device)

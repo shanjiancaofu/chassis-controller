@@ -201,10 +201,10 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   RtosApp_GetRuntimeSnapshot(&runtime);
   CopyRuntimeSnapshot(&status.runtime, &runtime);
 
-  Button_GetSnapshot(&buttons);
+  button_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS), &buttons);
   sensor_get_snapshot(DEVICE_DT_GET(DT_NODE_IMU0), &imu);
   ImuOrientation_GetSnapshot(&orientation);
-  Sr501_GetSnapshot(&sr501);
+  sr501_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_SR501), &sr501);
   power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), now_ms, &power_sample);
   CopyButtonSnapshot(&status.buttons, &buttons);
   CopyImuSnapshot(&status.imu, &imu, &orientation);

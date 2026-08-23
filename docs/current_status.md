@@ -18,8 +18,8 @@
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
-- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于硬件 Device Model 收口后的 ELF
-  重新打包：payload `105468` 字节、CRC32 `0x84E12E94`，OTA 包 `105532` 字节；仅完成构建和
+- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于 GPIO consumer Device Model 收口后的 ELF
+  重新打包：payload `107120` 字节、CRC32 `0x191ECC45`，OTA 包 `107184` 字节；仅完成构建和
   主机格式校验，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
@@ -106,7 +106,7 @@
 - motor/encoder 已完成首批 Device Model 迁移：`drive0`、`left_encoder`、`right_encoder` 由
   `DEVICE_DT_DEFINE()` 注册，WheelController 通过 generic motor API 装配，编码器按左右 device
   分别读取；源码构建通过，电机安全和编码器方向仍需目标板回归。
-- `board_config.h` 和全部 `BOARD_*` 依赖已删除；`flash0/watchdog0/rtc0/time0` 已从 dummy device 改为真实 API/vtable/init。button/LED/SR501/E-STOP GPIO consumer 仍待下一批完成。
+- `board_config.h` 和全部 `BOARD_*` 依赖已删除；`flash0/watchdog0/rtc0/time0` 已从 dummy device 改为真实 API/vtable/init。button/LED/SR501/E-STOP GPIO consumer 已完成 device/API 接入，DTS 已增加 `gpios` phandle-array。
 - UART v1 的消息外壳和已有字段语义保持兼容，字段及分区集合不冻结。四分区只承担当前完整
   诊断，不要求所有新功能都往其中堆字段；周期遥测按实际观察需求保持精简。
 - 编码器在 100 Hz 控制采样点记录本地单调时间和实际累计周期，ADC 记录转换完成时间，IMU
@@ -262,14 +262,11 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角也�
 
 ## 下一步
 
-1. 完成 button/LED/SR501/E-STOP GPIO consumer device、DTS `gpios` 和统一中断路由。
-2. 将 power/IMU/display 的静态运行状态迁入 `device->data`，并继续清理 concrete 全局函数。
-3. 将 `ChassisApp_Init()` 中剩余的直接 driver 函数装配替换为 device/subsystem API，保持 PWM 零输出、E-STOP 优先级和可选传感器不阻塞启动。
-4. 并行补齐 UART/CAN OTA、断电恢复、TRIAL 回滚、rollback 中断恢复和确认失败清理的主机测试矩阵。
-5. 在危险目标板测试前先完成主机故障注入、日志断言、维护锁和四路零 PWM 断言。
-6. 基于当前 Release ELF 重新打包 OTA；烧录前仅记录构建结果，不写硬件 PASS。
-7. 在用户明确确认后执行 UART OTA 并复核任务、fault、control、PWM、LCD、QSPI、RTC 和 IWDG。
-8. 有硬件条件时继续编码器、里程计、PID、欠压、IMU 动态轴向和 SR501 高电平验收。
+1. 将 power/IMU/display/button/LED/SR501/E-STOP 的剩余静态运行状态迁入 `device->data`，清理 concrete 全局函数。
+2. 推进 DTS 拓扑化，移除 `cubemx-handle`、手工 phandle 和上层 `devicetree_generated.h` 依赖。
+3. 完成 APPLICATION boot flow，并去除 app 层直接 FreeRTOS critical section。
+4. 切换 Kconfiglib，补齐 OTA recovery、并发和 Device Model 主机测试矩阵。
+5. 在用户明确确认后执行 UART OTA 和完整目标板回归。
 
 当前路线：
 

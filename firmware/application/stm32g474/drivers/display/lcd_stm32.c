@@ -200,10 +200,14 @@ static bool Complete(const struct device *device) { (void)device; return Lcd_IsR
 static bool HasError(const struct device *device) { (void)device; return Lcd_HasTransferError(); }
 static void End(const struct device *device) { (void)device; Lcd_EndFrame(); }
 static LcdStatus Status(const struct device *device) { (void)device; return Lcd_GetStatus(); }
+static void TxComplete(const struct device*d){(void)d;Lcd_OnSpiTxComplete();}
+static void Error(const struct device*d){(void)d;Lcd_OnSpiError();}
 
 const DisplayDriverApi display_stm32_api = {
     .begin_frame=Begin,.transmit_row=Transmit,.row_complete=Complete,
     .has_error=HasError,.end_frame=End,.get_status=Status,
+    .on_tx_complete=TxComplete,
+    .on_error=Error,
 };
 
 int DisplayStm32_Init(const struct device *device)
