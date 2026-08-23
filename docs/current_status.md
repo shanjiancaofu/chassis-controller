@@ -36,6 +36,9 @@
 
 ## 当前实现
 
+- Kconfig 语义引擎已切换为 vendored Kconfiglib `14.1.0`；现有 Kconfig/prj.conf/CONFIG 输出和
+  Release BIN 与切换前逐哈希一致，自研 lexer/parser/model/evaluator 已删除。
+
 - Application 的独立 CubeMX 工程已加入 SPI3（PC10/PC11/PC12）、两个预留按钮（PD3/PD4）
   和 SR501 输入（PD5）；CubeMX 生成结果包含 `hspi3`、`MX_SPI3_Init()`、SPI3 DMA1 CH5/CH6、
   EXTI1/3/4，以及 PD5 普通输入和内部下拉初始化。
@@ -265,7 +268,7 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角也�
 1. 将 power/IMU/display/button/LED/SR501/E-STOP 的剩余静态运行状态迁入 `device->data`，清理 concrete 全局函数。
 2. 推进 DTS 拓扑化，移除 `cubemx-handle`、手工 phandle 和上层 `devicetree_generated.h` 依赖。
 3. 完成 APPLICATION boot flow，并去除 app 层直接 FreeRTOS critical section。
-4. 切换 Kconfiglib，补齐 OTA recovery、并发和 Device Model 主机测试矩阵。
+4. 补齐 OTA recovery、并发和 Device Model 主机测试矩阵。
 5. 在用户明确确认后执行 UART OTA 和完整目标板回归。
 
 当前路线：

@@ -11,10 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.kconfig.config import parse_config
-from tools.kconfig.evaluator import evaluate
+from tools.kconfig.engine import evaluate
 from tools.kconfig.genconfig import generate
-from tools.kconfig.parser import parse
 
 
 def main() -> None:
@@ -25,11 +23,10 @@ def main() -> None:
     parser.add_argument("--cmake", type=Path, required=True)
     parser.add_argument("--out-config", type=Path)
     args = parser.parse_args()
-    model = parse(args.kconfig)
-    values = evaluate(model, parse_config(args.config))
+    values, kinds = evaluate(args.kconfig, args.config)
     generate(
         values,
-        {name: symbol.kind or "" for name, symbol in model.symbols.items()},
+        kinds,
         args.header,
         args.cmake,
         args.out_config,

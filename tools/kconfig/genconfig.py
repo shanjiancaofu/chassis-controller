@@ -17,7 +17,7 @@ def generate(values: dict[str, str], kinds: dict[str, str], header: Path, cmake:
     config_lines: list[str] = []
     for name in sorted(values):
         value = values[name]
-        if kinds[name] == "bool":
+        if kinds[name] in {"bool", "tristate"}:
             header_lines.append(f"#define CONFIG_{name} {1 if value == 'y' else 0}")
             cmake_lines.append(f"set(CONFIG_{name} {'ON' if value == 'y' else 'OFF'})")
         elif kinds[name] == "string":

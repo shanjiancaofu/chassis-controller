@@ -54,6 +54,21 @@
 
 ## 构建基线
 
+### Kconfiglib engine migration（2026-08-23）
+
+Kconfig 语义引擎已由仓库自研 parser/evaluator 切换为 vendored Kconfiglib `14.1.0`。现有
+`Kconfig`、`prj.conf`、`CONFIG_*` 和生成文件格式保持不变。切换前后输出哈希一致：
+
+```text
+.config       af4c104c204c31dae6bc4bda06b69becea8d1caf2a3153655aff5891cb586a64
+autoconf.h    bc146b1b1f2f7dac17750b31496fba1a491a822887381c6a29639816b03e6c7b
+config.cmake  209a6fa4aa13af025a4a9ca8ed4de02cef9464c3b675c168f7061f9fd9f3faec
+Release BIN   4ba6193c9ab28bf59da732cbccf313dc0321833ba2372f22a20d8423a3d369f2
+```
+
+新增测试覆盖当前配置、choice/条件 default、select/depends；Debug/Release、DTS、架构、OTA
+测试和 LCD 预览均通过。本批不改变固件字节，不构成新的目标板硬件证据。
+
 ### CubeMX 初始化入口恢复（2026-08-20）
 
 按仓库规则恢复 CubeMX 生成的 `Core/Src/main.c`、`gpio.c`、`dma.c` 及对应头文件，并重新纳入
