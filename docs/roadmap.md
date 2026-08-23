@@ -5,6 +5,16 @@
 
 ## 当前基线
 
+迁移状态（2026-08-23）：代码架构约完成 `85%`。DT/device data 第一批已完成：公共
+`devicetree.h`、controller/child 拓扑、status-aware instance、GPIO phandle-array 和
+power/button/SR501/display 运行态均已落地。剩余工作收敛为一个代码大批次：
+
+1. 驱动/启动/并发收口：UART/QSPI/IMU 运行态迁入 `device->data`、generic/concrete header
+   分离、APPLICATION composition、POST_KERNEL 顺序、app FreeRTOS critical section
+   下沉、required/optional policy 和 OTA recovery/并发测试。
+
+上述代码批次完成后进入目标板回归；`NOT VERIFIED` 不阻塞代码迁移，但不能据此记录硬件通过。
+
 既有 FreeRTOS/底盘基础代码已完成：
 
 - FreeRTOS 静态 Application task 和高优先级 `control_task`

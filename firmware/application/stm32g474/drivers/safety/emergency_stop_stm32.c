@@ -1,6 +1,6 @@
 #include "drivers/safety/emergency_stop.h"
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "drivers/motor/motor.h"
 
 #include "drivers/gpio.h"
@@ -32,7 +32,7 @@ void EmergencyStop_OnInterrupt(void)
   if (!EmergencyStop_IsAsserted()) {
     return;
   }
-  motor_emergency_stop(DEVICE_DT_GET(DT_NODE_DRIVE0));
+  motor_emergency_stop(DEVICE_DT_GET(DT_NODELABEL(drive0)));
   if (latched_callback != NULL) {
     latched_callback();
   }

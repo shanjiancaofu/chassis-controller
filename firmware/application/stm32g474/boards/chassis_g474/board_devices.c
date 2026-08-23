@@ -1,21 +1,21 @@
 #include "device.h"
 
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "drivers/can/can_stm32_fdcan.h"
 #include "drivers/uart/uart_stm32.h"
 #include "drivers/motor/motor.h"
 #include "drivers/encoder/encoder.h"
-#include "drivers/adc/power_sample.h"
-#include "drivers/display/lcd.h"
+#include "drivers/adc/power_sample_stm32_private.h"
+#include "drivers/display/lcd_stm32_private.h"
 #include "drivers/sensor/icm45686.h"
 #include "drivers/flash.h"
 #include "drivers/watchdog.h"
 #include "drivers/rtc.h"
 #include "drivers/time.h"
 #include "drivers/gpio.h"
-#include "drivers/button/button.h"
+#include "drivers/button/button_stm32_private.h"
 #include "drivers/led/led.h"
-#include "drivers/sensor/sr501.h"
+#include "drivers/sensor/sr501_stm32_private.h"
 #include "drivers/safety/emergency_stop.h"
 #include "main.h"
 #include "adc.h"
@@ -25,7 +25,7 @@
 
 static const CanStm32FdcanConfig can0_config = {
     .handle = &hfdcan2,
-    .filter_capacity = DT_PROP_CAN0_STANDARD_FILTER_COUNT,
+    .filter_capacity = DT_PROP(DT_NODELABEL(can0), standard_filter_count),
 };
 static CanStm32FdcanData can0_data;
 
@@ -72,9 +72,11 @@ DEVICE_DT_DEFINE(left_encoder, EncoderStm32_Init, &left_encoder_data,
 DEVICE_DT_DEFINE(right_encoder, EncoderStm32_Init, &right_encoder_data,
                  &right_encoder_config, PRE_KERNEL_2, 82, &encoder_stm32_api);
 
-DEVICE_DT_DEFINE(power0, PowerSampleStm32_Init, NULL, NULL,
+static PowerSampleStm32Data power0_data;
+DEVICE_DT_DEFINE(power0, PowerSampleStm32_Init, &power0_data, NULL,
                  PRE_KERNEL_2, 83, &power_sample_stm32_api);
-DEVICE_DT_DEFINE(display0, DisplayStm32_Init, NULL, NULL,
+static DisplayStm32Data display0_data;
+DEVICE_DT_DEFINE(display0, DisplayStm32_Init, &display0_data, NULL,
                  PRE_KERNEL_2, 84, &display_stm32_api);
 DEVICE_DT_DEFINE(imu0, Icm45686Device_Init, NULL, NULL,
                  PRE_KERNEL_2, 85, &icm45686_stm32_api);
@@ -89,17 +91,21 @@ DEVICE_DT_DEFINE(gpioc,GpioStm32_Init,NULL,&gpioc_config,PRE_KERNEL_1,22,&gpio_s
 DEVICE_DT_DEFINE(gpiod,GpioStm32_Init,NULL,&gpiod_config,PRE_KERNEL_1,23,&gpio_stm32_api);
 
 static const ButtonStm32Config buttons0_config={
-    .buttons={{.port=DEVICE_GET(gpiod),.pin=BUTTON_1_Pin,.flags=GPIO_ACTIVE_LOW},
-              {.port=DEVICE_GET(gpiod),.pin=BUTTON_2_Pin,.flags=GPIO_ACTIVE_LOW}},
-    .display_key={.port=DEVICE_GET(gpiob),.pin=KEY_Pin,.flags=0},
+    .buttons={GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(buttons0),gpios,0),
+              GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(buttons0),gpios,1)},
+    .display_key=GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(buttons0),gpios,2),
 };
-DEVICE_DT_DEFINE(buttons0,ButtonStm32_Init,NULL,&buttons0_config,PRE_KERNEL_2,90,&button_stm32_api);
+static ButtonStm32Data buttons0_data;
+DEVICE_DT_DEFINE(buttons0,ButtonStm32_Init,&buttons0_data,&buttons0_config,PRE_KERNEL_2,90,&button_stm32_api);
 static const LedStm32Config leds0_config={.leds={
-    {.port=DEVICE_GET(gpioc),.pin=LED_B_Pin,.flags=GPIO_ACTIVE_LOW},
-    {.port=DEVICE_GET(gpioc),.pin=LED_G_Pin,.flags=GPIO_ACTIVE_LOW},
-    {.port=DEVICE_GET(gpioc),.pin=LED_R_Pin,.flags=GPIO_ACTIVE_LOW}}};
+    GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(leds0),gpios,0),
+    GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(leds0),gpios,1),
+    GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(leds0),gpios,2)}};
 DEVICE_DT_DEFINE(leds0,LedStm32_Init,NULL,&leds0_config,PRE_KERNEL_2,91,&led_stm32_api);
-static const Sr501Stm32Config sr5010_config={.input={.port=DEVICE_GET(gpiod),.pin=SR501_OUT_Pin,.flags=0}};
-DEVICE_DT_DEFINE(sr5010,Sr501Stm32_Init,NULL,&sr5010_config,PRE_KERNEL_2,92,&sr501_stm32_api);
-static const EmergencyStopStm32Config estop0_config={.input={.port=DEVICE_GET(gpiod),.pin=E_STOP_Pin,.flags=GPIO_ACTIVE_LOW}};
+static const Sr501Stm32Config sr5010_config={
+    .input=GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(sr5010),gpios,0)};
+static Sr501Stm32Data sr5010_data;
+DEVICE_DT_DEFINE(sr5010,Sr501Stm32_Init,&sr5010_data,&sr5010_config,PRE_KERNEL_2,92,&sr501_stm32_api);
+static const EmergencyStopStm32Config estop0_config={
+    .input=GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(estop0),gpios,0)};
 DEVICE_DT_DEFINE(estop0,EmergencyStopStm32_Init,NULL,&estop0_config,PRE_KERNEL_2,93,&emergency_stop_stm32_api);

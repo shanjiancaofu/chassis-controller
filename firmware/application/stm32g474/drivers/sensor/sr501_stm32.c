@@ -1,89 +1,107 @@
-#include "drivers/sensor/sr501.h"
+#include "drivers/sensor/sr501_stm32_private.h"
 
+#include <errno.h>
 #include <stddef.h>
-
-#include "drivers/gpio.h"
+#include <string.h>
 
 #define SR501_WARMUP_MS 60000U
 #define SR501_STABLE_FILTER_MS 50U
 
-static Sr501Status status;
-static bool raw_high;
-static bool stable_high;
-static bool candidate_high;
-static bool candidate_countable;
-static uint32_t initialized_ms;
-static uint32_t candidate_started_ms;
-static uint32_t current_ms;
-static uint32_t event_count;
-static uint32_t last_motion_ms;
-static GpioSpec sr501_input;
-
-void Sr501_Init(uint32_t now_ms)
+static Sr501Stm32Data *Data(const struct device *device)
 {
-  raw_high = gpio_get(&sr501_input) > 0;
-  stable_high = raw_high;
-  candidate_high = raw_high;
-  candidate_countable = false;
-  status = SR501_WARMING_UP;
-  initialized_ms = now_ms;
-  candidate_started_ms = now_ms;
-  current_ms = now_ms;
-  event_count = 0U;
-  last_motion_ms = 0U;
+  return device != NULL ? (Sr501Stm32Data *)device->data : NULL;
 }
 
-void Sr501_Run(uint32_t now_ms)
+static void Run(const struct device *device, uint32_t now_ms)
 {
+  const Sr501Stm32Config *config = device != NULL ? device->config : NULL;
+  Sr501Stm32Data *data = Data(device);
   bool previous_stable_high;
-
-  current_ms = now_ms;
-  raw_high = gpio_get(&sr501_input) > 0;
-
-  if (raw_high != candidate_high) {
-    candidate_high = raw_high;
-    candidate_countable = status == SR501_READY;
-    candidate_started_ms = now_ms;
-  }
-  if (candidate_high != stable_high &&
-      now_ms - candidate_started_ms >= SR501_STABLE_FILTER_MS) {
-    previous_stable_high = stable_high;
-    stable_high = candidate_high;
-    if (candidate_countable && !previous_stable_high && stable_high) {
-      ++event_count;
-      last_motion_ms = now_ms;
-    }
-    candidate_countable = false;
-  }
-
-  if (status == SR501_WARMING_UP &&
-      now_ms - initialized_ms >= SR501_WARMUP_MS) {
-    status = SR501_READY;
-  }
-}
-static void ApiRun(const struct device*d,uint32_t n){(void)d;Sr501_Run(n);}
-static void ApiSnapshot(const struct device*d,Sr501Snapshot*s){(void)d;Sr501_GetSnapshot(s);}
-const Sr501DriverApi sr501_stm32_api={.run=ApiRun,.snapshot=ApiSnapshot};
-int Sr501Stm32_Init(const struct device*d){const Sr501Stm32Config*c=d?d->config:NULL;if(!c)return -1;sr501_input=c->input;Sr501_Init(0);return 0;}
-static const Sr501DriverApi *Api(const struct device*d){return device_is_ready(d)?d->api:NULL;}
-void sr501_run(const struct device*d,uint32_t n){const Sr501DriverApi*a=Api(d);if(a&&a->run)a->run(d,n);}
-void sr501_get_snapshot(const struct device*d,Sr501Snapshot*s){const Sr501DriverApi*a=Api(d);if(a&&a->snapshot)a->snapshot(d,s);}
-
-void Sr501_GetSnapshot(Sr501Snapshot *snapshot)
-{
-  const uint32_t warmup_elapsed_ms = current_ms - initialized_ms;
-
-  if (snapshot == NULL) {
+  if (config == NULL || data == NULL) {
     return;
   }
 
-  snapshot->status = status;
-  snapshot->raw_high = raw_high;
-  snapshot->motion_detected = status == SR501_READY && stable_high;
-  snapshot->event_count = event_count;
-  snapshot->last_motion_ms = last_motion_ms;
+  data->current_ms = now_ms;
+  data->raw_high = gpio_get(&config->input) > 0;
+  if (data->raw_high != data->candidate_high) {
+    data->candidate_high = data->raw_high;
+    data->candidate_countable = data->status == SR501_READY;
+    data->candidate_started_ms = now_ms;
+  }
+  if (data->candidate_high != data->stable_high &&
+      now_ms - data->candidate_started_ms >= SR501_STABLE_FILTER_MS) {
+    previous_stable_high = data->stable_high;
+    data->stable_high = data->candidate_high;
+    if (data->candidate_countable && !previous_stable_high &&
+        data->stable_high) {
+      ++data->event_count;
+      data->last_motion_ms = now_ms;
+    }
+    data->candidate_countable = false;
+  }
+  if (data->status == SR501_WARMING_UP &&
+      now_ms - data->initialized_ms >= SR501_WARMUP_MS) {
+    data->status = SR501_READY;
+  }
+}
+
+static void GetSnapshot(const struct device *device, Sr501Snapshot *snapshot)
+{
+  const Sr501Stm32Data *data = Data(device);
+  uint32_t warmup_elapsed_ms;
+  if (data == NULL || snapshot == NULL) {
+    return;
+  }
+  warmup_elapsed_ms = data->current_ms - data->initialized_ms;
+  snapshot->status = data->status;
+  snapshot->raw_high = data->raw_high;
+  snapshot->motion_detected =
+      data->status == SR501_READY && data->stable_high;
+  snapshot->event_count = data->event_count;
+  snapshot->last_motion_ms = data->last_motion_ms;
   snapshot->warmup_remaining_ms =
-      status == SR501_WARMING_UP && warmup_elapsed_ms < SR501_WARMUP_MS
+      data->status == SR501_WARMING_UP && warmup_elapsed_ms < SR501_WARMUP_MS
           ? SR501_WARMUP_MS - warmup_elapsed_ms
           : 0U;
+}
+
+const Sr501DriverApi sr501_stm32_api = {
+    .run = Run,
+    .snapshot = GetSnapshot,
+};
+
+int Sr501Stm32_Init(const struct device *device)
+{
+  const Sr501Stm32Config *config = device != NULL ? device->config : NULL;
+  Sr501Stm32Data *data = Data(device);
+  if (config == NULL || data == NULL) {
+    return -EINVAL;
+  }
+  memset(data, 0, sizeof(*data));
+  data->raw_high = gpio_get(&config->input) > 0;
+  data->stable_high = data->raw_high;
+  data->candidate_high = data->raw_high;
+  data->status = SR501_WARMING_UP;
+  return 0;
+}
+
+static const Sr501DriverApi *Api(const struct device *device)
+{
+  return device_is_ready(device) ? device->api : NULL;
+}
+
+void sr501_run(const struct device *device, uint32_t now_ms)
+{
+  const Sr501DriverApi *api = Api(device);
+  if (api != NULL && api->run != NULL) {
+    api->run(device, now_ms);
+  }
+}
+
+void sr501_get_snapshot(const struct device *device, Sr501Snapshot *snapshot)
+{
+  const Sr501DriverApi *api = Api(device);
+  if (api != NULL && api->snapshot != NULL) {
+    api->snapshot(device, snapshot);
+  }
 }

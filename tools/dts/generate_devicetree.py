@@ -184,22 +184,121 @@ def build_manifest(nodes: list[Node]) -> dict:
     if chosen_node:
         for name, data in chosen_node.properties.items():
             references = [resolve_reference(cell) for cell in cells(data)]
+            for reference in references:
+                if devices[reference].get("status", "okay") != "okay":
+                    raise ValueError(
+                        f"chosen {name} references disabled device {reference}")
             chosen[token(name)] = references[0] if len(references) == 1 else references
     if aliases_node:
         for name, data in aliases_node.properties.items():
             aliases[token(name)] = resolve_property_reference(data)
 
+    nodes_by_phandle = {
+        u32(node.properties["phandle"]): node
+        for node in nodes if "phandle" in node.properties
+    }
     for device_id, values in devices.items():
         for name, value in list(values.items()):
             if name in {"path", "phandle"} or not isinstance(value, list):
                 continue
             if not value or not isinstance(value[0], int) or value[0] not in phandles:
                 continue
-            resolved: list[str | int] = [phandles[value[0]], *value[1:]]
-            phandle_arrays.setdefault(device_id, {})[name] = resolved
+            cell_property = "#gpio-cells" if name == "gpios" else None
+            if cell_property is None:
+                continue
+            entries = []
+            index = 0
+            while index < len(value):
+                provider = value[index]
+                provider_node = nodes_by_phandle.get(provider)
+                if provider_node is None or provider not in phandles:
+                    raise ValueError(f"{device_id}.{name}: unknown phandle {provider}")
+                if cell_property not in provider_node.properties:
+                    raise ValueError(
+                        f"{device_id}.{name}: provider lacks {cell_property}")
+                cell_count = u32(provider_node.properties[cell_property])
+                end = index + 1 + cell_count
+                if end > len(value):
+                    raise ValueError(f"{device_id}.{name}: truncated specifier")
+                entries.append({"controller": phandles[provider],
+                                "cells": value[index + 1:end]})
+                index = end
+            phandle_arrays.setdefault(device_id, {})[name] = entries
 
     return {"devices": devices, "chosen": chosen, "aliases": aliases,
             "labels": labels, "phandle_arrays": phandle_arrays}
+
+
+def render(value) -> str:
+    if isinstance(value, str):
+        return f'"{value}"'
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return f"{value}U"
+
+
+def generate_header(manifest: dict) -> str:
+    devices = manifest["devices"]
+    lines = ["#ifndef CHASSIS_DEVICETREE_GENERATED_H",
+             "#define CHASSIS_DEVICETREE_GENERATED_H", "",
+             "struct device;", ""]
+    for device_id, values in sorted(devices.items()):
+        lines.append(f"#define DT_NODE_{device_id} {device_id}")
+        lines.append(f"#define DT_NODE_{device_id}_EXISTS 1")
+        status = token(str(values.get("status", "okay")))
+        lines.append(
+            f"#define DT_NODE_{device_id}_STATUS_okay "
+            f"{1 if status == 'okay' else 0}")
+        lines.append(
+            f"#define DT_NODE_{device_id}_STATUS_disabled "
+            f"{1 if status == 'disabled' else 0}")
+        if status == "okay":
+            lines.append(f"extern const struct device device_{device_id};")
+        for name, value in sorted(values.items()):
+            if name in ("path", "phandle"):
+                continue
+            property_name = token(name)
+            lines.append(f"#define DT_PROP_{device_id}_{property_name}_EXISTS 1")
+            if isinstance(value, list):
+                lines.append(
+                    f"#define DT_PROP_{device_id}_{property_name}_LEN {len(value)}U")
+                for index, item in enumerate(value):
+                    lines.append(
+                        f"#define DT_PROP_{device_id}_{property_name}_IDX_{index} {render(item)}")
+            else:
+                lines.append(
+                    f"#define DT_PROP_{device_id}_{property_name} {render(value)}")
+        for name, entries in sorted(
+                manifest.get("phandle_arrays", {}).get(device_id, {}).items()):
+            property_name = token(name)
+            lines.append(
+                f"#define DT_PHA_{device_id}_{property_name}_LEN {len(entries)}U")
+            for index, entry in enumerate(entries):
+                lines.append(
+                    f"#define DT_PHA_{device_id}_{property_name}_CONTROLLER_{index} "
+                    f"{entry['controller']}")
+                for cell_index, cell in enumerate(entry["cells"]):
+                    lines.append(
+                        f"#define DT_PHA_{device_id}_{property_name}_CELL_{index}_{cell_index} "
+                        f"{render(cell)}")
+                if name == "gpios" and len(entry["cells"]) == 2:
+                    lines.append(
+                        f"#define DT_PHA_{device_id}_{property_name}_PIN_{index} "
+                        f"{render(entry['cells'][0])}")
+                    lines.append(
+                        f"#define DT_PHA_{device_id}_{property_name}_FLAGS_{index} "
+                        f"{render(entry['cells'][1])}")
+        lines.append("")
+    for name, device_id in sorted(manifest["chosen"].items()):
+        if isinstance(device_id, list):
+            raise ValueError(f"chosen {name} must reference one device")
+        lines.append(f"#define DT_CHOSEN_{name} {device_id}")
+    for name, device_id in sorted(manifest["aliases"].items()):
+        lines.append(f"#define DT_ALIAS_{name} {device_id}")
+    for name, device_id in sorted(manifest["labels"].items()):
+        lines.append(f"#define DT_NODELABEL_{name} {device_id}")
+    lines.extend(["", "#endif", ""])
+    return "\n".join(lines)
 
 
 def write_if_changed(path: pathlib.Path, content: str) -> None:
@@ -217,40 +316,7 @@ def main() -> None:
 
     nodes = parse_dtb(args.dtb)
     manifest = build_manifest(nodes)
-    devices = manifest["devices"]
-
-    lines = ["#ifndef CHASSIS_DEVICETREE_GENERATED_H",
-             "#define CHASSIS_DEVICETREE_GENERATED_H", "",
-             "struct device;", ""]
-    for device_id, values in sorted(devices.items()):
-        upper_id = device_id.upper()
-        lines.append(f"#define DT_NODE_{upper_id} {device_id}")
-        lines.append(f"#define DT_NODE_{upper_id}_EXISTS 1")
-        if "phandle" in values:
-            lines.append(f"extern const struct device device_{device_id};")
-        for name, value in sorted(values.items()):
-            if name in ("path", "phandle"):
-                continue
-            macro = token(name).upper()
-            if isinstance(value, list):
-                lines.append(f"#define DT_PROP_{upper_id}_{macro}_COUNT {len(value)}U")
-                for index, item in enumerate(value):
-                    rendered = f'"{item}"' if isinstance(item, str) else f"{item}U"
-                    lines.append(f"#define DT_PROP_{upper_id}_{macro}_{index} {rendered}")
-            else:
-                rendered = f'"{value}"' if isinstance(value, str) else f"{value}U"
-                lines.append(f"#define DT_PROP_{upper_id}_{macro} {rendered}")
-        lines.append("")
-    for name, device_id in sorted(manifest["chosen"].items()):
-        if isinstance(device_id, list):
-            raise ValueError(f"chosen {name} must reference one device")
-        lines.append(f"#define DT_CHOSEN_{name.upper()} {device_id}")
-    for name, device_id in sorted(manifest["aliases"].items()):
-        lines.append(f"#define DT_ALIAS_{name.upper()} {device_id}")
-    for name, device_id in sorted(manifest["labels"].items()):
-        lines.append(f"#define DT_NODELABEL_{name.upper()} {device_id}")
-    lines.extend(["", "#endif", ""])
-    write_if_changed(args.header, "\n".join(lines))
+    write_if_changed(args.header, generate_header(manifest))
     write_if_changed(args.json,
                      json.dumps(manifest,
                                 indent=2, sort_keys=True) + "\n")

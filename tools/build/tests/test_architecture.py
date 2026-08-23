@@ -23,6 +23,17 @@ class ArchitectureCheckTest(unittest.TestCase):
             self.assertIn("direct CubeMX/HAL include", violations[0].message)
             self.assertIn("HAL_FDCAN_Start", violations[1].message)
 
+    def test_generated_devicetree_include_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "modules" / "bad.c"
+            source.parent.mkdir()
+            source.write_text('#include "devicetree_generated.h"\n',
+                              encoding="utf-8")
+            violations = scan(root, ["modules"])
+            self.assertEqual(len(violations), 1)
+            self.assertIn("generated Devicetree include", violations[0].message)
+
 
 if __name__ == "__main__":
     unittest.main()

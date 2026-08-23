@@ -27,7 +27,5 @@ int power_sample_get_latest_millivolts(const struct device *device,
                                        uint32_t *vin_mv);
 void power_sample_get_snapshot(const struct device *device, uint32_t now_ms,
                                PowerSampleSnapshot *snapshot);
-extern const PowerSampleDriverApi power_sample_stm32_api;
-int PowerSampleStm32_Init(const struct device *device);
 
 #endif

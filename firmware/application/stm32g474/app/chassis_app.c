@@ -43,9 +43,8 @@
 #include "modules/safety/fault_manager.h"
 #include "modules/safety/safety_manager.h"
 #include "modules/sensors/imu_orientation.h"
-#include "devicetree_generated.h"
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "drivers/uart.h"
 #include "ui/lcd/lcd_status_presenter.h"
 #include "tests/target/iwdg_target_test.h"
@@ -153,7 +152,7 @@ static uint32_t demo_stage_started_ms;
 static bool InitializeCommunication(const struct device *can_device,
                                     uint32_t now_ms)
 {
-  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_UART))) {
+  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_uart)))) {
     return false;
   }
   UartProtocol_Init();
@@ -187,14 +186,14 @@ static bool InitializeHardware(uint32_t now_ms)
       !device_is_ready(right_encoder_device) ||
       encoder_start(left_encoder_device) < 0 ||
       encoder_start(right_encoder_device) < 0 ||
-      !device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER))) {
+      !device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_power)))) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR, "board",
                                "MOTION_IO_INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
                              "MOTION_IO_READY", NULL);
-  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS))) return false;
+  if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)))) return false;
   (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
 #if CONFIG_ICM45686
@@ -234,8 +233,8 @@ static bool InitializeProductModules(void)
 
   CommandManager_Init();
   FaultManager_Init();
-  SafetyManager_Init(emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP)));
-  emergency_stop_set_callback(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP), SafetyManager_LatchEmergencyStopFromIsr);
+  SafetyManager_Init(emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN(chassis_estop))));
+  emergency_stop_set_callback(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)), SafetyManager_LatchEmergencyStopFromIsr);
   BoardHealth_Init();
   ParameterManager_Init(parameters_loaded ? &initial_parameters : NULL);
   if (!WheelController_Init(&wheel_controller_motor_port)) {
@@ -289,12 +288,12 @@ static bool InitializeProductModules(void)
 
 bool ChassisApp_Init(void)
 {
-  const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_CAN);
+  const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN(chassis_can));
   const uint32_t now_ms = time_uptime_ms();
-  drive_device = DEVICE_DT_GET(DT_NODE_DRIVE0);
-  left_encoder_device = DEVICE_DT_GET(DT_NODE_LEFT_ENCODER);
-  right_encoder_device = DEVICE_DT_GET(DT_NODE_RIGHT_ENCODER);
-  imu_device = DEVICE_DT_GET(DT_NODE_IMU0);
+  drive_device = DEVICE_DT_GET(DT_NODELABEL(drive0));
+  left_encoder_device = DEVICE_DT_GET(DT_NODELABEL(left_encoder));
+  right_encoder_device = DEVICE_DT_GET(DT_NODELABEL(right_encoder));
+  imu_device = DEVICE_DT_GET(DT_NODELABEL(imu0));
 
   if (!InitializeCommunication(can_device, now_ms) ||
       !InitializeHardware(now_ms) || !InitializeProductModules()) {
@@ -505,7 +504,7 @@ void ChassisApp_RunServiceCycle(void)
     TelemetrySnapshot snapshot;
     uint32_t supply_mv;
     const bool supply_valid =
-        power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), &supply_mv);
+        power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &supply_mv);
 
     taskENTER_CRITICAL();
     WheelController_GetSnapshot(&wheel_snapshot);
@@ -548,7 +547,7 @@ void ChassisApp_RunDiagnosticsCycle(void)
   static uint32_t last_heartbeat_ms;
   const uint32_t now_ms = time_uptime_ms();
 
-  sr501_run(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_SR501), now_ms);
+  sr501_run(DEVICE_DT_GET(DT_CHOSEN(chassis_sr501)), now_ms);
 #if CONFIG_ICM45686
   sensor_run(imu_device, now_ms);
 #endif
@@ -556,14 +555,14 @@ void ChassisApp_RunDiagnosticsCycle(void)
 
   if (now_ms - last_heartbeat_ms >= 500U) {
     last_heartbeat_ms = now_ms;
-    led_toggle(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_BLUE);
+    led_toggle(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_BLUE);
   }
-  led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_GREEN, false);
-  led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_RED, false);
+  led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_GREEN, false);
+  led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_RED, false);
   if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_PASSED) {
-    led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_GREEN, true);
+    led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_GREEN, true);
   } else if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_FAILED) {
-    led_set(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_LEDS), LED_RED, true);
+    led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_RED, true);
   }
 
   {
@@ -583,7 +582,7 @@ void ChassisApp_RunDisplayCycle(void)
 {
   const uint32_t now_ms = time_uptime_ms();
 
-  button_run(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS), now_ms);
+  button_run(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)), now_ms);
   LcdStatusPresenter_Run(now_ms);
 }
 
@@ -667,7 +666,7 @@ void ChassisApp_RunControlCycle(uint32_t notification_count)
     LatchChassisInternalFault(CHASSIS_FAULT_ENCODER);
     return;
   }
-  if (power_sample_get_latest_millivolts(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), &latest_supply_mv) &&
+  if (power_sample_get_latest_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &latest_supply_mv) &&
       latest_supply_mv < MOTOR_CONTROL_MIN_SUPPLY_MV) {
     LatchChassisInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
     return;
@@ -906,12 +905,12 @@ void ChassisApp_PanicStopFromException(void)
 
 bool ChassisApp_ClearEmergencyStop(void)
 {
-  if (emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP))) {
+  if (emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)))) {
     return false;
   }
 
   taskENTER_CRITICAL();
-  if (emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_ESTOP))) {
+  if (emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)))) {
     taskEXIT_CRITICAL();
     return false;
   }

@@ -2,19 +2,19 @@
 
 #include "drivers/watchdog/watchdog_stm32_private.h"
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "iwdg.h"
 
 bool watchdog_refresh(void)
 {
-  const struct device *device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_WATCHDOG);
+  const struct device *device = DEVICE_DT_GET(DT_CHOSEN(chassis_watchdog));
   const WatchdogDriverApi *api = device_is_ready(device) ? device->api : NULL;
   return api != NULL && api->refresh != NULL && api->refresh(device);
 }
 
 bool watchdog_prepare_for_bootloader(void)
 {
-  const struct device *device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_WATCHDOG);
+  const struct device *device = DEVICE_DT_GET(DT_CHOSEN(chassis_watchdog));
   const WatchdogDriverApi *api = device_is_ready(device) ? device->api : NULL;
   return api != NULL && api->prepare_for_bootloader != NULL &&
          api->prepare_for_bootloader(device);

@@ -48,7 +48,6 @@ chassis-controller/
 │  │     ├─ boards/
 │  │     │  └─ chassis_g474/         # DTS、板级设备实例和 CubeMX handle 绑定
 │  │     │     ├─ chassis_g474.dts
-│  │     │     ├─ board_config.h
 │  │     │     └─ board_devices.c
 │  │     │
 │  │     ├─ drivers/                 # 真实设备驱动和 STM32 HAL 适配

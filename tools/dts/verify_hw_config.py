@@ -51,7 +51,7 @@ def main() -> None:
         1000 * (1 + integer(ioc, "FDCAN2.DataTimeSeg1")) / data_total)
 
     require_equal("MCU", ioc.get("Mcu.CPN"), "STM32G474VET6")
-    require_equal("CAN handle", can["cubemx-handle"], "hfdcan2")
+    require_equal("CAN compatible", can["compatible"], "st,stm32g4-fdcan")
     require_equal("CAN nominal bitrate", nominal_bitrate, can["bitrate"])
     require_equal("CAN nominal sample point", nominal_sample,
                   can["sample-point"])
@@ -60,16 +60,23 @@ def main() -> None:
                   can["sample-point-data"])
     require_equal("CAN standard filters", integer(ioc, "FDCAN2.StdFiltersNbr"),
                   can["standard-filter-count"])
-    for device_id, handle in {
-        "imu0": "hspi3",
-        "display0": "hspi2",
-        "flash0": "hqspi1",
-        "drive0": "htim8",
-        "left_encoder": "htim2",
-        "right_encoder": "htim4",
-    }.items():
-        require_equal(f"{device_id} handle",
-                      devices[device_id]["cubemx-handle"], handle)
+    for prefix in ("SPI2.", "SPI3.", "QUADSPI1.", "TIM2.", "TIM4.",
+                   "TIM8.", "USART1.", "ADC1.", "RTC.", "IWDG."):
+        if not any(key.startswith(prefix) for key in ioc):
+            raise ValueError(f"CubeMX peripheral missing: {prefix[:-1]}")
+
+    expected_compatibles = {
+        "imu0": "invensense,icm45686",
+        "display0": "sitronix,st7789v",
+        "flash0": "winbond,w25q64",
+        "drive0": "st,stm32-pwm-drive",
+        "left_encoder": "st,stm32-tim-encoder",
+        "right_encoder": "st,stm32-tim-encoder",
+        "power0": "st,stm32-adc-power",
+    }
+    for device_id, compatible in expected_compatibles.items():
+        require_equal(f"{device_id} compatible",
+                      devices[device_id]["compatible"], compatible)
     print("CubeMX/DTS hardware configuration verified")
 
 

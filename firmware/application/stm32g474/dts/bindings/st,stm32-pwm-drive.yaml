@@ -1,12 +1,9 @@
 compatible: "st,stm32-pwm-drive"
 required:
   - status
-  - cubemx-handle
   - pwm-period
 properties:
   status:
-    type: string
-  cubemx-handle:
     type: string
   pwm-period:
     type: integer

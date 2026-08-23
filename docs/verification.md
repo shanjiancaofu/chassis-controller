@@ -54,6 +54,41 @@
 
 ## 构建基线
 
+### 原生平台化迁移完成度审计（2026-08-23）
+
+按当前源码与 `docs/重构.md` Phase 逐项核对：Phase 1/4/5/6/9 已完成；Phase 2 部分完成；
+Phase 3 已在本批完成，Phase 7/8 尚未完成。当前主要设备均已有 device/API，公共 DT API、
+status-aware instance、controller/child 拓扑和 GPIO phandle-array 已构建验证；仍存在 UART/QSPI/IMU
+静态全局状态和 app FreeRTOS critical section。
+这些属于软件迁移剩余项，不改变既有硬件证据，也不构成新的目标板 `PASS`。
+
+预计还需 1 个代码收口大批次；完成后另行执行 1～2 个目标板回归批次。
+
+### DT/device data 第一批收口（2026-08-23）
+
+公共 `devicetree.h` 已替代上层生成头依赖；生成器支持 chosen/alias/nodelabel/property、
+status-aware instance 和 GPIO phandle-array。DTS 已移除 C handle 字符串与手工 phandle，并将
+SPI2/LCD、SPI3/IMU、QSPI/Flash、ADC1/电源采样改为 controller/child 拓扑。power、button、
+SR501、display 运行态已迁入各实例 `device->data`。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 120256 | 96 | 55368 | `BUILD PASS` |
+| Release | 106544 | 96 | 55360 | `BUILD PASS` |
+
+Kconfig 3 项、DTS 3 项、架构边界 3 项、OTA Python 13 项和真实 C LCD 预览均通过；
+`git diff --check` 通过。Release 产物：
+
+```text
+application.bin=106648 bytes
+payload_crc32=0xE60C022C
+application.bin sha256=ea00ca5a6e0456cf0cc64912e3dfee173e5df45539e46d14317785d9dc4d27d0
+app-v0.15.0-b1.ota=106712 bytes
+ota sha256=686d4146f28065f8825a7c423182822498567d90bbbd12065211bcd11d19eac1
+```
+
+本批未烧录；电机、编码器、LCD、IMU、GPIO 和 OTA 目标板状态不因构建结果升级为 `PASS`。
+
 ### Kconfiglib engine migration（2026-08-23）
 
 Kconfig 语义引擎已由仓库自研 parser/evaluator 切换为 vendored Kconfiglib `14.1.0`。现有

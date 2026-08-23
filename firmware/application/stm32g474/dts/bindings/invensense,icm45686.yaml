@@ -1,15 +1,12 @@
 compatible: "invensense,icm45686"
 required:
   - status
-  - bus
-  - cubemx-handle
+  - reg
   - frequency
 properties:
+  reg:
+    type: integer
   status:
-    type: string
-  bus:
-    type: string
-  cubemx-handle:
     type: string
   frequency:
     type: integer

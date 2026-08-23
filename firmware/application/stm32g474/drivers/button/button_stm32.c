@@ -1,68 +1,27 @@
-#include "drivers/button/button.h"
+#include "drivers/button/button_stm32_private.h"
 
+#include <errno.h>
 #include <stddef.h>
-
-#include "drivers/gpio.h"
+#include <string.h>
 
 #define BUTTON_DEBOUNCE_MS 20U
 
-typedef struct {
-  GpioSpec spec;
-  bool debounce_pending;
-  uint32_t debounce_started_ms;
-} ButtonState;
-
-static ButtonState buttons[BUTTON_COUNT];
-static GpioSpec display_key;
-static volatile uint32_t pending_interrupts;
-static volatile bool display_key_interrupt_pending;
-static bool display_key_debounce_pending;
-static bool display_key_pressed_event;
-static uint32_t display_key_debounce_started_ms;
-static uint32_t pressed_events;
-static uint32_t pressed_counts[BUTTON_COUNT];
-
-void Button_Init(void)
+static ButtonStm32Data *Data(const struct device *device)
 {
-  pending_interrupts = 0U;
-  display_key_interrupt_pending = false;
-  display_key_debounce_pending = false;
-  display_key_pressed_event = false;
-  display_key_debounce_started_ms = 0U;
-  pressed_events = 0U;
-  for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
-    buttons[index].debounce_pending = false;
-    buttons[index].debounce_started_ms = 0U;
-    pressed_counts[index] = 0U;
+  return device != NULL ? (ButtonStm32Data *)device->data : NULL;
+}
+
+static void Run(const struct device *device, uint32_t now_ms)
+{
+  ButtonStm32Data *data = Data(device);
+  uint32_t interrupts;
+  if (data == NULL) {
+    return;
   }
-}
-
-void Button_OnInterrupt(uint16_t gpio_pin)
-{
-  if (gpio_pin == buttons[BUTTON_1].spec.pin) {
-    (void)__atomic_fetch_or(&pending_interrupts, 1UL << BUTTON_1,
-                            __ATOMIC_RELAXED);
-  } else if (gpio_pin == buttons[BUTTON_2].spec.pin) {
-    (void)__atomic_fetch_or(&pending_interrupts, 1UL << BUTTON_2,
-                            __ATOMIC_RELAXED);
-  } else if (gpio_pin == display_key.pin) {
-    Button_OnDisplayKeyInterrupt();
-  }
-}
-
-void Button_OnDisplayKeyInterrupt(void)
-{
-  __atomic_store_n(&display_key_interrupt_pending, true, __ATOMIC_RELEASE);
-}
-
-void Button_Run(uint32_t now_ms)
-{
-  const uint32_t interrupts =
-      __atomic_exchange_n(&pending_interrupts, 0U, __ATOMIC_RELAXED);
-
+  interrupts = __atomic_exchange_n(&data->pending_interrupts, 0U,
+                                    __ATOMIC_RELAXED);
   for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
-    ButtonState *button = &buttons[index];
-
+    ButtonStm32State *button = &data->buttons[index];
     if ((interrupts & (1UL << index)) != 0U) {
       button->debounce_pending = true;
       button->debounce_started_ms = now_ms;
@@ -71,73 +30,146 @@ void Button_Run(uint32_t now_ms)
         now_ms - button->debounce_started_ms >= BUTTON_DEBOUNCE_MS) {
       button->debounce_pending = false;
       if (gpio_get(&button->spec) > 0) {
-        pressed_events |= 1UL << index;
-        (void)__atomic_fetch_add(&pressed_counts[index], 1U,
+        data->pressed_events |= 1UL << index;
+        (void)__atomic_fetch_add(&data->pressed_counts[index], 1U,
                                  __ATOMIC_RELAXED);
       }
     }
   }
-  if (__atomic_exchange_n(&display_key_interrupt_pending, false,
+  if (__atomic_exchange_n(&data->display_key_interrupt_pending, false,
                           __ATOMIC_ACQUIRE)) {
-    display_key_debounce_pending = true;
-    display_key_debounce_started_ms = now_ms;
+    data->display_key_debounce_pending = true;
+    data->display_key_debounce_started_ms = now_ms;
   }
-  if (display_key_debounce_pending &&
-      now_ms - display_key_debounce_started_ms >= BUTTON_DEBOUNCE_MS) {
-    display_key_debounce_pending = false;
-    if (gpio_get(&display_key) > 0) {
-      display_key_pressed_event = true;
+  if (data->display_key_debounce_pending &&
+      now_ms - data->display_key_debounce_started_ms >= BUTTON_DEBOUNCE_MS) {
+    const ButtonStm32Config *config = device->config;
+    data->display_key_debounce_pending = false;
+    if (gpio_get(&config->display_key) > 0) {
+      data->display_key_pressed_event = true;
     }
   }
 }
 
-bool Button_TakePressed(ButtonId button)
+static bool TakePressed(const struct device *device, ButtonId button)
 {
+  ButtonStm32Data *data = Data(device);
   uint32_t mask;
-
-  if (button >= BUTTON_COUNT) {
+  if (data == NULL || button >= BUTTON_COUNT) {
     return false;
   }
   mask = 1UL << (uint32_t)button;
-  if ((pressed_events & mask) == 0U) {
+  if ((data->pressed_events & mask) == 0U) {
     return false;
   }
-  pressed_events &= ~mask;
+  data->pressed_events &= ~mask;
   return true;
 }
 
-bool Button_TakeDisplayKeyPressed(void)
+static bool TakeDisplayKey(const struct device *device)
 {
-  if (!display_key_pressed_event) {
+  ButtonStm32Data *data = Data(device);
+  if (data == NULL || !data->display_key_pressed_event) {
     return false;
   }
-  display_key_pressed_event = false;
+  data->display_key_pressed_event = false;
   return true;
 }
 
-void Button_GetSnapshot(ButtonSnapshot *snapshot)
+static void GetSnapshot(const struct device *device, ButtonSnapshot *snapshot)
 {
-  if (snapshot == NULL) {
+  const ButtonStm32Data *data = Data(device);
+  if (data == NULL || snapshot == NULL) {
     return;
   }
   for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
-    snapshot->pressed[index] =
-        gpio_get(&buttons[index].spec) > 0;
+    snapshot->pressed[index] = gpio_get(&data->buttons[index].spec) > 0;
     snapshot->pressed_count[index] =
-        __atomic_load_n(&pressed_counts[index], __ATOMIC_RELAXED);
+        __atomic_load_n(&data->pressed_counts[index], __ATOMIC_RELAXED);
   }
 }
 
-static void ApiRun(const struct device*d,uint32_t n){(void)d;Button_Run(n);}
-static bool ApiTake(const struct device*d,ButtonId b){(void)d;return Button_TakePressed(b);}
-static bool ApiKey(const struct device*d){(void)d;return Button_TakeDisplayKeyPressed();}
-static void ApiSnapshot(const struct device*d,ButtonSnapshot*s){(void)d;Button_GetSnapshot(s);}
-static void ApiInterrupt(const struct device*d,uint16_t p){(void)d;Button_OnInterrupt(p);}
-const ButtonDriverApi button_stm32_api={.run=ApiRun,.take_pressed=ApiTake,.take_display_key=ApiKey,.get_snapshot=ApiSnapshot,.on_interrupt=ApiInterrupt};
-int ButtonStm32_Init(const struct device *device){const ButtonStm32Config*c=device?device->config:NULL;if(!c)return -1;for(unsigned i=0;i<BUTTON_COUNT;i++)buttons[i].spec=c->buttons[i];display_key=c->display_key;Button_Init();return 0;}
+static void OnInterrupt(const struct device *device, uint16_t gpio_pin)
+{
+  ButtonStm32Data *data = Data(device);
+  const ButtonStm32Config *config = device != NULL ? device->config : NULL;
+  if (data == NULL || config == NULL) {
+    return;
+  }
+  for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
+    if (gpio_pin == config->buttons[index].pin) {
+      (void)__atomic_fetch_or(&data->pending_interrupts, 1UL << index,
+                              __ATOMIC_RELAXED);
+      return;
+    }
+  }
+  if (gpio_pin == config->display_key.pin) {
+    __atomic_store_n(&data->display_key_interrupt_pending, true,
+                     __ATOMIC_RELEASE);
+  }
+}
 
-static const ButtonDriverApi *Api(const struct device*d){return device_is_ready(d)?d->api:NULL;}
-void button_run(const struct device*d,uint32_t n){const ButtonDriverApi*a=Api(d);if(a&&a->run)a->run(d,n);}
-bool button_take_display_key(const struct device*d){const ButtonDriverApi*a=Api(d);return a&&a->take_display_key&&a->take_display_key(d);}
-void button_get_snapshot(const struct device*d,ButtonSnapshot*s){const ButtonDriverApi*a=Api(d);if(a&&a->get_snapshot)a->get_snapshot(d,s);}
-void button_on_interrupt(const struct device*d,uint16_t p){const ButtonDriverApi*a=Api(d);if(a&&a->on_interrupt)a->on_interrupt(d,p);}
+const ButtonDriverApi button_stm32_api = {
+    .run = Run,
+    .take_pressed = TakePressed,
+    .take_display_key = TakeDisplayKey,
+    .get_snapshot = GetSnapshot,
+    .on_interrupt = OnInterrupt,
+};
+
+int ButtonStm32_Init(const struct device *device)
+{
+  const ButtonStm32Config *config = device != NULL ? device->config : NULL;
+  ButtonStm32Data *data = Data(device);
+  if (config == NULL || data == NULL) {
+    return -EINVAL;
+  }
+  memset(data, 0, sizeof(*data));
+  for (uint32_t index = 0U; index < BUTTON_COUNT; ++index) {
+    data->buttons[index].spec = config->buttons[index];
+  }
+  return 0;
+}
+
+static const ButtonDriverApi *Api(const struct device *device)
+{
+  return device_is_ready(device) ? device->api : NULL;
+}
+
+void button_run(const struct device *device, uint32_t now_ms)
+{
+  const ButtonDriverApi *api = Api(device);
+  if (api != NULL && api->run != NULL) {
+    api->run(device, now_ms);
+  }
+}
+
+bool button_take_pressed(const struct device *device, ButtonId button)
+{
+  const ButtonDriverApi *api = Api(device);
+  return api != NULL && api->take_pressed != NULL &&
+         api->take_pressed(device, button);
+}
+
+bool button_take_display_key(const struct device *device)
+{
+  const ButtonDriverApi *api = Api(device);
+  return api != NULL && api->take_display_key != NULL &&
+         api->take_display_key(device);
+}
+
+void button_get_snapshot(const struct device *device, ButtonSnapshot *snapshot)
+{
+  const ButtonDriverApi *api = Api(device);
+  if (api != NULL && api->get_snapshot != NULL) {
+    api->get_snapshot(device, snapshot);
+  }
+}
+
+void button_on_interrupt(const struct device *device, uint16_t gpio_pin)
+{
+  const ButtonDriverApi *api = Api(device);
+  if (api != NULL && api->on_interrupt != NULL) {
+    api->on_interrupt(device, gpio_pin);
+  }
+}

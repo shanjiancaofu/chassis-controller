@@ -1,16 +1,13 @@
 compatible: "sitronix,st7789v"
 required:
   - status
-  - bus
-  - cubemx-handle
+  - reg
   - width
   - height
 properties:
+  reg:
+    type: integer
   status:
-    type: string
-  bus:
-    type: string
-  cubemx-handle:
     type: string
   width:
     type: integer

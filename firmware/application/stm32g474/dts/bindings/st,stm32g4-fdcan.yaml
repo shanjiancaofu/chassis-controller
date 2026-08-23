@@ -1,13 +1,10 @@
 compatible: "st,stm32g4-fdcan"
 required:
   - status
-  - cubemx-handle
   - bitrate
   - bitrate-data
 properties:
   status:
-    type: string
-  cubemx-handle:
     type: string
   bitrate:
     type: integer

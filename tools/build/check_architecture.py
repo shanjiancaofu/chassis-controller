@@ -13,6 +13,7 @@ from pathlib import Path
 FORBIDDEN_INCLUDE = re.compile(
     r'#\s*include\s*[<"](?:main|adc|dma|fdcan|gpio|iwdg|quadspi|rtc|spi|tim|usart)\.h[>"]'
     r'|#\s*include\s*[<"]stm32(?:g4xx|g4xx_hal|g4xx_ll)[^>"]*[>"]'
+    r'|#\s*include\s*[<"]devicetree_generated\.h[>"]'
 )
 FORBIDDEN_SYMBOLS = (
     re.compile(r"\bHAL_[A-Za-z0-9_]+\b"),
@@ -32,7 +33,10 @@ def scan_file(path: Path) -> list[Violation]:
     violations: list[Violation] = []
     for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if FORBIDDEN_INCLUDE.search(raw):
-            violations.append(Violation(path, number, "direct CubeMX/HAL include"))
+            message = ("generated Devicetree include" if
+                       "devicetree_generated.h" in raw else
+                       "direct CubeMX/HAL include")
+            violations.append(Violation(path, number, message))
         for pattern in FORBIDDEN_SYMBOLS:
             match = pattern.search(raw)
             if match:

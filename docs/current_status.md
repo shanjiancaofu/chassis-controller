@@ -5,6 +5,17 @@
 
 ## 代码基线
 
+### 原生平台化迁移完成度
+
+- 当前 `develop` 路线是 STM32 HAL + FreeRTOS 原生平台化，不是完整 Zephyr RTOS 移植。
+- 按目录、主要设备接入和可构建状态估算已完成约 `85%`；按 `docs/重构.md` 的严格最终验收，
+  还剩 1 个代码收口大批次和 1 个目标板回归阶段。
+- 已完成：Device/Init/linker、Kconfiglib、模块化 CMake、`board_config.h` 删除、dummy device
+  清除，以及 CAN/UART/motor/encoder/power/IMU/display/flash/watchdog/RTC/time/GPIO consumer
+  的 device/API 接入。
+- 尚未完成：UART/QSPI/IMU 等大状态驱动迁入 `device->data`、APPLICATION boot flow、app 层
+  FreeRTOS critical section 清理，以及新增架构代码的目标板回归。
+
 - Application 工作树：`0.15.0 build1`；板上 confirmed 镜像：`0.14.0 build1`。
 - Bootloader：`0.1.0 build22`。
 - 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.14.0 build1`；Bootloader 仍为
@@ -18,8 +29,8 @@
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
-- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于 GPIO consumer Device Model 收口后的 ELF
-  重新打包：payload `107120` 字节、CRC32 `0x191ECC45`，OTA 包 `107184` 字节；仅完成构建和
+- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于 DT/device data 第一批收口后的 ELF
+  重新打包：payload `106648` 字节、CRC32 `0xE60C022C`，OTA 包 `106712` 字节；仅完成构建和
   主机格式校验，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
@@ -265,11 +276,10 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角也�
 
 ## 下一步
 
-1. 将 power/IMU/display/button/LED/SR501/E-STOP 的剩余静态运行状态迁入 `device->data`，清理 concrete 全局函数。
-2. 推进 DTS 拓扑化，移除 `cubemx-handle`、手工 phandle 和上层 `devicetree_generated.h` 依赖。
-3. 完成 APPLICATION boot flow，并去除 app 层直接 FreeRTOS critical section。
-4. 补齐 OTA recovery、并发和 Device Model 主机测试矩阵。
-5. 在用户明确确认后执行 UART OTA 和完整目标板回归。
+1. 将 UART/QSPI/IMU 的大块静态运行状态迁入 `device->data`，继续拆分 generic/concrete header。
+2. 完成 APPLICATION boot flow，并去除 app 层直接 FreeRTOS critical section。
+3. 补齐 OTA recovery、并发和 Device Model 主机测试矩阵。
+4. 在用户明确确认后执行 UART OTA 和完整目标板回归。
 
 当前路线：
 

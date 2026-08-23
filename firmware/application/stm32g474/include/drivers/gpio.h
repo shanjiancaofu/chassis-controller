@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "device.h"
+#include "devicetree.h"
 #include "stm32g4xx_hal.h"
 
 #define GPIO_ACTIVE_LOW (1U << 0)
@@ -13,6 +14,14 @@ typedef struct {
   uint16_t pin;
   uint16_t flags;
 } GpioSpec;
+
+#define GPIO_DT_SPEC_GET_BY_IDX(node, property, index)                  \
+  {                                                                     \
+    .port = DEVICE_DT_GET(                                              \
+        DT_PHA_CONTROLLER_BY_IDX(node, property, index)),                \
+    .pin = DT_PHA_PIN_BY_IDX(node, property, index),                     \
+    .flags = DT_PHA_FLAGS_BY_IDX(node, property, index),                 \
+  }
 
 typedef struct {
   int (*get)(const struct device *device, uint16_t pin);

@@ -1,9 +1,9 @@
 compatible: "st,stm32-adc-power"
 required:
   - status
-  - cubemx-handle
+  - reg
 properties:
+  reg:
+    type: integer
   status:
-    type: string
-  cubemx-handle:
     type: string

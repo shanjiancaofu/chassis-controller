@@ -5,7 +5,7 @@
 #include "drivers/sensor/icm45686.h"
 #include "drivers/adc/power_sample.h"
 #include "drivers/rtc.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "drivers/sensor/sr501.h"
 #include "communication/can_transport/can_transport.h"
 #include "communication/ota_transport/ota_can_transport.h"
@@ -201,11 +201,11 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   RtosApp_GetRuntimeSnapshot(&runtime);
   CopyRuntimeSnapshot(&status.runtime, &runtime);
 
-  button_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS), &buttons);
-  sensor_get_snapshot(DEVICE_DT_GET(DT_NODE_IMU0), &imu);
+  button_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)), &buttons);
+  sensor_get_snapshot(DEVICE_DT_GET(DT_NODELABEL(imu0)), &imu);
   ImuOrientation_GetSnapshot(&orientation);
-  sr501_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_SR501), &sr501);
-  power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), now_ms, &power_sample);
+  sr501_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_sr501)), &sr501);
+  power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), now_ms, &power_sample);
   CopyButtonSnapshot(&status.buttons, &buttons);
   CopyImuSnapshot(&status.imu, &imu, &orientation);
   CopySr501Snapshot(&status.sr501, &sr501);
@@ -213,7 +213,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
 
   status.can_state = MapCanState(CanTransport_GetLinkStatus());
   status.lcd_state = MapLcdState(LcdUi_GetStatus());
-  status.supply_valid = power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_POWER), &status.supply_mv);
+  status.supply_valid = power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &status.supply_mv);
   status.fault_flags = FaultManager_GetFlags();
   status.qspi_test_state = (uint32_t)QspiTargetTest_GetStatus();
   status.ota_confirmation_state = (uint32_t)OtaConfirmation_GetStatus();

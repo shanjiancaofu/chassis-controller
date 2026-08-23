@@ -3,12 +3,12 @@
 #include <errno.h>
 
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "drivers/uart/uart_stm32.h"
 
 static const struct device *DefaultDevice(void)
 {
-  return DEVICE_DT_GET(DT_CHOSEN_CHASSIS_UART);
+  return DEVICE_DT_GET(DT_CHOSEN(chassis_uart));
 }
 
 static const struct uart_driver_api *Api(void)

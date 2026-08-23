@@ -1,5 +1,6 @@
-#include "drivers/display/lcd.h"
+#include "drivers/display/lcd_stm32_private.h"
 
+#include <errno.h>
 #include <stddef.h>
 
 #include "main.h"
@@ -18,10 +19,10 @@
 #define LCD_COMMAND_MEMORY_ACCESS 0x36U
 #define LCD_COMMAND_PIXEL_FORMAT 0x3AU
 
-static volatile bool lcd_dma_complete;
-static volatile bool lcd_dma_failed;
-static volatile bool lcd_dma_pending;
-static LcdStatus lcd_status;
+static DisplayStm32Data *Data(const struct device *device)
+{
+  return device != NULL ? (DisplayStm32Data *)device->data : NULL;
+}
 
 static bool LcdWriteCommand(uint8_t command, const uint8_t *data,
                             uint16_t data_size)
@@ -45,7 +46,7 @@ static bool LcdWriteCommand(uint8_t command, const uint8_t *data,
   return true;
 }
 
-bool Lcd_Init(void)
+static bool InitDevice(const struct device *device)
 {
   static const uint8_t memory_access[] = {0xA0U};
   static const uint8_t pixel_format[] = {0x05U};
@@ -63,11 +64,15 @@ bool Lcd_Init(void)
   static const uint8_t negative_gamma[] = {
       0xD0U, 0x08U, 0x0EU, 0x09U, 0x09U, 0x15U, 0x31U,
       0x33U, 0x48U, 0x17U, 0x14U, 0x15U, 0x31U, 0x34U};
+  DisplayStm32Data *data = Data(device);
 
-  lcd_status = LCD_FAILED;
-  lcd_dma_complete = false;
-  lcd_dma_failed = false;
-  lcd_dma_pending = false;
+  if (data == NULL) {
+    return false;
+  }
+  data->status = LCD_FAILED;
+  data->dma_complete = false;
+  data->dma_failed = false;
+  data->dma_pending = false;
   __HAL_TIM_SET_COMPARE(&htim3,
                         TIM_CHANNEL_1, 0U);
   if (HAL_TIM_PWM_Start(&htim3,
@@ -102,21 +107,24 @@ bool Lcd_Init(void)
       !LcdWriteCommand(LCD_COMMAND_DISPLAY_ON, NULL, 0U)) {
     return false;
   }
-  lcd_status = LCD_READY;
+  data->status = LCD_READY;
   return true;
 }
 
-bool Lcd_BeginFrame(void)
+static bool Begin(const struct device *device)
 {
   static const uint8_t columns[] = {0x00U, 0x00U, 0x01U, 0x3FU};
   static const uint8_t rows[] = {0x00U, 0x00U, 0x00U, 0xEFU};
   uint8_t command = LCD_COMMAND_MEMORY_WRITE;
+  DisplayStm32Data *data = Data(device);
 
-  if (lcd_status != LCD_READY ||
+  if (data == NULL || data->status != LCD_READY ||
       !LcdWriteCommand(LCD_COMMAND_COLUMN_ADDRESS, columns,
                        sizeof(columns)) ||
       !LcdWriteCommand(LCD_COMMAND_ROW_ADDRESS, rows, sizeof(rows))) {
-    lcd_status = LCD_FAILED;
+    if (data != NULL) {
+      data->status = LCD_FAILED;
+    }
     return false;
   }
   HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
@@ -124,84 +132,90 @@ bool Lcd_BeginFrame(void)
   if (HAL_SPI_Transmit(&hspi2, &command, 1U, LCD_SPI_TIMEOUT_MS) !=
       HAL_OK) {
     HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
-    lcd_status = LCD_FAILED;
+    data->status = LCD_FAILED;
     return false;
   }
   HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_SET);
-  lcd_dma_complete = false;
-  lcd_dma_failed = false;
-  lcd_dma_pending = false;
-  lcd_status = LCD_TRANSMITTING;
+  data->dma_complete = false;
+  data->dma_failed = false;
+  data->dma_pending = false;
+  data->status = LCD_TRANSMITTING;
   return true;
 }
 
-bool Lcd_TransmitRow(const uint8_t *row_data, uint16_t size)
+static bool Transmit(const struct device *device, const uint8_t *row_data,
+                     uint16_t size)
 {
+  DisplayStm32Data *data = Data(device);
   if (row_data == NULL || size != LCD_WIDTH * 2U ||
-      lcd_status != LCD_TRANSMITTING || lcd_dma_pending) {
+      data == NULL || data->status != LCD_TRANSMITTING || data->dma_pending) {
     return false;
   }
-  lcd_dma_complete = false;
-  lcd_dma_pending = true;
+  data->dma_complete = false;
+  data->dma_pending = true;
   if (HAL_SPI_Transmit_DMA(&hspi2, (uint8_t *)row_data, size) !=
       HAL_OK) {
-    lcd_dma_pending = false;
-    lcd_status = LCD_FAILED;
+    data->dma_pending = false;
+    data->status = LCD_FAILED;
     return false;
   }
   return true;
 }
 
-bool Lcd_IsRowTransferComplete(void)
+static bool Complete(const struct device *device)
 {
-  return lcd_status == LCD_TRANSMITTING && lcd_dma_complete &&
-         !lcd_dma_pending;
+  const DisplayStm32Data *data = Data(device);
+  return data != NULL && data->status == LCD_TRANSMITTING &&
+         data->dma_complete && !data->dma_pending;
 }
 
-bool Lcd_HasTransferError(void)
+static bool HasError(const struct device *device)
 {
-  return lcd_dma_failed || lcd_status == LCD_FAILED;
+  const DisplayStm32Data *data = Data(device);
+  return data == NULL || data->dma_failed || data->status == LCD_FAILED;
 }
 
-void Lcd_EndFrame(void)
+static void End(const struct device *device)
 {
-  if (lcd_status != LCD_TRANSMITTING || lcd_dma_pending) {
-    lcd_status = LCD_FAILED;
+  DisplayStm32Data *data = Data(device);
+  if (data == NULL) {
+    return;
+  }
+  if (data->status != LCD_TRANSMITTING || data->dma_pending) {
+    data->status = LCD_FAILED;
     return;
   }
   HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
   __HAL_TIM_SET_COMPARE(&htim3,
                         TIM_CHANNEL_1,
                         LCD_BACKLIGHT_COMPARE);
-  lcd_status = LCD_READY;
+  data->status = LCD_READY;
 }
 
-LcdStatus Lcd_GetStatus(void)
+static LcdStatus Status(const struct device *device)
 {
-  return lcd_status;
+  const DisplayStm32Data *data = Data(device);
+  return data != NULL ? data->status : LCD_DISABLED;
 }
 
-void Lcd_OnSpiTxComplete(void)
+static void TxComplete(const struct device *device)
 {
-  lcd_dma_pending = false;
-  lcd_dma_complete = true;
+  DisplayStm32Data *data = Data(device);
+  if (data != NULL) {
+    data->dma_pending = false;
+    data->dma_complete = true;
+  }
 }
 
-void Lcd_OnSpiError(void)
+static void Error(const struct device *device)
 {
-  lcd_dma_pending = false;
-  lcd_dma_failed = true;
-  lcd_status = LCD_FAILED;
+  DisplayStm32Data *data = Data(device);
+  if (data != NULL) {
+    data->dma_pending = false;
+    data->dma_failed = true;
+    data->status = LCD_FAILED;
+  }
 }
-
-static bool Begin(const struct device *device) { (void)device; return Lcd_BeginFrame(); }
-static bool Transmit(const struct device *device,const uint8_t *data,uint16_t size) { (void)device; return Lcd_TransmitRow(data,size); }
-static bool Complete(const struct device *device) { (void)device; return Lcd_IsRowTransferComplete(); }
-static bool HasError(const struct device *device) { (void)device; return Lcd_HasTransferError(); }
-static void End(const struct device *device) { (void)device; Lcd_EndFrame(); }
-static LcdStatus Status(const struct device *device) { (void)device; return Lcd_GetStatus(); }
-static void TxComplete(const struct device*d){(void)d;Lcd_OnSpiTxComplete();}
-static void Error(const struct device*d){(void)d;Lcd_OnSpiError();}
 
 const DisplayDriverApi display_stm32_api = {
     .begin_frame=Begin,.transmit_row=Transmit,.row_complete=Complete,
@@ -212,6 +226,5 @@ const DisplayDriverApi display_stm32_api = {
 
 int DisplayStm32_Init(const struct device *device)
 {
-  (void)device;
-  return Lcd_Init() ? 0 : -1;
+  return InitDevice(device) ? 0 : -EIO;
 }

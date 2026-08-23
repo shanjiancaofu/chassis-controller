@@ -33,22 +33,20 @@
         right-encoder = &right_encoder;
     };
 
-    gpioa: gpio-a { phandle = <20>; chassis,device-id = "gpioa"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
-    gpiob: gpio-b { phandle = <21>; chassis,device-id = "gpiob"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
-    gpioc: gpio-c { phandle = <22>; chassis,device-id = "gpioc"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
-    gpiod: gpio-d { phandle = <23>; chassis,device-id = "gpiod"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+    gpioa: gpio-a { chassis,device-id = "gpioa"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+    gpiob: gpio-b { chassis,device-id = "gpiob"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+    gpioc: gpio-c { chassis,device-id = "gpioc"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
+    gpiod: gpio-d { chassis,device-id = "gpiod"; compatible = "st,stm32-gpio-port"; status = "okay"; gpio-controller; #gpio-cells = <2>; };
 
-    buttons0: buttons { phandle = <24>; chassis,device-id = "buttons0"; compatible = "chassis,buttons"; status = "okay"; gpios = <&gpiod 3 1 &gpiod 4 1 &gpiob 8 0>; };
-    leds0: leds { phandle = <25>; chassis,device-id = "leds0"; compatible = "chassis,leds"; status = "okay"; gpios = <&gpioc 0 1 &gpioc 1 1 &gpioc 2 1>; };
-    estop0: emergency-stop { phandle = <26>; chassis,device-id = "estop0"; compatible = "chassis,emergency-stop"; status = "okay"; gpios = <&gpiod 2 1>; };
-    sr5010: motion-sensor { phandle = <27>; chassis,device-id = "sr5010"; compatible = "chassis,sr501"; status = "okay"; gpios = <&gpiod 5 0>; };
+    buttons0: buttons { chassis,device-id = "buttons0"; compatible = "chassis,buttons"; status = "okay"; gpios = <&gpiod 3 1 &gpiod 4 1 &gpiob 8 0>; };
+    leds0: leds { chassis,device-id = "leds0"; compatible = "chassis,leds"; status = "okay"; gpios = <&gpioc 0 1 &gpioc 1 1 &gpioc 2 1>; };
+    estop0: emergency-stop { chassis,device-id = "estop0"; compatible = "chassis,emergency-stop"; status = "okay"; gpios = <&gpiod 2 1>; };
+    sr5010: motion-sensor { chassis,device-id = "sr5010"; compatible = "chassis,sr501"; status = "okay"; gpios = <&gpiod 5 0>; };
 
-    can0: can {
-        phandle = <1>;
+    can0: fdcan2 {
         chassis,device-id = "can0";
         compatible = "st,stm32g4-fdcan";
         status = "okay";
-        cubemx-handle = "hfdcan2";
         bitrate = <500000>;
         sample-point = <800>;
         bitrate-data = <2000000>;
@@ -56,98 +54,100 @@
         standard-filter-count = <2>;
     };
 
-    imu0: sensor {
-        phandle = <2>;
-        chassis,device-id = "imu0";
-        compatible = "invensense,icm45686";
-        status = "okay";
-        bus = "spi3";
-        cubemx-handle = "hspi3";
-        frequency = <1328125>;
+    spi3 {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        imu0: sensor@0 {
+            chassis,device-id = "imu0";
+            compatible = "invensense,icm45686";
+            status = "okay";
+            reg = <0>;
+            frequency = <1328125>;
+        };
     };
 
-    display0: display {
-        phandle = <3>;
-        chassis,device-id = "display0";
-        compatible = "sitronix,st7789v";
-        status = "okay";
-        bus = "spi2";
-        cubemx-handle = "hspi2";
-        width = <320>;
-        height = <240>;
+    spi2 {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        display0: display@0 {
+            chassis,device-id = "display0";
+            compatible = "sitronix,st7789v";
+            status = "okay";
+            reg = <0>;
+            width = <320>;
+            height = <240>;
+        };
     };
 
-    flash0: flash {
-        phandle = <4>;
-        chassis,device-id = "flash0";
-        compatible = "winbond,w25q64";
-        status = "okay";
-        bus = "quadspi1";
-        cubemx-handle = "hqspi1";
-        size = <0x00800000>;
-        erase-block-size = <4096>;
-        write-block-size = <256>;
+    quadspi1 {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        flash0: flash@0 {
+            chassis,device-id = "flash0";
+            compatible = "winbond,w25q64";
+            status = "okay";
+            reg = <0>;
+            size = <0x00800000>;
+            erase-block-size = <4096>;
+            write-block-size = <256>;
+        };
     };
 
-    drive0: motor-controller {
-        phandle = <5>;
+    drive0: tim8-motor-controller {
         chassis,device-id = "drive0";
         compatible = "st,stm32-pwm-drive";
         status = "okay";
-        cubemx-handle = "htim8";
         pwm-period = <8499>;
     };
 
-    uart0: console-uart {
-        phandle = <6>;
+    uart0: usart1 {
         chassis,device-id = "uart0";
         compatible = "st,stm32-uart";
         status = "okay";
-        cubemx-handle = "huart1";
     };
 
     watchdog0: watchdog {
-        phandle = <7>;
         chassis,device-id = "watchdog0";
         compatible = "st,stm32-iwdg";
         status = "okay";
-        cubemx-handle = "hiwdg";
     };
 
     rtc0: rtc {
-        phandle = <8>;
         chassis,device-id = "rtc0";
         compatible = "st,stm32-rtc";
         status = "okay";
-        cubemx-handle = "hrtc";
     };
 
     time0: system-time {
-        phandle = <9>;
         chassis,device-id = "time0";
         compatible = "chassis,system-time";
         status = "okay";
     };
 
-    left_encoder: left-encoder {
+    left_encoder: tim2-encoder {
         chassis,device-id = "left_encoder";
         compatible = "st,stm32-tim-encoder";
         status = "okay";
-        cubemx-handle = "htim2";
     };
 
-    right_encoder: right-encoder {
+    right_encoder: tim4-encoder {
         chassis,device-id = "right_encoder";
         compatible = "st,stm32-tim-encoder";
         status = "okay";
-        cubemx-handle = "htim4";
     };
 
-    power0: power-monitor {
-        phandle = <10>;
-        chassis,device-id = "power0";
-        compatible = "st,stm32-adc-power";
-        status = "okay";
-        cubemx-handle = "hadc1";
+    adc1 {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        power0: power-monitor@3 {
+            chassis,device-id = "power0";
+            compatible = "st,stm32-adc-power";
+            status = "okay";
+            reg = <3>;
+        };
     };
 };

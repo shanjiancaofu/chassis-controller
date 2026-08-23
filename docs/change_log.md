@@ -1,5 +1,15 @@
 # 变更记录
 
+## 2026-08-23：DT/device data 第一批收口
+
+- 新增公共 Devicetree API，禁止 app/modules/communication/subsys/ui/rtos 直接包含生成头；
+  disabled node 不再生成 device instance。
+- DTS 移除 `cubemx-handle`、字符串 bus 和手工 phandle，加入 SPI/QSPI/ADC controller-child
+  拓扑、`reg` 和可生成的 GPIO phandle-array。
+- power、button、SR501、display 的运行状态迁入 `device->data`，STM32 私有配置/数据类型从
+  generic driver header 分离。
+- Debug/Release、Kconfig/DTS/架构/OTA 主机测试及 LCD C 预览通过；未烧录、未新增硬件结论。
+
 本文记录 `chassis-controller` 每批实现改动。每批包含变更内容、设计决定和验证结果；详细构建数据与硬件证据仍以 [`verification.md`](verification.md) 为准，当前交接状态以 [`current_status.md`](current_status.md) 为准。
 
 ## 2026-08-20 - 解除冻结，恢复完整验收路线

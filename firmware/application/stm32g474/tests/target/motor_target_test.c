@@ -1,6 +1,6 @@
 #include "tests/target/motor_target_test.h"
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "drivers/motor/motor.h"
 
 #include <stddef.h>
@@ -51,8 +51,8 @@ bool MotorTargetTest_Start(MotorTargetTestAction action, uint32_t now_ms)
       return false;
   }
 
-  motor_coast_all(DEVICE_DT_GET(DT_NODE_DRIVE0));
-  motor_set_signed_duty_both(DEVICE_DT_GET(DT_NODE_DRIVE0), left_duty, right_duty);
+  motor_coast_all(DEVICE_DT_GET(DT_NODELABEL(drive0)));
+  motor_set_signed_duty_both(DEVICE_DT_GET(DT_NODELABEL(drive0)), left_duty, right_duty);
   test_snapshot.running = true;
   test_snapshot.action = action;
   test_snapshot.left_duty = left_duty;
@@ -67,7 +67,7 @@ void MotorTargetTest_Run(uint32_t now_ms)
     return;
   }
   if (!SafetyManager_IsOpenLoopTestRunning()) {
-    motor_coast_all(DEVICE_DT_GET(DT_NODE_DRIVE0));
+    motor_coast_all(DEVICE_DT_GET(DT_NODELABEL(drive0)));
     test_snapshot = (MotorTargetTestSnapshot){0};
     return;
   }
@@ -78,7 +78,7 @@ void MotorTargetTest_Run(uint32_t now_ms)
 
 void MotorTargetTest_Stop(void)
 {
-  motor_coast_all(DEVICE_DT_GET(DT_NODE_DRIVE0));
+  motor_coast_all(DEVICE_DT_GET(DT_NODELABEL(drive0)));
   test_snapshot = (MotorTargetTestSnapshot){0};
   if (SafetyManager_IsOpenLoopTestRunning()) {
     SafetyManager_Stop();

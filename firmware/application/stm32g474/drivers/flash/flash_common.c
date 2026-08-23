@@ -2,11 +2,11 @@
 
 #include "drivers/flash/flash_stm32_qspi_private.h"
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 
 static const FlashDriverApi *Api(const struct device **selected)
 {
-  const struct device *device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_FLASH);
+  const struct device *device = DEVICE_DT_GET(DT_CHOSEN(chassis_flash));
   if (selected != NULL) *selected = device;
   return device_is_ready(device) ? device->api : NULL;
 }

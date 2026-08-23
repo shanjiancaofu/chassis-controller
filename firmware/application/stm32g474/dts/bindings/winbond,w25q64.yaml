@@ -1,17 +1,14 @@
 compatible: "winbond,w25q64"
 required:
   - status
-  - bus
-  - cubemx-handle
+  - reg
   - size
   - erase-block-size
   - write-block-size
 properties:
+  reg:
+    type: integer
   status:
-    type: string
-  bus:
-    type: string
-  cubemx-handle:
     type: string
   size:
     type: integer

@@ -48,11 +48,20 @@ size_t device_get_all(const struct device **devices);
       };                                                                    \
   INIT_ENTRY_DEFINE(dev_id, 0, DEVICE_GET(dev_id), level, priority)
 
-#define DEVICE_DT_DEFINE(node_id, init_function, data_ptr, config_ptr, level, \
-                         priority, api_ptr)                                  \
+#define DEVICE_DT_DEFINE_1(node_id, init_function, data_ptr, config_ptr, level, \
+                           priority, api_ptr)                                  \
   DEVICE_DEFINE(node_id, #node_id, init_function, data_ptr, config_ptr,      \
                 level, priority, api_ptr)
+#define DEVICE_DT_DEFINE_0(node_id, init_function, data_ptr, config_ptr, level, \
+                           priority, api_ptr)
+#define DEVICE_DT_DEFINE_SELECT_INNER(enabled) DEVICE_DT_DEFINE_##enabled
+#define DEVICE_DT_DEFINE_SELECT(enabled) DEVICE_DT_DEFINE_SELECT_INNER(enabled)
+#define DEVICE_DT_DEFINE(node_id, init_function, data_ptr, config_ptr, level, \
+                         priority, api_ptr)                                  \
+  DEVICE_DT_DEFINE_SELECT(DT_NODE_HAS_STATUS(node_id, okay))(                 \
+      node_id, init_function, data_ptr, config_ptr, level, priority, api_ptr)
 
-#define DEVICE_DT_GET(node_id) DEVICE_GET(node_id)
+#define DEVICE_DT_GET_RESOLVE(node_id) DEVICE_GET(node_id)
+#define DEVICE_DT_GET(node_id) DEVICE_DT_GET_RESOLVE(node_id)
 
 #endif

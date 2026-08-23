@@ -2,12 +2,12 @@
 
 #include "drivers/rtc/rtc_stm32_private.h"
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 #include "rtc.h"
 
 bool rtc_read_datetime(RtcDateTime *date_time)
 {
-  const struct device *device = DEVICE_DT_GET(DT_CHOSEN_CHASSIS_RTC);
+  const struct device *device = DEVICE_DT_GET(DT_CHOSEN(chassis_rtc));
   const RtcDriverApi *api = device_is_ready(device) ? device->api : NULL;
   return date_time != NULL && api != NULL && api->read_datetime != NULL &&
          api->read_datetime(device, date_time);

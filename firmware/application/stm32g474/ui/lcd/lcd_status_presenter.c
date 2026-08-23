@@ -1,6 +1,6 @@
 #include "ui/lcd/lcd_status_presenter.h"
 #include "device.h"
-#include "devicetree_generated.h"
+#include "devicetree.h"
 
 #include "drivers/button/button.h"
 #include "drivers/reset/reset.h"
@@ -211,12 +211,12 @@ static LcdUiPage NextPage(LcdUiPage page)
 
 bool LcdStatusPresenter_Init(void)
 {
-  return LcdUi_Init(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_DISPLAY));
+  return LcdUi_Init(DEVICE_DT_GET(DT_CHOSEN(chassis_display)));
 }
 
 void LcdStatusPresenter_Run(uint32_t now_ms)
 {
-  if (button_take_display_key(DEVICE_DT_GET(DT_CHOSEN_CHASSIS_BUTTONS)) &&
+  if (button_take_display_key(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons))) &&
       now_ms - last_key_press_ms >= KEY_LOCKOUT_MS) {
     last_key_press_ms = now_ms;
     LcdUi_SetPage(NextPage(LcdUi_GetPage()));
