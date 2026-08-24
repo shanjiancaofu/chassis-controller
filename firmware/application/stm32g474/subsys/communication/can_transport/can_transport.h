@@ -2,22 +2,11 @@
 #define CAN_TRANSPORT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "device.h"
-
-typedef enum {
-  CAN_TRANSPORT_LINK_READY = 0,
-  CAN_TRANSPORT_LINK_PASSED,
-  CAN_TRANSPORT_LINK_FAILED
-} CanTransportLinkStatus;
-
-typedef struct {
-  bool enabled;
-  uint8_t sequence;
-  int16_t left_target;
-  int16_t right_target;
-} CanTransportControlCommand;
+#include "drivers/can.h"
 
 typedef struct {
   uint32_t last_error_code;
@@ -41,13 +30,14 @@ typedef struct {
   uint32_t recovery_failure_count;
 } CanTransportDiagnostics;
 
-int CanTransport_Init(const struct device *device);
+int CanTransport_Init(const struct device *device,
+                      const struct can_filter *filters, size_t filter_count);
 void CanTransport_Run(void);
-CanTransportLinkStatus CanTransport_GetLinkStatus(void);
-bool CanTransport_TakeControlCommand(CanTransportControlCommand *command);
+int CanTransport_Receive(struct can_frame *frame);
+int CanTransport_Send(const struct can_frame *frame);
 bool CanTransport_TakeSessionInvalidated(void);
+bool CanTransport_TakeRecovered(void);
 bool CanTransport_GetDiagnostics(CanTransportDiagnostics *diagnostics);
 bool CanTransport_IsOperational(void);
-void CanTransport_RequestResponse(void);
 
 #endif

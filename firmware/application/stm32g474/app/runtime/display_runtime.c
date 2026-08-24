@@ -5,13 +5,9 @@
 #include "drivers/button/button.h"
 #include "drivers/time.h"
 
-bool DisplayRuntime_Init(void)
-{
-  return LcdStatusPresenter_Init();
-}
+bool DisplayRuntime_Init(void) { return LcdStatusPresenter_Init(); }
 
-void DisplayRuntime_Run(void)
-{
+void DisplayRuntime_Run(void) {
   const uint32_t now_ms = time_uptime_ms();
 
   button_run(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)), now_ms);

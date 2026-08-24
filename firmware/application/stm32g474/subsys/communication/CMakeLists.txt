@@ -1,5 +1,6 @@
 add_library(chassis_communication STATIC
   can_transport/can_transport.c
+  chassis_protocol/chassis_protocol.c
   ota_transport/ota_can_transport.c
   ota_transport/ota_confirmation.c
   ota_transport/ota_metadata.c

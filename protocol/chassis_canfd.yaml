@@ -1,0 +1,123 @@
+{
+  "protocol": {
+    "name": "chassis_canfd",
+    "major": 1,
+    "minor": 0,
+    "byte_order": "little",
+    "can_fd": true,
+    "brs": true,
+    "identifier_bits": 11,
+    "nominal_bitrate": 500000,
+    "data_bitrate": 2000000
+  },
+  "types": {
+    "bool": 1, "u8": 1, "i8": 1, "enum8": 1, "flags8": 1,
+    "u16": 2, "i16": 2, "flags16": 2,
+    "u32": 4, "i32": 4, "flags32": 4, "u64": 8, "i64": 8
+  },
+  "channels": [
+    {"name": "control", "first_id": 256, "last_id": 383},
+    {"name": "status", "first_id": 384, "last_id": 511},
+    {"name": "heartbeat", "first_id": 512, "last_id": 575},
+    {"name": "fault", "first_id": 576, "last_id": 639},
+    {"name": "management", "first_id": 640, "last_id": 767},
+    {"name": "development", "first_id": 1792, "last_id": 1839},
+    {"name": "ota", "first_id": 1840, "last_id": 1919}
+  ],
+  "messages": [
+    {
+      "id": 256, "name": "CHASSIS_CMD_WHEEL_RAW", "channel": "control",
+      "direction": "jetson_to_stm32", "payload_size": 8,
+      "period_ms": 20, "timeout_ms": 200, "schema_version": 1, "crc": "can_fd",
+      "fields": [
+        {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
+        {"name": "enable", "type": "bool", "offset": 1},
+        {"name": "sequence", "type": "u8", "offset": 2},
+        {"name": "reserved0", "type": "u8", "offset": 3, "const": 0},
+        {"name": "left_target", "type": "i16", "offset": 4, "unit": "counts/10ms", "min": -100, "max": 100},
+        {"name": "right_target", "type": "i16", "offset": 6, "unit": "counts/10ms", "min": -100, "max": 100}
+      ]
+    },
+    {
+      "id": 257, "name": "CHASSIS_CMD_VELOCITY", "channel": "control",
+      "direction": "jetson_to_stm32", "payload_size": 12,
+      "period_ms": 20, "timeout_ms": 200, "schema_version": 1,
+      "crc": "crc16_ccitt_false",
+      "fields": [
+        {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
+        {"name": "flags", "type": "flags8", "offset": 1},
+        {"name": "sequence", "type": "u8", "offset": 2},
+        {"name": "reserved0", "type": "u8", "offset": 3, "const": 0},
+        {"name": "linear_velocity", "type": "i16", "offset": 4, "unit": "mm/s", "min": -2000, "max": 2000},
+        {"name": "angular_velocity", "type": "i16", "offset": 6, "unit": "mrad/s"},
+        {"name": "reserved1", "type": "u16", "offset": 8, "const": 0},
+        {"name": "crc16", "type": "u16", "offset": 10}
+      ]
+    },
+    {
+      "id": 384, "name": "CHASSIS_STATUS_MOTION", "channel": "status",
+      "direction": "stm32_to_jetson", "payload_size": 16, "period_ms": 20,
+      "schema_version": 1, "crc": "can_fd",
+      "fields": [
+        {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
+        {"name": "flags", "type": "flags8", "offset": 1},
+        {"name": "sequence", "type": "u8", "offset": 2},
+        {"name": "control_state", "type": "enum8", "offset": 3},
+        {"name": "left_velocity", "type": "i16", "offset": 4, "unit": "mm/s"},
+        {"name": "right_velocity", "type": "i16", "offset": 6, "unit": "mm/s"},
+        {"name": "linear_velocity", "type": "i16", "offset": 8, "unit": "mm/s"},
+        {"name": "angular_velocity", "type": "i16", "offset": 10, "unit": "mrad/s"},
+        {"name": "left_output", "type": "i16", "offset": 12, "unit": "permille"},
+        {"name": "right_output", "type": "i16", "offset": 14, "unit": "permille"}
+      ]
+    },
+    {
+      "id": 385, "name": "CHASSIS_REPORT_ODOMETRY", "channel": "status",
+      "direction": "stm32_to_jetson", "payload_size": 24, "period_ms": 20,
+      "schema_version": 1, "crc": "can_fd",
+      "fields": [
+        {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
+        {"name": "flags", "type": "flags8", "offset": 1},
+        {"name": "sequence", "type": "u8", "offset": 2},
+        {"name": "reserved0", "type": "u8", "offset": 3, "const": 0},
+        {"name": "timestamp_ms", "type": "u32", "offset": 4, "unit": "ms"},
+        {"name": "x", "type": "i32", "offset": 8, "unit": "mm"},
+        {"name": "y", "type": "i32", "offset": 12, "unit": "mm"},
+        {"name": "heading", "type": "i32", "offset": 16, "unit": "mrad"},
+        {"name": "linear_velocity", "type": "i16", "offset": 20, "unit": "mm/s"},
+        {"name": "angular_velocity", "type": "i16", "offset": 22, "unit": "mrad/s"}
+      ]
+    },
+    {
+      "id": 512, "name": "CHASSIS_HEARTBEAT", "channel": "heartbeat",
+      "direction": "bidirectional", "payload_size": 12, "period_ms": 100,
+      "schema_version": 1, "crc": "crc16_ccitt_false",
+      "fields": [
+        {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
+        {"name": "node_state", "type": "enum8", "offset": 1},
+        {"name": "sequence", "type": "u8", "offset": 2},
+        {"name": "flags", "type": "flags8", "offset": 3},
+        {"name": "uptime_ms", "type": "u32", "offset": 4, "unit": "ms"},
+        {"name": "fault_summary", "type": "flags16", "offset": 8},
+        {"name": "crc16", "type": "u16", "offset": 10}
+      ]
+    },
+    {
+      "id": 576, "name": "CHASSIS_FAULT_STATUS", "channel": "fault",
+      "direction": "stm32_to_jetson", "payload_size": 16,
+      "schema_version": 1, "crc": "crc16_ccitt_false",
+      "fields": [
+        {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
+        {"name": "severity", "type": "enum8", "offset": 1},
+        {"name": "sequence", "type": "u8", "offset": 2},
+        {"name": "flags", "type": "flags8", "offset": 3},
+        {"name": "active_faults", "type": "flags32", "offset": 4},
+        {"name": "latched_faults", "type": "flags32", "offset": 8},
+        {"name": "fault_sequence", "type": "u16", "offset": 12},
+        {"name": "crc16", "type": "u16", "offset": 14}
+      ]
+    },
+    {"id": 1824, "name": "CHASSIS_DEV_HANDSHAKE_REQUEST", "channel": "development", "direction": "jetson_to_stm32", "payload_size": 8, "schema_version": 1, "crc": "can_fd", "fields": [{"name": "payload", "type": "bytes", "size": 8, "offset": 0}]},
+    {"id": 1825, "name": "CHASSIS_DEV_HANDSHAKE_RESPONSE", "channel": "development", "direction": "stm32_to_jetson", "payload_size": 8, "schema_version": 1, "crc": "can_fd", "fields": [{"name": "payload", "type": "bytes", "size": 8, "offset": 0}]}
+  ]
+}

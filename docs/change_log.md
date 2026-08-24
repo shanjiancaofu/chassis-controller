@@ -1,5 +1,17 @@
 # 变更记录
 
+## 2026-08-25：Chassis CAN FD schema、协议层和轻量验证 runner
+
+- 新增 `protocol/chassis_canfd.yaml`，固定协议版本、ID 通道、字段偏移、类型、单位、DLC 和 CRC；
+  CMake configure 阶段自动检查 ID/名称冲突、字段重叠、越界、非法 DLC 和 CRC 位置。
+- 新增 HAL-independent `subsys/communication/chassis_protocol`；0x100、开发握手、sequence 和响应
+  重试从 `can_transport` 迁出，transport 只保留收发、错误和 bus-off recovery。
+- 新增 0x101 velocity CRC16-CCITT-FALSE codec 和 golden/malformed tests；该报文尚未接入控制。
+- 新增轻量 `tools/test/run_all.py`、`test_matrix.yaml` 和四场景配置矩阵，支持 JSON/JUnit；IMU+DTS disabled 和
+  SelfTest disabled 均完成真实 Application build。
+- Debug/Release、14 项 C 主机测试、18 项 OTA/Python、3 项 schema、Kconfig/DTS、架构检查和
+  LCD 预览通过；未烧录、未新增硬件结论。
+
 ## 2026-08-24：Application 内部第二次收敛
 
 - 删除 `app/modules` 包装层，chassis/safety/parameters/diagnostics/sensors 五个产品域直接归入

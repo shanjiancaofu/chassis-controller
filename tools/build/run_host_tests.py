@@ -22,6 +22,11 @@ TESTS = {
         ["tests/unit/test_can_transport.c", "subsys/communication/can_transport/can_transport.c",
          "drivers/can/can_common.c"],
     ),
+    "chassis_protocol": (
+        "CHASSIS_PROTOCOL_HOST_TEST",
+        ["tests/unit/test_chassis_protocol.c",
+         "subsys/communication/chassis_protocol/chassis_protocol.c"],
+    ),
     "command_manager": (
         "COMMAND_MANAGER_HOST_TEST",
         ["tests/unit/test_command_manager.c", "app/chassis/command_manager.c"],

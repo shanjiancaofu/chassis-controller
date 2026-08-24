@@ -54,6 +54,39 @@
 
 ## 构建基线
 
+### Chassis protocol 与轻量配置矩阵（2026-08-25）
+
+`protocol/chassis_canfd.yaml` 当前定义 8 个 CAN FD 消息，schema 校验 3 项通过。运行时已将
+0x100、开发握手、rolling sequence 和握手响应重试从 can_transport 迁入 HAL-independent
+chassis_protocol；0x101 velocity codec 的 endian、range、reserved 和 CRC16 golden vector 已通过。
+
+`python3 tools/test/run_all.py` 按 `tools/test/test_matrix.yaml` 统一执行 14 项 C host、Kconfig/DTS/architecture/schema、18 项
+OTA/Python、配置矩阵和 LCD 预览。配置矩阵结果：
+
+```text
+PASS debug_default
+PASS release_default
+PASS release_imu_off       (CONFIG_ICM45686=n + imu0 disabled)
+PASS release_self_test_off (CONFIG_SELF_TEST=n)
+```
+
+矩阵报告生成于 `build/test-matrix/test-results.json` 和 `junit.xml`，不提交构建产物。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 120880 | 96 | 55368 | `BUILD PASS` |
+| Release | 106516 | 96 | 55360 | `BUILD PASS` |
+
+```text
+application.bin=106620 bytes
+payload_crc32=0x67668EC5
+application.bin sha256=3b716f1a645424cabf1fb1f90402107324a433fe7e9a43256f2aaddfce233422
+app-v0.15.0-b1.ota=106684 bytes
+ota sha256=2f07e6b0d720010bccb06974d84e7fc2eeb95e88e8a50d654923f4377a86aba8
+```
+
+0x101 和状态/心跳/故障 schema 尚未接入真实产品发送/控制；本批未烧录，不构成硬件 `PASS`。
+
 ### Application 内部第二次收敛（2026-08-24）
 
 产品域已从 `app/modules` 提升到 `app/`；Console、参数持久化、诊断报告和 telemetry 不再伪装为

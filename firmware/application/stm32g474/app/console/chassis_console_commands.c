@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/chassis_protocol/chassis_protocol.h"
 #include "config/control_config.h"
 #include "app/diagnostics/diagnostic_report.h"
 #include "app/parameters/parameter_storage.h"
@@ -76,7 +77,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
       SendCanDiagnostics(now_ms);
       break;
     case CONSOLE_COMMAND_CAN_TRANSMIT:
-      CanTransport_RequestResponse();
+      ChassisProtocol_RequestHandshakeResponse();
       (void)UartProtocol_SendResponse(now_ms, "can_tx", true,
                                       "frame=0x721 state=QUEUED");
       break;

@@ -12,9 +12,11 @@ power/button/SR501/display 运行态均已落地。第二批又完成 UART/QSPI/
 覆盖 device/init、UART/QSPI、OTA resume/BUSY/重复确认/错误 offset/session。CubeMX/CubeIDE
 工程也已集中到 `cubemx/`；Application 手写顶层目录已收敛，linker script 位于
 `boards/chassis_g474/application.ld`。Application 内部反向依赖和正式代码依赖 tests 已清零，
-五类 runtime 拆分完成，目录结构进入冻结状态。剩余为目标板收尾：
+五类 runtime 拆分完成，目录结构进入冻结状态。Chassis CAN FD schema、纯协议层、host codec
+测试和轻量配置矩阵已完成；剩余为 vcan/目标板收尾：
 
 1. 用户确认后的 UART OTA、静态状态、LCD/IMU/GPIO 和电机安全目标板回归。
+2. Jetson `vcan0` 接入 0x101/状态/心跳/故障 schema；完成后再切真实 `can0`。
 
 上述代码批次完成后进入目标板回归；`NOT VERIFIED` 不阻塞代码迁移，但不能据此记录硬件通过。
 

@@ -6,11 +6,11 @@
 #include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
 #include "app/console/chassis_console_commands.h"
-#include "app/maintenance/chassis_maintenance.h"
 #include "app/console/console.h"
 #include "app/diagnostics/diagnostic_report.h"
 #include "app/diagnostics/system_status.h"
 #include "app/diagnostics/telemetry.h"
+#include "app/maintenance/chassis_maintenance.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
 #include "app/maintenance/self_test/motor_self_test.h"
 #include "app/maintenance/self_test/qspi_self_test.h"
@@ -28,6 +28,7 @@
 #include "drivers/watchdog.h"
 #include "kernel/critical.h"
 #include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/chassis_protocol/chassis_protocol.h"
 #include "subsys/communication/ota_transport/ota_can_transport.h"
 #include "subsys/communication/ota_transport/ota_confirmation.h"
 #include "subsys/communication/ota_transport/ota_session.h"
@@ -38,83 +39,79 @@
 static uint8_t demo_stage;
 static uint32_t demo_stage_started_ms;
 
-static void RunMotorDemo(uint32_t now_ms)
-{
+static void RunMotorDemo(uint32_t now_ms) {
   if (demo_stage < 6U) {
     kernel_critical_enter();
     (void)CommandManager_Refresh(COMMAND_SOURCE_SELF_TEST, now_ms);
     kernel_critical_exit();
   }
   switch (demo_stage) {
-    case 0U:
-      if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        (void)ControlRuntime_SubmitMotionCommand(
-            MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-            MOTOR_DEMO_TARGET_COUNTS_PER_TICK, COMMAND_SOURCE_SELF_TEST,
-            now_ms, false, 0U);
-        demo_stage = 1U;
-        demo_stage_started_ms = now_ms;
-      }
-      break;
-    case 1U:
-      if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        (void)ControlRuntime_SubmitMotionCommand(
-            0, 0, COMMAND_SOURCE_SELF_TEST, now_ms, false, 0U);
-        demo_stage = 2U;
-        demo_stage_started_ms = now_ms;
-      }
-      break;
-    case 2U:
-      if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        (void)ControlRuntime_SubmitMotionCommand(
-            -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-            -MOTOR_DEMO_TARGET_COUNTS_PER_TICK, COMMAND_SOURCE_SELF_TEST,
-            now_ms, false, 0U);
-        demo_stage = 3U;
-        demo_stage_started_ms = now_ms;
-      }
-      break;
-    case 3U:
-      if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        (void)ControlRuntime_SubmitMotionCommand(
-            0, 0, COMMAND_SOURCE_SELF_TEST, now_ms, false, 0U);
-        demo_stage = 4U;
-        demo_stage_started_ms = now_ms;
-      }
-      break;
-    case 4U:
-      if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
-        (void)ControlRuntime_SubmitMotionCommand(
-            MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
-            -MOTOR_DEMO_TARGET_COUNTS_PER_TICK, COMMAND_SOURCE_SELF_TEST,
-            now_ms, false, 0U);
-        demo_stage = 5U;
-        demo_stage_started_ms = now_ms;
-      }
-      break;
-    case 5U:
-      if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
-        ControlRuntime_Stop();
-        kernel_critical_enter();
-        CommandManager_Release(COMMAND_SOURCE_SELF_TEST);
-        kernel_critical_exit();
-        demo_stage = 6U;
-      }
-      break;
-    default:
-      break;
+  case 0U:
+    if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
+      (void)ControlRuntime_SubmitMotionCommand(
+          MOTOR_DEMO_TARGET_COUNTS_PER_TICK, MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+          COMMAND_SOURCE_SELF_TEST, now_ms, false, 0U);
+      demo_stage = 1U;
+      demo_stage_started_ms = now_ms;
+    }
+    break;
+  case 1U:
+    if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
+      (void)ControlRuntime_SubmitMotionCommand(0, 0, COMMAND_SOURCE_SELF_TEST,
+                                               now_ms, false, 0U);
+      demo_stage = 2U;
+      demo_stage_started_ms = now_ms;
+    }
+    break;
+  case 2U:
+    if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
+      (void)ControlRuntime_SubmitMotionCommand(
+          -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+          -MOTOR_DEMO_TARGET_COUNTS_PER_TICK, COMMAND_SOURCE_SELF_TEST, now_ms,
+          false, 0U);
+      demo_stage = 3U;
+      demo_stage_started_ms = now_ms;
+    }
+    break;
+  case 3U:
+    if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
+      (void)ControlRuntime_SubmitMotionCommand(0, 0, COMMAND_SOURCE_SELF_TEST,
+                                               now_ms, false, 0U);
+      demo_stage = 4U;
+      demo_stage_started_ms = now_ms;
+    }
+    break;
+  case 4U:
+    if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_STOP_TIME_MS) {
+      (void)ControlRuntime_SubmitMotionCommand(
+          MOTOR_DEMO_TARGET_COUNTS_PER_TICK, -MOTOR_DEMO_TARGET_COUNTS_PER_TICK,
+          COMMAND_SOURCE_SELF_TEST, now_ms, false, 0U);
+      demo_stage = 5U;
+      demo_stage_started_ms = now_ms;
+    }
+    break;
+  case 5U:
+    if (now_ms - demo_stage_started_ms >= MOTOR_DEMO_RUN_TIME_MS) {
+      ControlRuntime_Stop();
+      kernel_critical_enter();
+      CommandManager_Release(COMMAND_SOURCE_SELF_TEST);
+      kernel_critical_exit();
+      demo_stage = 6U;
+    }
+    break;
+  default:
+    break;
   }
 }
 #endif
 
-bool ServiceRuntime_Init(void)
-{
+bool ServiceRuntime_Init(void) {
 #if CONFIG_MOTOR_DEMO
   demo_stage = 0U;
   demo_stage_started_ms = time_uptime_ms();
-  if (ControlRuntime_SubmitMotionCommand(
-          0, 0, COMMAND_SOURCE_SELF_TEST, demo_stage_started_ms, false, 0U) !=
-          COMMAND_SUBMIT_ACCEPTED ||
+  if (ControlRuntime_SubmitMotionCommand(0, 0, COMMAND_SOURCE_SELF_TEST,
+                                         demo_stage_started_ms, false,
+                                         0U) != COMMAND_SUBMIT_ACCEPTED ||
       !ControlRuntime_Start()) {
     return false;
   }
@@ -122,10 +119,10 @@ bool ServiceRuntime_Init(void)
   return true;
 }
 
-void ServiceRuntime_Run(void)
-{
+void ServiceRuntime_Run(void) {
   ConsoleCommand console_command;
-  CanTransportControlCommand control_command;
+  ChassisProtocolWheelRawCommand control_command;
+  struct can_frame frame;
   const uint32_t now_ms = time_uptime_ms();
 
   uart_run();
@@ -142,8 +139,21 @@ void ServiceRuntime_Run(void)
   RunMotorDemo(now_ms);
 #endif
 
+  while (CanTransport_Receive(&frame) == 0) {
+    if (frame.id == OTA_CAN_REQUEST_ID) {
+      (void)OtaCanTransport_OnRxFrame(&frame);
+    } else {
+      ChassisProtocol_ProcessFrame(&frame);
+    }
+  }
   CanTransport_Run();
   if (CanTransport_TakeSessionInvalidated()) {
+    ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_FAILED);
+  }
+  if (CanTransport_TakeRecovered()) {
+    ChassisProtocol_ResetLink(CHASSIS_PROTOCOL_LINK_READY);
+  }
+  if (ChassisProtocol_TakeSessionInvalidated()) {
     OtaCanTransport_Invalidate();
     OtaSession_AbortSource(OTA_SOURCE_CAN_FD, now_ms);
     kernel_critical_enter();
@@ -157,8 +167,9 @@ void ServiceRuntime_Run(void)
       kernel_critical_exit();
     }
   }
+  ChassisProtocol_Run(now_ms);
   ChassisMaintenance_Run(now_ms);
-  if (CanTransport_TakeControlCommand(&control_command)) {
+  if (ChassisProtocol_TakeWheelRawCommand(&control_command)) {
     if (control_command.enabled) {
       if (ControlRuntime_SubmitMotionCommand(
               control_command.left_target, control_command.right_target,
@@ -179,18 +190,17 @@ void ServiceRuntime_Run(void)
     SystemStatusSnapshot status;
 
     SystemStatus_GetSnapshot(&status);
-    OtaConfirmation_Run(
-        now_ms,
-        status.board_health.qspi_id_valid &&
-            status.runtime.critical_tasks_healthy &&
-            !FaultManager_HasCritical(),
-        QspiSelfTest_GetStatus() != QSPI_SELF_TEST_RUNNING &&
-            !OtaSession_IsUsingQspi() && !ParameterStorage_IsUsingQspi());
+    OtaConfirmation_Run(now_ms,
+                        status.board_health.qspi_id_valid &&
+                            status.runtime.critical_tasks_healthy &&
+                            !FaultManager_HasCritical(),
+                        QspiSelfTest_GetStatus() != QSPI_SELF_TEST_RUNNING &&
+                            !OtaSession_IsUsingQspi() &&
+                            !ParameterStorage_IsUsingQspi());
   }
   ParameterStorage_Run(
       now_ms, QspiSelfTest_GetStatus() != QSPI_SELF_TEST_RUNNING &&
-                  !OtaSession_IsUsingQspi() &&
-                  !OtaConfirmation_IsUsingQspi());
+                  !OtaSession_IsUsingQspi() && !OtaConfirmation_IsUsingQspi());
   {
     bool save_success;
 

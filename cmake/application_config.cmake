@@ -12,8 +12,13 @@ set(APP_DTS_BINDINGS "${APP_ROOT}/dts/bindings")
 file(GLOB APP_DTS_BINDING_FILES CONFIGURE_DEPENDS
   "${APP_DTS_BINDINGS}/*.yaml")
 set(APP_KCONFIG "${APP_ROOT}/config/Kconfig")
-set(APP_PRJ_CONF "${APP_ROOT}/config/prj.conf")
-set(APP_DTS "${APP_ROOT}/boards/chassis_g474/chassis_g474.dts")
+if(NOT DEFINED APP_PRJ_CONF)
+  set(APP_PRJ_CONF "${APP_ROOT}/config/prj.conf")
+endif()
+if(NOT DEFINED APP_DTS)
+  set(APP_DTS "${APP_ROOT}/boards/chassis_g474/chassis_g474.dts")
+endif()
+set(APP_CHASSIS_SCHEMA "${CMAKE_SOURCE_DIR}/protocol/chassis_canfd.yaml")
 
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${APP_KCONFIG}" "${APP_PRJ_CONF}" "${APP_DTS}"
@@ -25,9 +30,16 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/tools/dts/verify_hw_config.py"
   "${CMAKE_SOURCE_DIR}/tools/dts/verify_bindings.py"
   "${CMAKE_SOURCE_DIR}/tools/build/check_architecture.py"
+  "${CMAKE_SOURCE_DIR}/tools/test/validate_chassis_schema.py"
+  "${APP_CHASSIS_SCHEMA}"
   ${APP_DTS_BINDING_FILES})
 file(MAKE_DIRECTORY "${APP_GENERATED_DIR}")
 
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/test/validate_chassis_schema.py"
+          "${APP_CHASSIS_SCHEMA}"
+  COMMAND_ERROR_IS_FATAL ANY)
 execute_process(
   COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/tools/config/generate_config.py"

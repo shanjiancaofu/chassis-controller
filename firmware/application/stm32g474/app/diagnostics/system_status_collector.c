@@ -8,6 +8,7 @@
 #include "devicetree.h"
 #include "drivers/sensor/sr501.h"
 #include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/chassis_protocol/chassis_protocol.h"
 #include "subsys/communication/ota_transport/ota_can_transport.h"
 #include "subsys/communication/ota_transport/ota_confirmation.h"
 #include "subsys/communication/ota_transport/ota_session.h"
@@ -30,12 +31,12 @@ _Static_assert((uint32_t)BUTTON_COUNT ==
                    (uint32_t)SYSTEM_STATUS_BUTTON_COUNT,
                "button snapshot count mismatch");
 
-static SystemStatusCanState MapCanState(CanTransportLinkStatus state)
+static SystemStatusCanState MapCanState(ChassisProtocolLinkStatus state)
 {
   switch (state) {
-    case CAN_TRANSPORT_LINK_PASSED:
+    case CHASSIS_PROTOCOL_LINK_PASSED:
       return SYSTEM_STATUS_CAN_PASSED;
-    case CAN_TRANSPORT_LINK_FAILED:
+    case CHASSIS_PROTOCOL_LINK_FAILED:
       return SYSTEM_STATUS_CAN_FAILED;
     default:
       return SYSTEM_STATUS_CAN_READY;
@@ -189,7 +190,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   SystemStatusSnapshot status = {0};
   RtosAppRuntimeSnapshot runtime;
   ButtonSnapshot buttons;
-  Icm45686Stm32Snapshot imu;
+  Icm45686Stm32Snapshot imu = {0};
   ImuOrientationSnapshot orientation;
   Sr501Snapshot sr501;
   PowerSampleSnapshot power_sample;
@@ -201,7 +202,9 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   CopyRuntimeSnapshot(&status.runtime, &runtime);
 
   button_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)), &buttons);
+#if CONFIG_ICM45686
   sensor_get_snapshot(DEVICE_DT_GET(DT_NODELABEL(imu0)), &imu);
+#endif
   ImuOrientation_GetSnapshot(&orientation);
   sr501_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_sr501)), &sr501);
   power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), now_ms, &power_sample);
@@ -210,7 +213,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   CopySr501Snapshot(&status.sr501, &sr501);
   CopyPowerSnapshot(&status.power_sample, &power_sample);
 
-  status.can_state = MapCanState(CanTransport_GetLinkStatus());
+  status.can_state = MapCanState(ChassisProtocol_GetLinkStatus());
   status.lcd_state = MapLcdState(LcdUi_GetStatus());
   status.supply_valid = power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &status.supply_mv);
   status.fault_flags = FaultManager_GetFlags();

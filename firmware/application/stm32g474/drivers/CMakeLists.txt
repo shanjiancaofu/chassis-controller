@@ -10,7 +10,6 @@ add_library(chassis_drivers STATIC
   led/led_stm32.c
   display/lcd_stm32.c
   display/display_common.c
-  sensor/icm45686_stm32.c
   sensor/sensor_common.c
   motor/motor_stm32.c
   motor/motor_common.c
@@ -30,6 +29,10 @@ add_library(chassis_drivers STATIC
   time/time_stm32.c
   watchdog/watchdog_common.c
   watchdog/watchdog_stm32_iwdg.c)
+
+if(CONFIG_ICM45686)
+  target_sources(chassis_drivers PRIVATE sensor/icm45686_stm32.c)
+endif()
 
 chassis_target_setup(chassis_drivers)
 target_link_libraries(chassis_drivers PUBLIC chassis_kernel chassis_components)

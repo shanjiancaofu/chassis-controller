@@ -1,31 +1,31 @@
 mainmenu "Chassis Controller Application"
 
 config CAN
-    bool
+    bool "CAN FD support"
     default y
 
 config ICM45686
-    bool
+    bool "ICM45686 sensor"
     default y
 
 config LCD
-    bool
+    bool "LCD display"
     default y
 
 config QSPI
-    bool
+    bool "QSPI flash"
     default y
 
 config OTA
-    bool
+    bool "OTA support"
     default y
 
 config SELF_TEST
-    bool
+    bool "Board maintenance self-tests"
     default y
 
 config MOTOR_DEMO
-    bool
+    bool "Motor demo"
     default n
 
 config CAN_RX_QUEUE_SIZE

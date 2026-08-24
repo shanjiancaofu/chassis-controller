@@ -1,0 +1,8 @@
+{
+  "scenarios": [
+    {"name": "debug_default", "preset": "arm-debug", "tags": ["build", "debug"]},
+    {"name": "release_default", "preset": "arm-release", "tags": ["build", "release"]},
+    {"name": "release_imu_off", "preset": "arm-release", "tags": ["build", "kconfig", "dts"], "config": {"ICM45686": "n"}, "disable_nodes": ["imu0"]},
+    {"name": "release_self_test_off", "preset": "arm-release", "tags": ["build", "kconfig"], "config": {"SELF_TEST": "n"}}
+  ]
+}

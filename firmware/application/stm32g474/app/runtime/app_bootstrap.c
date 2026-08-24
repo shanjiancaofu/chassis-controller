@@ -6,12 +6,12 @@
 #include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
 #include "app/console/chassis_console_commands.h"
-#include "app/maintenance/chassis_maintenance.h"
 #include "app/console/console.h"
 #include "app/diagnostics/board_health.h"
 #include "app/diagnostics/diagnostic_report.h"
 #include "app/diagnostics/system_status.h"
 #include "app/diagnostics/telemetry.h"
+#include "app/maintenance/chassis_maintenance.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
 #include "app/maintenance/self_test/motor_self_test.h"
 #include "app/maintenance/self_test/qspi_self_test.h"
@@ -35,6 +35,8 @@
 #include "drivers/uart.h"
 #include "drivers/watchdog.h"
 #include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/chassis_protocol/chassis_protocol.h"
+#include "subsys/communication/chassis_protocol/chassis_protocol_ids.h"
 #include "subsys/communication/ota_transport/ota_can_transport.h"
 #include "subsys/communication/ota_transport/ota_confirmation.h"
 #include "subsys/communication/ota_transport/ota_session.h"
@@ -45,6 +47,14 @@ static const OdometryConfig odometry_config = {
     .encoder_counts_per_revolution = MOTOR_ENCODER_COUNTS_PER_REVOLUTION,
     .wheel_diameter_m = CHASSIS_WHEEL_DIAMETER_M,
     .track_width_m = CHASSIS_TRACK_WIDTH_M,
+};
+
+static int SendChassisFrame(const struct can_frame *frame) {
+  return CanTransport_Send(frame);
+}
+
+static const ChassisProtocolPort chassis_protocol_port = {
+    .send = SendChassisFrame,
 };
 
 static const ChassisMaintenancePort maintenance_port = {
@@ -63,8 +73,12 @@ static const ChassisConsoleCommandPort console_command_port = {
 };
 
 static bool InitializeCommunication(const struct device *can_device,
-                                    uint32_t now_ms)
-{
+                                    uint32_t now_ms) {
+  static const struct can_filter accepted_filters[] = {
+      {.id = CHASSIS_CAN_ID_DEV_HANDSHAKE_REQUEST, .mask = 0x7FFU},
+      {.id = CHASSIS_CAN_ID_CMD_WHEEL_RAW, .mask = 0x7FFU},
+      {.id = OTA_CAN_REQUEST_ID, .mask = 0x7FFU},
+  };
   if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_uart)))) {
     return false;
   }
@@ -74,7 +88,10 @@ static bool InitializeCommunication(const struct device *can_device,
   (void)UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_INFO, "boot", "STARTED",
                              "fw=" CHASSIS_FIRMWARE_VERSION
                              " build=" CHASSIS_FIRMWARE_BUILD_STRING);
-  if (CanTransport_Init(can_device) < 0) {
+  if (CanTransport_Init(can_device, accepted_filters,
+                        sizeof(accepted_filters) /
+                            sizeof(accepted_filters[0])) < 0 ||
+      !ChassisProtocol_Init(&chassis_protocol_port)) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
                                "board", "FDCAN_INIT_FAILED",
                                "code=UNAVAILABLE");
@@ -92,8 +109,7 @@ static bool InitializeCommunication(const struct device *can_device,
 static bool InitializeHardware(const struct device *drive,
                                const struct device *left_encoder,
                                const struct device *right_encoder,
-                               const struct device *imu)
-{
+                               const struct device *imu) {
   if (!device_is_ready(drive) || motor_start(drive) < 0) {
     (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
                                "motor", "INIT_FAILED", "code=UNAVAILABLE");
@@ -119,16 +135,15 @@ static bool InitializeHardware(const struct device *drive,
   return DiagnosticsRuntime_Init(imu) && DisplayRuntime_Init();
 }
 
-static bool InitializeProductModules(void)
-{
+static bool InitializeProductModules(void) {
   ParameterSnapshot initial_parameters;
   ParameterStorageSnapshot parameter_storage;
   const bool parameters_loaded = ParameterStorage_Init(&initial_parameters);
 
   CommandManager_Init();
   FaultManager_Init();
-  SafetyManager_Init(emergency_stop_is_asserted(
-      DEVICE_DT_GET(DT_CHOSEN(chassis_estop))));
+  SafetyManager_Init(
+      emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN(chassis_estop))));
   emergency_stop_set_callback(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)),
                               SafetyManager_LatchEmergencyStopFromIsr);
   BoardHealth_Init();
@@ -182,15 +197,17 @@ static bool InitializeProductModules(void)
   return true;
 }
 
-bool AppBootstrap_Init(void)
-{
+bool AppBootstrap_Init(void) {
   const struct device *can_device = DEVICE_DT_GET(DT_CHOSEN(chassis_can));
   const struct device *drive = DEVICE_DT_GET(DT_NODELABEL(drive0));
-  const struct device *left_encoder =
-      DEVICE_DT_GET(DT_NODELABEL(left_encoder));
+  const struct device *left_encoder = DEVICE_DT_GET(DT_NODELABEL(left_encoder));
   const struct device *right_encoder =
       DEVICE_DT_GET(DT_NODELABEL(right_encoder));
+#if CONFIG_ICM45686
   const struct device *imu = DEVICE_DT_GET(DT_NODELABEL(imu0));
+#else
+  const struct device *imu = NULL;
+#endif
   const uint32_t now_ms = time_uptime_ms();
 
   if (!ControlRuntime_BindDevices(drive, left_encoder, right_encoder) ||

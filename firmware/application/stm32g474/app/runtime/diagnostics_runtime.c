@@ -3,10 +3,10 @@
 #include <stdio.h>
 
 #include "app/diagnostics/system_status.h"
+#include "app/diagnostics/system_status_collector.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
 #include "app/safety/fault_manager.h"
 #include "app/sensors/imu_orientation.h"
-#include "app/diagnostics/system_status_collector.h"
 #include "config/app_config.h"
 #include "devicetree.h"
 #include "drivers/led/led.h"
@@ -15,13 +15,13 @@
 #include "drivers/time.h"
 #include "drivers/watchdog.h"
 #include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/chassis_protocol/chassis_protocol.h"
 #include "subsys/communication/uart_protocol/uart_protocol.h"
 
 static const struct device *imu;
 static uint32_t last_heartbeat_ms;
 
-static void ProcessImuSample(const Icm45686Stm32Sample *sample)
-{
+static void ProcessImuSample(const Icm45686Stm32Sample *sample) {
   if (sample != NULL) {
     ImuOrientation_ProcessSample(sample->accel_mps2, sample->gyro_rad_s,
                                  sample->sample_period_s);
@@ -33,8 +33,7 @@ static const Icm45686Stm32SampleSink imu_sample_sink = {
     .process_sample = ProcessImuSample,
 };
 
-bool DiagnosticsRuntime_Init(const struct device *imu_device)
-{
+bool DiagnosticsRuntime_Init(const struct device *imu_device) {
   last_heartbeat_ms = 0U;
   imu = imu_device;
 #if CONFIG_ICM45686
@@ -48,8 +47,7 @@ bool DiagnosticsRuntime_Init(const struct device *imu_device)
       return false;
     }
     sensor_get_snapshot(imu, &snapshot);
-    (void)snprintf(fields, sizeof(fields),
-                   "device=ICM45686 who_am_i=0x%02X",
+    (void)snprintf(fields, sizeof(fields), "device=ICM45686 who_am_i=0x%02X",
                    (unsigned int)snapshot.who_am_i);
     if (snapshot.status == ICM45686_READY) {
       (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO,
@@ -68,8 +66,7 @@ bool DiagnosticsRuntime_Init(const struct device *imu_device)
   return true;
 }
 
-void DiagnosticsRuntime_Run(void)
-{
+void DiagnosticsRuntime_Run(void) {
   const uint32_t now_ms = time_uptime_ms();
 
   sr501_run(DEVICE_DT_GET(DT_CHOSEN(chassis_sr501)), now_ms);
@@ -84,9 +81,9 @@ void DiagnosticsRuntime_Run(void)
   }
   led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_GREEN, false);
   led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_RED, false);
-  if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_PASSED) {
+  if (ChassisProtocol_GetLinkStatus() == CHASSIS_PROTOCOL_LINK_PASSED) {
     led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_GREEN, true);
-  } else if (CanTransport_GetLinkStatus() == CAN_TRANSPORT_LINK_FAILED) {
+  } else if (ChassisProtocol_GetLinkStatus() == CHASSIS_PROTOCOL_LINK_FAILED) {
     led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_RED, true);
   }
 
@@ -94,9 +91,8 @@ void DiagnosticsRuntime_Run(void)
     SystemStatusSnapshot status;
 
     SystemStatus_GetSnapshot(&status);
-    if (status.runtime.critical_tasks_healthy &&
-        !FaultManager_HasCritical() && CanTransport_IsOperational() &&
-        !IwdgSelfTest_IsResetRequested()) {
+    if (status.runtime.critical_tasks_healthy && !FaultManager_HasCritical() &&
+        CanTransport_IsOperational() && !IwdgSelfTest_IsResetRequested()) {
       (void)watchdog_refresh();
     }
   }

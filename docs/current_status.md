@@ -38,7 +38,8 @@
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
 - 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于主机故障矩阵收口后的 ELF
-  并在 Application 内部收敛后重新打包：payload `106420` 字节、CRC32 `0x93FAB959`，OTA 包 `106484` 字节；仅完成构建和
+  并在 chassis protocol/验证矩阵接入后重新打包：payload `106620` 字节、CRC32 `0x67668EC5`，
+  OTA 包 `106684` 字节；仅完成构建和
   主机格式校验，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
@@ -52,6 +53,8 @@
   编码器异常保护和欠压保护代码已实现，带负载阶跃、异常脉冲和欠压注入仍待实测；SR501
   高电平闭环继续标记为 `NOT VERIFIED`，但不阻塞后续软件开发。`0.12.0` 已完成 UART OTA confirmed，统一采样时间戳和差速轮式里程计
   已运行；`0.14.0` 已完成 UART OTA confirmed，新版 LCD UI 视觉、文字排版和四页切换已人工确认正常。
+- CAN FD 的机器可读 schema、纯 `chassis_protocol`、0x100/开发握手迁移、0x101 CRC16 codec、
+  14 项 C 主机测试和 4 场景配置矩阵已完成；0x101 和状态/心跳/故障帧尚未接入产品运行时。
 
 ## 当前实现
 

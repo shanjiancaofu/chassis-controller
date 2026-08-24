@@ -126,5 +126,5 @@ CubeIDE 当前会更新 ELF，但不保证同步重建 BIN。打包或组合镜�
 已部署的 `0.14.0 build1` 在 `build/arm-release/` 的历史包已完成 UART OTA confirmed 和人工
 视觉验收。当前工作树已提升为 `0.15.0 build1`，最新 `application.bin` 和
 `app-v0.15.0-b1.ota` 仍只放在 `build/arm-release/`：当前主机故障矩阵收口后的
-payload 为 106420 字节、CRC32 `0x93FAB959`，OTA 包为 106484 字节。0.15.0 尚未烧录，也未复制到
+payload 为 106620 字节、CRC32 `0x67668EC5`，OTA 包为 106684 字节。0.15.0 尚未烧录，也未复制到
 `_output/application/`。

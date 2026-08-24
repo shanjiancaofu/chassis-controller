@@ -15,9 +15,10 @@ bool ControlRuntime_Init(void);
 void ControlRuntime_Run(uint32_t notification_count);
 bool ControlRuntime_Start(void);
 void ControlRuntime_Stop(void);
-CommandManagerSubmitResult ControlRuntime_SubmitMotionCommand(
-    int32_t left_target, int32_t right_target, CommandSource source,
-    uint32_t now_ms, bool has_sequence, uint8_t sequence);
+CommandManagerSubmitResult
+ControlRuntime_SubmitMotionCommand(int32_t left_target, int32_t right_target,
+                                   CommandSource source, uint32_t now_ms,
+                                   bool has_sequence, uint8_t sequence);
 bool ControlRuntime_ResetOdometry(void);
 bool ControlRuntime_StartMotorSelfTest(MotorSelfTestAction action,
                                        uint32_t now_ms);

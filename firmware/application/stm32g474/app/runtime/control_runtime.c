@@ -37,28 +37,19 @@ static uint32_t consecutive_control_overruns;
 static void ReleaseMotionOwner(void);
 static void ApplyPendingControlParameters(void);
 
-static int16_t GetLeftMotorAppliedDuty(void)
-{
+static int16_t GetLeftMotorAppliedDuty(void) {
   return motor_get_applied_duty(drive_device, MOTOR_LEFT);
 }
 
-static int16_t GetRightMotorAppliedDuty(void)
-{
+static int16_t GetRightMotorAppliedDuty(void) {
   return motor_get_applied_duty(drive_device, MOTOR_RIGHT);
 }
 
-static void CoastMotors(void)
-{
-  motor_coast_all(drive_device);
-}
+static void CoastMotors(void) { motor_coast_all(drive_device); }
 
-static void EmergencyStopMotors(void)
-{
-  motor_emergency_stop(drive_device);
-}
+static void EmergencyStopMotors(void) { motor_emergency_stop(drive_device); }
 
-static void SetMotorDutyBoth(int16_t left_duty, int16_t right_duty)
-{
+static void SetMotorDutyBoth(int16_t left_duty, int16_t right_duty) {
   motor_set_signed_duty_both(drive_device, left_duty, right_duty);
 }
 
@@ -72,8 +63,7 @@ static const WheelControllerMotorPort wheel_controller_motor_port = {
 
 bool ControlRuntime_BindDevices(const struct device *drive,
                                 const struct device *left_encoder,
-                                const struct device *right_encoder)
-{
+                                const struct device *right_encoder) {
   if (drive == NULL || left_encoder == NULL || right_encoder == NULL) {
     return false;
   }
@@ -83,8 +73,7 @@ bool ControlRuntime_BindDevices(const struct device *drive,
   return true;
 }
 
-bool ControlRuntime_Init(void)
-{
+bool ControlRuntime_Init(void) {
   if (drive_device == NULL || left_encoder_device == NULL ||
       right_encoder_device == NULL) {
     return false;
@@ -93,8 +82,7 @@ bool ControlRuntime_Init(void)
   return WheelController_Init(&wheel_controller_motor_port);
 }
 
-bool ControlRuntime_Start(void)
-{
+bool ControlRuntime_Start(void) {
   CommandManagerCommand command;
   bool accepted;
 
@@ -104,8 +92,7 @@ bool ControlRuntime_Start(void)
   return accepted;
 }
 
-void ControlRuntime_Stop(void)
-{
+void ControlRuntime_Stop(void) {
   kernel_critical_enter();
   CommandManager_ClearCommand();
   MotorSelfTest_Stop();
@@ -114,8 +101,7 @@ void ControlRuntime_Stop(void)
   kernel_critical_exit();
 }
 
-static void ReleaseMotionOwner(void)
-{
+static void ReleaseMotionOwner(void) {
   const CommandSource owner = CommandManager_GetOwner();
 
   if (owner == COMMAND_SOURCE_CAN_REMOTE || owner == COMMAND_SOURCE_CONSOLE ||
@@ -124,8 +110,7 @@ static void ReleaseMotionOwner(void)
   }
 }
 
-void ControlRuntime_Run(uint32_t notification_count)
-{
+void ControlRuntime_Run(uint32_t notification_count) {
   CommandManagerCommand command;
   int32_t left_delta;
   int32_t left_measurement;
@@ -231,8 +216,7 @@ void ControlRuntime_Run(uint32_t notification_count)
 }
 
 bool ControlRuntime_StartMotorSelfTest(MotorSelfTestAction action,
-                                       uint32_t now_ms)
-{
+                                       uint32_t now_ms) {
   if (!SafetyManager_RequestOpenLoopTest()) {
     return false;
   }
@@ -246,8 +230,7 @@ bool ControlRuntime_StartMotorSelfTest(MotorSelfTestAction action,
   return true;
 }
 
-bool ControlRuntime_AcquireSelfTestLock(void)
-{
+bool ControlRuntime_AcquireSelfTestLock(void) {
   MotorSelfTestSnapshot motor_test;
 
   MotorSelfTest_GetSnapshot(&motor_test);
@@ -272,8 +255,7 @@ bool ControlRuntime_AcquireSelfTestLock(void)
   return acquired;
 }
 
-bool ControlRuntime_AcquireOtaLock(void)
-{
+bool ControlRuntime_AcquireOtaLock(void) {
   MotorSelfTestSnapshot motor_test;
 
   MotorSelfTest_GetSnapshot(&motor_test);
@@ -297,15 +279,13 @@ bool ControlRuntime_AcquireOtaLock(void)
   return acquired;
 }
 
-void ControlRuntime_ReleaseOtaLock(void)
-{
+void ControlRuntime_ReleaseOtaLock(void) {
   kernel_critical_enter();
   CommandManager_Release(COMMAND_SOURCE_OTA);
   kernel_critical_exit();
 }
 
-void ControlRuntime_ReleaseFinishedSelfTestLock(void)
-{
+void ControlRuntime_ReleaseFinishedSelfTestLock(void) {
   MotorSelfTestSnapshot motor_test;
 
   if (IwdgSelfTest_IsResetRequested() ||
@@ -321,8 +301,7 @@ void ControlRuntime_ReleaseFinishedSelfTestLock(void)
   kernel_critical_exit();
 }
 
-void ControlRuntime_LatchInternalFault(uint32_t fault)
-{
+void ControlRuntime_LatchInternalFault(uint32_t fault) {
   FaultManager_Raise(fault);
   SafetyManager_LatchInternalFault();
   kernel_critical_enter();
@@ -332,8 +311,7 @@ void ControlRuntime_LatchInternalFault(uint32_t fault)
   kernel_critical_exit();
 }
 
-static void ApplyPendingControlParameters(void)
-{
+static void ApplyPendingControlParameters(void) {
   ParameterSnapshot parameters;
 
   kernel_critical_enter();
@@ -342,16 +320,14 @@ static void ApplyPendingControlParameters(void)
     return;
   }
   kernel_critical_exit();
-  WheelController_ApplyPidGains(
-      WHEEL_CONTROLLER_LEFT, parameters.left_pid.kp, parameters.left_pid.ki,
-      parameters.left_pid.kd);
-  WheelController_ApplyPidGains(
-      WHEEL_CONTROLLER_RIGHT, parameters.right_pid.kp, parameters.right_pid.ki,
-      parameters.right_pid.kd);
+  WheelController_ApplyPidGains(WHEEL_CONTROLLER_LEFT, parameters.left_pid.kp,
+                                parameters.left_pid.ki, parameters.left_pid.kd);
+  WheelController_ApplyPidGains(WHEEL_CONTROLLER_RIGHT, parameters.right_pid.kp,
+                                parameters.right_pid.ki,
+                                parameters.right_pid.kd);
 }
 
-bool ControlRuntime_ResetOdometry(void)
-{
+bool ControlRuntime_ResetOdometry(void) {
   if (SafetyManager_GetState() != CHASSIS_CONTROL_STOPPED) {
     return false;
   }
@@ -361,10 +337,10 @@ bool ControlRuntime_ResetOdometry(void)
   return true;
 }
 
-CommandManagerSubmitResult ControlRuntime_SubmitMotionCommand(
-    int32_t left_target, int32_t right_target, CommandSource source,
-    uint32_t now_ms, bool has_sequence, uint8_t sequence)
-{
+CommandManagerSubmitResult
+ControlRuntime_SubmitMotionCommand(int32_t left_target, int32_t right_target,
+                                   CommandSource source, uint32_t now_ms,
+                                   bool has_sequence, uint8_t sequence) {
   const CommandManagerCommand command = {
       .left_target = left_target,
       .right_target = right_target,
@@ -381,30 +357,23 @@ CommandManagerSubmitResult ControlRuntime_SubmitMotionCommand(
   return result;
 }
 
-void ControlRuntime_EmergencyStopOutputs(void)
-{
+void ControlRuntime_EmergencyStopOutputs(void) {
   motor_emergency_stop(drive_device);
 }
 
-void ControlRuntime_CoastOutputs(void)
-{
-  motor_coast_all(drive_device);
-}
+void ControlRuntime_CoastOutputs(void) { motor_coast_all(drive_device); }
 
-void ControlRuntime_FatalError(void)
-{
+void ControlRuntime_FatalError(void) {
   motor_emergency_stop(drive_device);
   ControlRuntime_LatchInternalFault(CHASSIS_FAULT_INTERNAL);
 }
 
-void ControlRuntime_PanicStopFromException(void)
-{
+void ControlRuntime_PanicStopFromException(void) {
   kernel_interrupts_disable();
   motor_emergency_stop(drive_device);
 }
 
-bool ControlRuntime_ClearEmergencyStop(void)
-{
+bool ControlRuntime_ClearEmergencyStop(void) {
   const struct device *estop = DEVICE_DT_GET(DT_CHOSEN(chassis_estop));
 
   if (emergency_stop_is_asserted(estop)) {
