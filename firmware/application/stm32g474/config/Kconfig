@@ -20,7 +20,7 @@ config OTA
     bool
     default y
 
-config TARGET_TEST
+config SELF_TEST
     bool
     default y
 

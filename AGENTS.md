@@ -15,6 +15,8 @@
 - 手写代码放入现有的 `app`、`boards`、`drivers`、`lib`、`subsys`、`kernel`、`tests`、
   `config` 或 `dts` 边界；产品装配文件、模块和 UI 位于 `app/`，通信位于 `subsys/communication/`，
   FreeRTOS runtime 位于 `kernel/freertos/`。
+- `subsys` 不得依赖 `app`，正式产品代码不得依赖 `tests`；板载维护自检位于
+  `app/maintenance/self_test/`，`tests/` 只保存 host unit、fake HAL 和协议回归。
 - 只有存在真实的职责或依赖边界时才创建目录或目标。
 - 少量且只使用一次的逻辑优先留在调用方，不为此拆出辅助函数。
 - 必须防御用户输入、外部协议、持久化数据以及硬件/资源边界；对硬编码常量或本地已保证

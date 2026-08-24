@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "app/modules/chassis/odometry.h"
+#include "app/chassis/odometry.h"
 
 #define PI_F 3.14159265358979323846f
 

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app/modules/chassis/command_manager.h"
+#include "app/chassis/command_manager.h"
 
 static CommandManagerCommand MakeCommand(CommandSource source,
                                          uint32_t received_ms,

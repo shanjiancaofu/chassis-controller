@@ -5,7 +5,7 @@
 #include "drivers/button/button.h"
 #include "drivers/reset/reset.h"
 #include "config/app_config.h"
-#include "app/modules/diagnostics/system_status.h"
+#include "app/diagnostics/system_status.h"
 #include "app/ui/lcd/lcd_ui.h"
 
 #define KEY_LOCKOUT_MS 100U

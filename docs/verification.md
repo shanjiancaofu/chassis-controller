@@ -54,6 +54,41 @@
 
 ## 构建基线
 
+### Application 内部第二次收敛（2026-08-24）
+
+产品域已从 `app/modules` 提升到 `app/`；Console、参数持久化、诊断报告和 telemetry 不再伪装为
+通用 subsystem；板载维护测试已迁出 `tests/`。`subsys` 当前只保留 communication，依赖检查确认
+不存在 `subsys -> app`、`drivers -> app/subsys` 或正式产品代码依赖 `tests`。
+
+`chassis_app.c` 从 935 行缩为 57 行，实际逻辑按职责迁入：
+
+```text
+app/runtime/app_bootstrap.c
+app/runtime/control_runtime.c
+app/runtime/service_runtime.c
+app/runtime/diagnostics_runtime.c
+app/runtime/display_runtime.c
+```
+
+全量验证：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 120592 | 96 | 55352 | `BUILD PASS` |
+| Release | 106316 | 96 | 55344 | `BUILD PASS` |
+
+C 主机测试 13 项、OTA/Python 18 项、Kconfig 3 项、DTS 3 项、架构边界 5 项和 LCD C 预览均通过。
+
+```text
+application.bin=106420 bytes
+payload_crc32=0x93FAB959
+application.bin sha256=a0b1c2134b9b73075b871e3d07f997fe8114fb3d10875d90897dcbe0406c9a1f
+app-v0.15.0-b1.ota=106484 bytes
+ota sha256=3875acf2caa1ff371e7fd846c8b80bb2e91011a800b6e19501e53f48303f8d9c
+```
+
+本批只完成软件构建和主机回归，尚未烧录，不能记录新的硬件 `PASS`。
+
 ### Application CubeMX 工程目录收口（2026-08-23）
 
 CubeMX/CubeIDE 管理内容已迁入 `firmware/application/stm32g474/cubemx/`，Application linker

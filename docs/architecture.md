@@ -81,9 +81,6 @@ chassis-controller/
 │  │     │  │  ├─ can_transport/
 │  │     │  │  ├─ ota_transport/
 │  │     │  │  └─ uart_protocol/
-│  │     │  ├─ console/
-│  │     │  ├─ settings/
-│  │     │  └─ telemetry/
 │  │     ├─ kernel/                  # Device/Init 和 FreeRTOS runtime
 │  │     │  ├─ device.c
 │  │     │  ├─ init.c
@@ -93,15 +90,14 @@ chassis-controller/
 │  │     │     └─ rtos_app.h
 │  │     ├─ app/                     # 产品逻辑和装配
 │  │     │  ├─ chassis_app.c/.h
-│  │     │  ├─ chassis_console_commands.c/.h
-│  │     │  ├─ chassis_maintenance.c/.h
-│  │     │  ├─ system_status_collector.c/.h
-│  │     │  ├─ modules/
-│  │     │  │  ├─ chassis/
-│  │     │  │  ├─ diagnostics/
-│  │     │  │  ├─ parameters/
-│  │     │  │  ├─ safety/
-│  │     │  │  └─ sensors/
+│  │     │  ├─ runtime/              # bootstrap/control/service/diagnostics/display
+│  │     │  ├─ chassis/
+│  │     │  ├─ console/
+│  │     │  ├─ diagnostics/
+│  │     │  ├─ maintenance/self_test/
+│  │     │  ├─ parameters/
+│  │     │  ├─ safety/
+│  │     │  ├─ sensors/
 │  │     │  └─ ui/lcd/
 │  │     │
 │  │     ├─ config/                  # Application 软件配置和版本信息
@@ -110,11 +106,10 @@ chassis-controller/
 │  │     │  ├─ feature_config.h
 │  │     │  ├─ protocol_config.h
 │  │     │  ├─ storage_layout.h
-│  │     │  ├─ target_test_config.h
+│  │     │  ├─ self_test_config.h
 │  │     │  └─ build_info.h
 │  │     └─ tests/
-│  │        ├─ unit/                 # PC 单元测试
-│  │        └─ target/               # STM32 板上测试
+│  │        └─ unit/                 # PC 单元和 fake HAL 测试
 │  │
 │  └─ bootloader/
 │     └─ stm32g474/                  # 独立 CubeMX 工程
@@ -173,10 +168,10 @@ chassis-controller/
 
 ### `app`
 
-负责初始化顺序、模块装配和跨模块流程。`system_status_collector` 集中把 BSP、RTOS 和模块
-快照映射为诊断域 DTO；`chassis_console_commands` 执行已解析的 Console 命令，
-`chassis_maintenance` 协调 OTA transport、会话和维护锁。`chassis_app.c` 保留任务周期、控制安全
-编排和端口装配，不实现寄存器驱动、协议解析或通用算法。
+负责产品生命周期、业务域和跨模块流程。`chassis_app.c` 只保留 `SYS_INIT` 和对 RTOS 暴露的
+正式入口；`runtime/app_bootstrap` 装配设备和端口，`control_runtime` 协调 100 Hz 控制，
+`service_runtime` 协调 UART/CAN/OTA/参数保存和维护，diagnostics/display runtime 分别推进诊断
+与界面。Console、维护、自检、参数和诊断实现留在对应产品域，不进入通用 subsystem。
 
 ### `boards`
 
@@ -204,40 +199,44 @@ UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提�
 试运行确认状态机。communication 公共接口不暴露 HAL 类型，CAN 解码只在任务上下文执行。线协议以
 `protocol/canfd_protocol.md` 和 `protocol/ota_canfd_protocol.md` 为准。
 
-### `subsys`
-
-提供 Console、诊断文本、遥测和参数存储。这些能力不得进入实时控制任务。
+除通信外，当前没有为了目录名而保留空泛的 subsystem。Console、诊断、遥测和参数存储与
+底盘 DTO/命令强绑定，归入对应 `app` 产品域。
 
 ### `app/ui`
 
 保存产品界面状态语义和渲染实现。当前 `app/ui/lcd` 持有四页 DTO、主题颜色、5x7 字模、Logo、
-布局坐标、状态 presenter 和逐行 RGB565 像素生成，通过 LCD BSP 发送帧；主机预览直接编译同一渲染器，不维护
+布局坐标、状态 presenter 和逐行 RGB565 像素生成，通过 LCD driver 发送帧；主机预览直接编译同一渲染器，不维护
 第二份页面坐标或颜色实现。
 
-### `app/modules`
+### `app/chassis`、`app/safety`、`app/parameters`、`app/diagnostics`、`app/sensors`
 
 按 `chassis`、`safety`、`parameters`、`diagnostics` 和 `sensors` 业务域聚合相关状态和规则。
 域内文件职责明确，域之间通过接口协作，不直接操作 CubeMX 句柄。IMU 硬件访问属于
-driver/lib 能力；`app/modules/sensors/imu_orientation` 通过 driver 注入的 sample sink 接收每个 FIFO 样本，
+driver/lib 能力；`app/sensors/imu_orientation` 通过 driver 注入的 sample sink 接收每个 FIFO 样本，
 持有 Mahony/Kalman 状态并把姿态结果送入诊断快照。SPI、FIFO 和 DMA 状态仍只属于 driver。
 
-`app/modules/diagnostics/system_status` 保存 Application task 组装的统一状态快照。它不读取
+`app/diagnostics/system_status` 保存 Application task 组装的统一状态快照。它不读取
 硬件或 FreeRTOS 全局对象，也不在公共头中暴露 driver 快照类型；`app` 负责映射和更新，
 Console/LCD/后续 UART 协议只读取诊断 DTO，避免各输出路径重复采集同一状态。
 
 ### `kernel/freertos`
 
 只负责任务创建、优先级、通知和任务健康。CubeMX `USER CODE` 入口注入四个 Application 周期
-回调，RTOS runtime 不反向包含具体业务实现；业务逻辑由 `app` 和 `app/modules` 提供。
+回调，RTOS runtime 不反向包含具体业务实现；业务逻辑由 `app` 的各产品域提供。
 
 ### `config`
 
 保存 Application 的功能开关、控制参数、协议参数和构建版本。硬件引脚属于 `boards`，
 可运行时修改并持久化的参数由 `parameter_manager` 和 `parameter_storage` 管理。
 
-### `tests/target`
+### `app/maintenance/self_test`
 
-保存必须人工确认的 QSPI、IWDG 和电机板上测试。测试不得成为正常运行路径。
+保存需要显式命令确认的 QSPI、IWDG 和电机板载维护自检。它们是正式维护能力，但不得成为
+正常控制路径。
+
+### `tests/unit`
+
+只保存 host unit、fake HAL、模块回归和协议测试；正式产品代码不得依赖 `tests/`。
 
 ### `firmware/bootloader`
 
@@ -275,28 +274,28 @@ Jetson 和主机工具，不属于某个固件工程。LCD 图片素材跟随使
 
 ```text
 CubeMX USER CODE composition
-  -> app + rtos callbacks
+  -> app lifecycle + kernel/freertos callbacks
 app
-  -> modules / infrastructure / communication / ui / bsp / rtos
-ui / infrastructure / communication
-  -> modules / components / bsp
-modules
-  -> components / bsp / abstract hardware ports
-bsp
-  -> board / components
-  -> CubeMX HAL
+  -> subsys / drivers / lib / kernel public API
+subsys
+  -> drivers / lib
+drivers
+  -> kernel / lib / cubemx
+lib
+  -> C standard library only
+kernel
+  -> cubemx RTOS/CMSIS, no product domain
 ```
 
 约束：
 
-- `components` 不依赖 HAL、业务模块或 Console。
-- `bsp` 不依赖 `modules`。
-- `modules` 不直接操作 CubeMX 全局句柄。
-- `rtos` 不包含 `app`；由 composition root 注入周期回调。
+- `lib` 不依赖 app、subsys、drivers、kernel 或 HAL。
+- `subsys` 不依赖 app；`drivers` 不依赖 app/subsys。
+- `kernel` 不依赖产品域；FreeRTOS runtime 只接收 composition root 注入的回调。
 - ISR 只搬运硬件事件或原始数据，不解析握手、控制或 OTA 协议。
-- `app`（含 `app/ui`）、`communication`、`modules`、`infrastructure` 和 `rtos` 不直接操作 CubeMX 句柄；
-  硬件时间、RTC、GPIO、watchdog 和复位通过 BSP，控制定时器启动由 composition root 注入。
-- `infrastructure` 可以读取模块快照，但不能决定电机安全状态。
+- `app` 和 `subsys` 不直接操作 CubeMX 句柄；硬件能力通过 driver API，控制定时器启动由
+  composition root 注入。
+- 正式产品代码不得依赖 `tests/`；板载自检位于 `app/maintenance/self_test`。
 - Bootloader 与 Application 只共享固定 OTA 数据格式，不共享业务代码。
 
 ## 运行模型
@@ -347,7 +346,7 @@ heartbeat age 和 uptime，并记录 RCC 复位原因。快照由诊断职责统
 
 - `CAN_REMOTE`
 - `CONSOLE`
-- `TARGET_TEST`
+- `SELF_TEST`
 - `OTA`
 
 前三项可以提交运动目标；`OTA` 只能持有停车维护锁，不能提交运动目标。任一时刻只有

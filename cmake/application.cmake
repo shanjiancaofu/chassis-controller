@@ -104,22 +104,18 @@ add_subdirectory("${APP_ROOT}/kernel" "${CMAKE_BINARY_DIR}/application/kernel")
 add_subdirectory("${APP_ROOT}/lib" "${CMAKE_BINARY_DIR}/application/lib")
 add_subdirectory("${APP_ROOT}/drivers" "${CMAKE_BINARY_DIR}/application/drivers")
 add_subdirectory("${APP_ROOT}/subsys/communication" "${CMAKE_BINARY_DIR}/application/communication")
-add_subdirectory("${APP_ROOT}/subsys" "${CMAKE_BINARY_DIR}/application/subsys")
-add_subdirectory("${APP_ROOT}/app/modules" "${CMAKE_BINARY_DIR}/application/modules")
+add_subdirectory("${APP_ROOT}/app" "${CMAKE_BINARY_DIR}/application/product")
 add_subdirectory("${APP_ROOT}/app/ui" "${CMAKE_BINARY_DIR}/application/ui")
-add_subdirectory("${APP_ROOT}/app" "${CMAKE_BINARY_DIR}/application/app")
+add_subdirectory("${APP_ROOT}/app/runtime" "${CMAKE_BINARY_DIR}/application/app")
 add_subdirectory("${APP_ROOT}/kernel/freertos" "${CMAKE_BINARY_DIR}/application/rtos")
-add_subdirectory("${APP_ROOT}/tests" "${CMAKE_BINARY_DIR}/application/tests")
 
 add_executable(application)
 target_sources(application PRIVATE $<TARGET_OBJECTS:chassis_vendor>)
 target_link_libraries(application PRIVATE
   chassis_app
   chassis_rtos
-  chassis_target_tests
   chassis_ui
-  chassis_modules
-  chassis_subsys
+  chassis_product
   chassis_communication
   chassis_drivers
   chassis_components

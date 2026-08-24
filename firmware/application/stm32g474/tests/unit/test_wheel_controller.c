@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "app/modules/chassis/wheel_controller.h"
+#include "app/chassis/wheel_controller.h"
 
 static int16_t applied_left;
 static int16_t applied_right;

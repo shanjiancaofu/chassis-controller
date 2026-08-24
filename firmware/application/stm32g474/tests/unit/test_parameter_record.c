@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "config/control_config.h"
-#include "subsys/settings/parameter_record.h"
+#include "app/parameters/parameter_record.h"
 
 static ParameterSnapshot TestParameters(void)
 {

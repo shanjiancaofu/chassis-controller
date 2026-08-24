@@ -5,13 +5,14 @@
 
 ## 当前基线
 
-迁移状态（2026-08-23）：软件迁移约完成 `98%`。DT/device data 第一批已完成：公共
+迁移状态（2026-08-24）：软件架构收敛已完成。DT/device data 第一批已完成：公共
 `devicetree.h`、controller/child 拓扑、status-aware instance、GPIO phandle-array 和
 power/button/SR501/display 运行态均已落地。第二批又完成 UART/QSPI/IMU 实例状态、LED/E-STOP
 状态、motor/encoder 私有头、APPLICATION init entry 和业务层 FreeRTOS 隔离。主机故障矩阵已
 覆盖 device/init、UART/QSPI、OTA resume/BUSY/重复确认/错误 offset/session。CubeMX/CubeIDE
 工程也已集中到 `cubemx/`；Application 手写顶层目录已收敛，linker script 位于
-`boards/chassis_g474/application.ld`。剩余为目标板收尾：
+`boards/chassis_g474/application.ld`。Application 内部反向依赖和正式代码依赖 tests 已清零，
+五类 runtime 拆分完成，目录结构进入冻结状态。剩余为目标板收尾：
 
 1. 用户确认后的 UART OTA、静态状态、LCD/IMU/GPIO 和电机安全目标板回归。
 
@@ -40,16 +41,17 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 | 五个 `firmware/shared/*.h` | Bootloader、Application 和主机工具共用固定 ABI/硬件契约 | 已完成首版，后续兼容修改必须提升格式版本 |
 | Application `lib/pid/`、`lib/crc/` | Bootloader 保持独立 CRC 实现 | 已按独立工程边界拆分 |
 | `subsys/communication/can_transport/`、`ota_transport/` | 增加 `chassis_protocol/` | 正式底盘协议编解码落地时 |
-| `subsys/console/`、`subsys/settings/`、`subsys/telemetry/` | 按 subsystem 组织公共服务 | 已完成目录迁移，后续按服务能力扩展 |
-| `app/modules/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
+| `app/console/`、`app/parameters/`、`app/diagnostics/` | 按 subsystem 组织公共服务 | 已完成目录迁移，后续按服务能力扩展 |
+| `app/chassis/` 等业务域分组 | 保留当前高内聚组织 | 不再反向平铺 |
 | `kernel/freertos/rtos_app.c/h` 四任务职责模型 | 继续按真实阻塞或周期需求演进，不按硬件数量增加任务 | 已完成首版迁移 |
 | `app/ui/lcd/` 与 `drivers/display/` | UI 持有布局/像素，driver 持有控制器/SPI DMA | 已完成拆分 |
-| `app/system_status_collector.c` | 统一组装 driver/RTOS 到诊断 DTO | 0.15.0 已完成拆分 |
+| `app/diagnostics/system_status_collector.c` | 统一组装 driver/RTOS 到诊断 DTO | 0.15.0 已完成拆分 |
 | CAN ISR 与 communication | ISR 只收原始帧，`service_task` 解析，公共接口不暴露 HAL | 0.15.0 已完成收敛 |
 | `drivers/motor`、`drivers/encoder` | 真实 device/api/data/state 实例，WheelController 只依赖 generic motor port | 首批 Device Model 迁移已完成，继续迁移 power/sensor/display |
-| `drivers/sensor/icm45686_stm32.c` 与 `app/modules/sensors/imu_orientation` | driver 管 SPI/FIFO/DMA，模块持有融合状态 | 已完成拆分 |
-| `app/chassis_console_commands`、`app/chassis_maintenance` | Console 执行与 OTA 维护协调不再堆在 `chassis_app.c` | 0.15.0 已完成拆分 |
-| `tests/target/` 和 `tests/unit/` | 按风险补目标板测试和无 HAL 主机测试 | CommandManager 首批主机测试已落地 |
+| `drivers/sensor/icm45686_stm32.c` 与 `app/sensors/imu_orientation` | driver 管 SPI/FIFO/DMA，模块持有融合状态 | 已完成拆分 |
+| `app/console/chassis_console_commands`、`app/maintenance/chassis_maintenance` | Console 执行与 OTA 维护协调不再堆在 `chassis_app.c` | 0.15.0 已完成拆分 |
+| `app/runtime/` 五类运行时 | bootstrap/control/service/diagnostics/display 按状态所有权协调 | 已完成，目录冻结 |
+| `app/maintenance/self_test/` 和 `tests/unit/` | 按风险补目标板测试和无 HAL 主机测试 | CommandManager 首批主机测试已落地 |
 | 独立 Bootloader 工程 | 继续与 Application 保持独立 CubeMX、链接脚本和构建配置 | 已完成首版 |
 
 迁移不改变底盘行为，不批量创建空目录，不建立只转发调用的空层。

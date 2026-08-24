@@ -1,9 +1,25 @@
-add_library(chassis_app STATIC
-  chassis_app.c
-  chassis_console_commands.c
-  chassis_maintenance.c
-  system_status_collector.c)
+add_library(chassis_product STATIC
+  chassis/command_manager.c
+  chassis/differential_drive.c
+  chassis/odometry.c
+  chassis/wheel_controller.c
+  console/console.c
+  diagnostics/board_health.c
+  diagnostics/diagnostic_report.c
+  diagnostics/system_status.c
+  diagnostics/telemetry.c
+  maintenance/self_test/iwdg_self_test.c
+  maintenance/self_test/motor_self_test.c
+  maintenance/self_test/qspi_self_test.c
+  parameters/parameter_manager.c
+  parameters/parameter_record.c
+  parameters/parameter_storage.c
+  safety/fault_manager.c
+  safety/safety_manager.c
+  sensors/imu_orientation.c)
 
-chassis_target_setup(chassis_app)
-target_link_libraries(chassis_app PUBLIC chassis_drivers chassis_components
-                      chassis_communication chassis_subsys chassis_modules chassis_ui)
+chassis_target_setup(chassis_product)
+target_link_libraries(chassis_product PUBLIC
+  chassis_drivers
+  chassis_components
+  chassis_communication)

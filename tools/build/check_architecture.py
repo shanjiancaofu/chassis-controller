@@ -21,6 +21,13 @@ FORBIDDEN_SYMBOLS = (
     re.compile(r"\bh(?:fdcan|spi|tim|uart|qspi|rtc|iwdg|adc|dma)[A-Za-z0-9_]*\b"),
 )
 FREERTOS_INCLUDE = re.compile(r'#\s*include\s*[<"](?:FreeRTOS|task)\.h[>"]')
+PROJECT_INCLUDE = re.compile(r'#\s*include\s*"([^"]+)"')
+FORBIDDEN_DEPENDENCIES = {
+    "subsys": ("app/",),
+    "drivers": ("app/", "subsys/"),
+    "lib": ("app/", "subsys/", "drivers/", "kernel/"),
+    "kernel": ("app/", "subsys/", "drivers/", "lib/"),
+}
 
 
 @dataclass(frozen=True)
@@ -62,12 +69,32 @@ def scan(root: Path, scopes: list[str]) -> list[Violation]:
     return violations
 
 
+def scan_dependencies(root: Path) -> list[Violation]:
+    violations: list[Violation] = []
+    for layer, forbidden_prefixes in FORBIDDEN_DEPENDENCIES.items():
+        directory = root / layer
+        if not directory.exists():
+            continue
+        for path in sorted(directory.rglob("*")):
+            if path.suffix not in {".c", ".h"}:
+                continue
+            for number, raw in enumerate(
+                    path.read_text(encoding="utf-8").splitlines(), 1):
+                match = PROJECT_INCLUDE.search(raw)
+                if match and match.group(1).startswith(forbidden_prefixes):
+                    violations.append(Violation(
+                        path, number,
+                        f"forbidden {layer} dependency {match.group(1)!r}"))
+    return violations
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--scope", action="append", required=True)
     args = parser.parse_args()
     violations = scan(args.root, args.scope)
+    violations.extend(scan_dependencies(args.root))
     if violations:
         for violation in violations:
             print(f"{violation.path}:{violation.line}: {violation.message}", file=sys.stderr)

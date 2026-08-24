@@ -1,5 +1,18 @@
 # 变更记录
 
+## 2026-08-24：Application 内部第二次收敛
+
+- 删除 `app/modules` 包装层，chassis/safety/parameters/diagnostics/sensors 五个产品域直接归入
+  `app/`；settings、console、telemetry 和 diagnostic report 从通用 subsys 迁回产品域。
+- QSPI/IWDG/motor 板载测试迁入 `app/maintenance/self_test` 并统一改名为 SelfTest；`tests/`
+  只保留 host unit/fake-HAL，正式 Application 不再依赖 tests。
+- `chassis_app.c` 从 935 行缩为 57 行；新增 bootstrap、control、service、diagnostics、display
+  五类 runtime，按原状态所有权迁移逻辑，不改变 CAN/UART/OTA wire ABI 或控制算法。
+- 删除 `chassis_subsys`、`chassis_target_tests` 和旧 `chassis_modules` target，产品域统一由
+  `chassis_product` target 管理；architecture checker 新增反向层依赖检查。
+- Debug/Release clean build、13 项 C 主机测试、18 项 OTA/Python、Kconfig/DTS、5 项架构测试
+  和 LCD C 预览通过；未烧录、未新增硬件结论。
+
 ## 2026-08-23：Application 手写目录收敛
 
 - 顶层目录由 16 个降为 11 个，删除空 `infrastructure/` 和单文件 `linker/`。

@@ -8,8 +8,8 @@
 ### 原生平台化迁移完成度
 
 - 当前 `develop` 路线是 STM32 HAL + FreeRTOS 原生平台化，不是完整 Zephyr RTOS 移植。
-- 原生平台化软件迁移约完成 `98%`：目录、Device/Init、DT/Kconfig、主要驱动实例状态、启动层级、
-  业务 RTOS 边界和主机故障矩阵已经收口；剩余为目标板回归。
+- 原生平台化软件架构收敛已完成：目录、Device/Init、DT/Kconfig、主要驱动实例状态、启动层级、
+  Application 内部边界和主机故障矩阵已经冻结；剩余为目标板回归。
 - 已完成：Device/Init/linker、Kconfiglib、模块化 CMake、`board_config.h` 删除、dummy device
   清除，以及 CAN/UART/motor/encoder/power/IMU/display/flash/watchdog/RTC/time/GPIO consumer
   的 device/API 接入。
@@ -17,8 +17,11 @@
   Application linker script 位于 `boards/chassis_g474/application.ld`，继续使用 `0x08008000 / 480K`。
 - 产品 UI 已从顶层 `ui/` 收入 `app/ui/`；`chassis_ui` 仍为独立 target，LCD renderer、presenter
   和主机预览共用实现保持不变。
-- 顶层目录已收敛为 11 个：产品模块归入 `app/modules/`，纯算法归入 `lib/`，通信归入
+- 顶层目录已收敛为 11 个：产品模块归入 `app/`，纯算法归入 `lib/`，通信归入
   `subsys/communication/`，FreeRTOS runtime 归入 `kernel/freertos/`；空 `infrastructure/` 已删除。
+- Application 内部第二次收敛已完成：`subsys` 只保留 communication，五个产品域直接位于
+  `app/`，板载测试迁入 `app/maintenance/self_test/`，`tests/` 只保留 host unit；
+  `chassis_app.c` 从 935 行缩为 57 行，五类运行时位于 `app/runtime/`。
 - 尚未完成：本轮架构代码的 UART OTA、启动静态状态、UART/QSPI/IMU/GPIO/LCD 和电机零输出目标板回归。
 
 - Application 工作树：`0.15.0 build1`；板上 confirmed 镜像：`0.14.0 build1`。
@@ -35,7 +38,7 @@
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
 - 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已基于主机故障矩阵收口后的 ELF
-  并在目录收敛后重新打包：payload `106284` 字节、CRC32 `0xAAC63DFA`，OTA 包 `106348` 字节；仅完成构建和
+  并在 Application 内部收敛后重新打包：payload `106420` 字节、CRC32 `0x93FAB959`，OTA 包 `106484` 字节；仅完成构建和
   主机格式校验，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
@@ -107,7 +110,7 @@
   保留为显式兼容模式。`display_task` 以 1 ms 周期推进 LCD 逐行 DMA，保持页面 1 s 刷新。总览页新增
   9.0--12.6 V 电压窗口估算百分比和电量条；该值不是电池 SOC，阈值需按最终电池规格校准。
 - 0.15.0 已收敛实际依赖边界：`app/ui/lcd` 持有主题、字模、Logo、四页布局和逐行像素生成，
-  `drivers/display/lcd_stm32.c` 只持有控制器命令、SPI DMA、片选和背光；`app/system_status_collector` 负责 driver/RTOS
+  `drivers/display/lcd_stm32.c` 只持有控制器命令、SPI DMA、片选和背光；`app/diagnostics/system_status_collector` 负责 driver/RTOS
   状态到诊断 DTO 的组装；RTOS 通过 Core 注入的周期回调调用 Application，不再反向包含 `app`；
   `wheel_controller` 通过电机端口装配，不再直接依赖电机 BSP。
 - 2026-08-20 继续完成全仓库边界收敛：FDCAN ISR 只把原始帧写入 drivers/can 固定队列，握手、运动命令和
@@ -115,12 +118,12 @@
   UART 通过 device/DTS chosen 接入，QSPI/watchdog/RTC/time 的 HAL 实现已移动到 STM32 driver；
   `app/subsys/lib` 不再直接包含 UART/QSPI/RTC/watchdog/time 的
   旧 BSP 头文件；Application CMake 已拆为 vendor、drivers、components、communication、subsys、
-  app/modules、app/ui、kernel/freertos、app 和 target-tests 静态目标。
+  chassis_product、app/ui、kernel/freertos 和 chassis_app 静态目标。
   头文件。
   OTA 解码全部在 `service_task` 执行；communication 公共接口不再暴露 HAL。RTC、单调时间、LED、
   E-STOP、IWDG、SPI/GPIO 回调和复位已通过 drivers/Core 边界访问；TIM6 启动由 Core 回调注入 RTOS。
-  IMU SPI/FIFO/DMA 保留在 `drivers/sensor/icm45686_stm32.c`，Mahony/Kalman 状态迁入 `app/modules/sensors/imu_orientation`；Console
-  命令执行和 OTA 维护协调分别拆到 `app/chassis_console_commands` 与 `app/chassis_maintenance`，
+  IMU SPI/FIFO/DMA 保留在 `drivers/sensor/icm45686_stm32.c`，Mahony/Kalman 状态迁入 `app/sensors/imu_orientation`；Console
+  命令执行和 OTA 维护协调分别位于 `app/console/chassis_console_commands` 与 `app/maintenance/chassis_maintenance`，
   LCD 状态 presenter 迁入 `app/ui/lcd`。
 - motor/encoder 已完成首批 Device Model 迁移：`drive0`、`left_encoder`、`right_encoder` 由
   `DEVICE_DT_DEFINE()` 注册，WheelController 通过 generic motor API 装配，编码器按左右 device

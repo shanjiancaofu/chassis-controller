@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.build.check_architecture import scan
+from tools.build.check_architecture import scan, scan_dependencies
 
 
 class ArchitectureCheckTest(unittest.TestCase):
@@ -43,6 +43,17 @@ class ArchitectureCheckTest(unittest.TestCase):
             violations = scan(root, ["app"])
             self.assertEqual(len(violations), 1)
             self.assertIn("outside runtime", violations[0].message)
+
+    def test_reverse_layer_dependency_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "subsys" / "bad.c"
+            source.parent.mkdir(parents=True)
+            source.write_text('#include "app/safety/safety_manager.h"\n',
+                              encoding="utf-8")
+            violations = scan_dependencies(root)
+            self.assertEqual(len(violations), 1)
+            self.assertIn("forbidden subsys dependency", violations[0].message)
 
 
 if __name__ == "__main__":

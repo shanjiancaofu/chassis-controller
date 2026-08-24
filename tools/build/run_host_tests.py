@@ -24,7 +24,7 @@ TESTS = {
     ),
     "command_manager": (
         "COMMAND_MANAGER_HOST_TEST",
-        ["tests/unit/test_command_manager.c", "app/modules/chassis/command_manager.c"],
+        ["tests/unit/test_command_manager.c", "app/chassis/command_manager.c"],
     ),
     "icm45686": (
         "ICM45686_HOST_TEST",
@@ -36,8 +36,8 @@ TESTS = {
     ),
     "odometry": (
         "ODOMETRY_HOST_TEST",
-        ["tests/unit/test_odometry.c", "app/modules/chassis/odometry.c",
-         "app/modules/chassis/differential_drive.c"],
+        ["tests/unit/test_odometry.c", "app/chassis/odometry.c",
+         "app/chassis/differential_drive.c"],
     ),
     "ota_metadata": (
         "OTA_METADATA_HOST_TEST",
@@ -50,7 +50,7 @@ TESTS = {
     ),
     "parameter_record": (
         "PARAMETER_RECORD_HOST_TEST",
-        ["tests/unit/test_parameter_record.c", "subsys/settings/parameter_record.c",
+        ["tests/unit/test_parameter_record.c", "app/parameters/parameter_record.c",
          "lib/crc/crc32.c"],
     ),
     "uart_protocol": (
@@ -59,7 +59,7 @@ TESTS = {
     ),
     "wheel_controller": (
         "WHEEL_CONTROLLER_HOST_TEST",
-        ["tests/unit/test_wheel_controller.c", "app/modules/chassis/wheel_controller.c",
+        ["tests/unit/test_wheel_controller.c", "app/chassis/wheel_controller.c",
          "lib/pid/speed_pid.c"],
     ),
     "uart_stm32": (
