@@ -1,23 +1,23 @@
-#include "app/console/chassis_console_commands.h"
+#include "app/console/commands.h"
 #include "kernel/critical.h"
 
 #include <stddef.h>
 #include <stdio.h>
 
-#include "subsys/communication/can_transport/can_transport.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol.h"
+#include "subsys/communication/can/can_transport.h"
+#include "subsys/communication/can/chassis_protocol.h"
 #include "config/control_config.h"
 #include "app/diagnostics/diagnostic_report.h"
 #include "app/parameters/parameter_storage.h"
 #include "app/diagnostics/telemetry.h"
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/uart/uart_messages.h"
 #include "app/chassis/odometry.h"
 #include "app/parameters/parameter_manager.h"
 #include "app/safety/safety_manager.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
 #include "app/maintenance/self_test/qspi_self_test.h"
 
-static ChassisConsoleCommandPort command_port;
+static ConsoleCommandPort command_port;
 
 static void SendPidParameterReport(uint32_t now_ms, const char *command_name,
                                    bool accepted);
@@ -29,7 +29,7 @@ static const char *ParameterPersistenceText(
 static const char *MotionCommandErrorCode(
     CommandManagerSubmitResult submit_result);
 
-bool ChassisConsoleCommands_Init(const ChassisConsoleCommandPort *port)
+bool ConsoleCommands_Init(const ConsoleCommandPort *port)
 {
   if (port == NULL || port->submit_motion_command == NULL ||
       port->start_control == NULL || port->stop_control == NULL ||
@@ -42,7 +42,7 @@ bool ChassisConsoleCommands_Init(const ChassisConsoleCommandPort *port)
   return true;
 }
 
-void ChassisConsoleCommands_Process(const ConsoleCommand *command,
+void ConsoleCommands_Process(const ConsoleCommand *command,
                                     uint32_t now_ms)
 {
   if (command == NULL) {
@@ -51,26 +51,26 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
 
   switch (command->type) {
     case CONSOLE_COMMAND_PING:
-      (void)UartProtocol_SendResponse(now_ms, "ping", true, NULL);
+      (void)UartMessages_SendResponse(now_ms, "ping", true, NULL);
       break;
     case CONSOLE_COMMAND_STATUS:
-      (void)UartProtocol_SendResponse(now_ms, "status", true,
+      (void)UartMessages_SendResponse(now_ms, "status", true,
                                       "stream=diagnostics");
       DiagnosticReport_RequestSelfTest();
       break;
     case CONSOLE_COMMAND_TELEMETRY_TEXT:
       Telemetry_SetMode(TELEMETRY_MODE_TEXT);
-      (void)UartProtocol_SendResponse(now_ms, "telemetry", true,
+      (void)UartMessages_SendResponse(now_ms, "telemetry", true,
                                       "mode=TEXT");
       break;
     case CONSOLE_COMMAND_TELEMETRY_VOFA:
       Telemetry_SetMode(TELEMETRY_MODE_VOFA);
-      (void)UartProtocol_SendResponse(now_ms, "telemetry", true,
+      (void)UartMessages_SendResponse(now_ms, "telemetry", true,
                                       "mode=VOFA compatibility=LEGACY");
       break;
     case CONSOLE_COMMAND_TELEMETRY_OFF:
       Telemetry_SetMode(TELEMETRY_MODE_OFF);
-      (void)UartProtocol_SendResponse(now_ms, "telemetry", true,
+      (void)UartMessages_SendResponse(now_ms, "telemetry", true,
                                       "mode=OFF");
       break;
     case CONSOLE_COMMAND_CAN_STATUS:
@@ -78,7 +78,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
       break;
     case CONSOLE_COMMAND_CAN_TRANSMIT:
       ChassisProtocol_RequestHandshakeResponse();
-      (void)UartProtocol_SendResponse(now_ms, "can_tx", true,
+      (void)UartMessages_SendResponse(now_ms, "can_tx", true,
                                       "frame=0x721 state=QUEUED");
       break;
     case CONSOLE_COMMAND_PID_SHOW:
@@ -114,7 +114,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
 
       if (submit_result == COMMAND_SUBMIT_ACCEPTED &&
           command_port.start_control()) {
-        (void)UartProtocol_SendResponse(now_ms, "pid_target", true,
+        (void)UartMessages_SendResponse(now_ms, "pid_target", true,
                                         "state=RUNNING");
       } else {
         if (submit_result == COMMAND_SUBMIT_ACCEPTED) {
@@ -124,7 +124,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
         }
         (void)snprintf(fields, sizeof(fields), "code=%s",
                        MotionCommandErrorCode(submit_result));
-        (void)UartProtocol_SendResponse(now_ms, "pid_target", false, fields);
+        (void)UartMessages_SendResponse(now_ms, "pid_target", false, fields);
       }
       break;
     }
@@ -133,13 +133,13 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
       kernel_critical_enter();
       CommandManager_Release(COMMAND_SOURCE_CONSOLE);
       kernel_critical_exit();
-      (void)UartProtocol_SendResponse(now_ms, "pid_stop", true,
+      (void)UartMessages_SendResponse(now_ms, "pid_stop", true,
                                       "state=STOPPED");
       break;
     case CONSOLE_COMMAND_ENCODER_ZERO: {
       const bool accepted = command_port.reset_wheel_odometry();
 
-      (void)UartProtocol_SendResponse(now_ms, "encoder_zero", accepted,
+      (void)UartMessages_SendResponse(now_ms, "encoder_zero", accepted,
                                       accepted ? "state=RESET"
                                                : "code=SAFETY_STOP");
       break;
@@ -150,17 +150,17 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
     case CONSOLE_COMMAND_ODOMETRY_RESET: {
       const bool accepted = command_port.reset_wheel_odometry();
 
-      (void)UartProtocol_SendResponse(now_ms, "odometry_reset", accepted,
+      (void)UartMessages_SendResponse(now_ms, "odometry_reset", accepted,
                                       accepted ? "state=RESET"
                                                : "code=SAFETY_STOP");
       break;
     }
     case CONSOLE_COMMAND_OTA_UART:
       if (command_port.arm_uart_ota(now_ms)) {
-        (void)UartProtocol_SendResponse(now_ms, "ota_uart", true,
+        (void)UartMessages_SendResponse(now_ms, "ota_uart", true,
                                         "mode=BINARY");
       } else {
-        (void)UartProtocol_SendResponse(now_ms, "ota_uart", false,
+        (void)UartMessages_SendResponse(now_ms, "ota_uart", false,
                                         "code=BUSY");
       }
       break;
@@ -170,10 +170,10 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
         kernel_critical_enter();
         CommandManager_Release(COMMAND_SOURCE_SELF_TEST);
         kernel_critical_exit();
-        (void)UartProtocol_SendResponse(now_ms, "qspi_test", false,
+        (void)UartMessages_SendResponse(now_ms, "qspi_test", false,
                                         "code=BUSY");
       } else {
-        (void)UartProtocol_SendResponse(now_ms, "qspi_test", true,
+        (void)UartMessages_SendResponse(now_ms, "qspi_test", true,
                                         "state=STARTED");
         DiagnosticReport_RequestQspiTest();
       }
@@ -184,10 +184,10 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
         kernel_critical_enter();
         CommandManager_Release(COMMAND_SOURCE_SELF_TEST);
         kernel_critical_exit();
-        (void)UartProtocol_SendResponse(now_ms, "iwdg_reset_test", false,
+        (void)UartMessages_SendResponse(now_ms, "iwdg_reset_test", false,
                                         "code=BUSY");
       } else {
-        (void)UartProtocol_SendResponse(now_ms, "iwdg_reset_test", true,
+        (void)UartMessages_SendResponse(now_ms, "iwdg_reset_test", true,
                                         "state=ARMED");
         DiagnosticReport_RequestIwdgArmed();
       }
@@ -199,7 +199,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
 
       (void)snprintf(fields, sizeof(fields), "duty=%u",
                      (unsigned int)MotorSelfTest_GetDuty());
-      (void)UartProtocol_SendResponse(now_ms, "motor_duty", accepted,
+      (void)UartMessages_SendResponse(now_ms, "motor_duty", accepted,
                                       accepted ? fields : "code=RUNNING");
       break;
     }
@@ -235,7 +235,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
           kernel_critical_exit();
         }
       }
-      (void)UartProtocol_SendResponse(
+      (void)UartMessages_SendResponse(
           now_ms,
           action == MOTOR_SELF_TEST_STOP
               ? "motor_stop"
@@ -256,7 +256,7 @@ void ChassisConsoleCommands_Process(const ConsoleCommand *command,
       SendConsoleHelp(now_ms);
       break;
     case CONSOLE_COMMAND_INVALID:
-      (void)UartProtocol_SendResponse(now_ms, "unknown", false,
+      (void)UartMessages_SendResponse(now_ms, "unknown", false,
                                       "code=INVALID_ARGUMENT");
       break;
     default:
@@ -288,14 +288,14 @@ static void SendPidParameterReport(uint32_t now_ms, const char *command_name,
         (unsigned int)parameters.right_pid.kd,
         ParameterPersistenceText(&storage),
         (unsigned long)storage.sequence);
-    (void)UartProtocol_SendResponse(now_ms, command_name, true, fields);
+    (void)UartMessages_SendResponse(now_ms, command_name, true, fields);
   } else {
     (void)snprintf(fields, sizeof(fields),
                    "code=INVALID_ARGUMENT kp_max=%u ki_max=%u kd_max=%u",
                    (unsigned int)MOTOR_PID_KP_MAX,
                    (unsigned int)MOTOR_PID_KI_MAX,
                    (unsigned int)MOTOR_PID_KD_MAX);
-    (void)UartProtocol_SendResponse(now_ms, "pid_set", false, fields);
+    (void)UartMessages_SendResponse(now_ms, "pid_set", false, fields);
   }
 }
 
@@ -309,13 +309,13 @@ static void SendEncoderResult(uint32_t now_ms)
   kernel_critical_enter();
   Odometry_GetSnapshot(now_ms, &snapshot);
   kernel_critical_exit();
-  (void)UartProtocol_FormatSigned64(left_total, sizeof(left_total),
+  (void)UartMessages_FormatSigned64(left_total, sizeof(left_total),
                                     snapshot.left_total);
-  (void)UartProtocol_FormatSigned64(right_total, sizeof(right_total),
+  (void)UartMessages_FormatSigned64(right_total, sizeof(right_total),
                                     snapshot.right_total);
   (void)snprintf(fields, sizeof(fields), "left_total=%s right_total=%s",
                  left_total, right_total);
-  (void)UartProtocol_SendResponse(now_ms, "encoder_result", true, fields);
+  (void)UartMessages_SendResponse(now_ms, "encoder_result", true, fields);
 }
 
 static void SendCanDiagnostics(uint32_t now_ms)
@@ -324,7 +324,7 @@ static void SendCanDiagnostics(uint32_t now_ms)
   char fields[640];
 
   if (!CanTransport_GetDiagnostics(&diagnostics)) {
-    (void)UartProtocol_SendResponse(now_ms, "can_status", false,
+    (void)UartMessages_SendResponse(now_ms, "can_status", false,
                                     "code=UNAVAILABLE");
     return;
   }
@@ -350,7 +350,7 @@ static void SendCanDiagnostics(uint32_t now_ms)
       (unsigned long)diagnostics.rx_fifo_lost_count,
       (unsigned long)diagnostics.recovery_count,
       (unsigned long)diagnostics.recovery_failure_count);
-  (void)UartProtocol_SendResponse(now_ms, "can_status", true, fields);
+  (void)UartMessages_SendResponse(now_ms, "can_status", true, fields);
 }
 
 static void SendConsoleHelp(uint32_t now_ms)
@@ -361,7 +361,7 @@ static void SendConsoleHelp(uint32_t now_ms)
       "iwdg_reset_test,motor_duty,motor_stop,motor_left_forward,motor_left_reverse,"
       "motor_right_forward,motor_right_reverse";
 
-  (void)UartProtocol_SendResponse(now_ms, "help", true, commands);
+  (void)UartMessages_SendResponse(now_ms, "help", true, commands);
 }
 
 static const char *ParameterPersistenceText(

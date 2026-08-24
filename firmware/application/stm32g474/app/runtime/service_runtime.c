@@ -5,7 +5,7 @@
 #include "app/chassis/command_manager.h"
 #include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
-#include "app/console/chassis_console_commands.h"
+#include "app/console/commands.h"
 #include "app/console/console.h"
 #include "app/diagnostics/diagnostic_report.h"
 #include "app/diagnostics/system_status.h"
@@ -27,13 +27,13 @@
 #include "drivers/uart.h"
 #include "drivers/watchdog.h"
 #include "kernel/critical.h"
-#include "subsys/communication/can_transport/can_transport.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol.h"
-#include "subsys/communication/ota_transport/ota_can_transport.h"
-#include "subsys/communication/ota_transport/ota_confirmation.h"
-#include "subsys/communication/ota_transport/ota_session.h"
-#include "subsys/communication/ota_transport/ota_uart_transport.h"
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/can/can_transport.h"
+#include "subsys/communication/can/chassis_protocol.h"
+#include "subsys/communication/ota/ota_can.h"
+#include "subsys/communication/ota/ota_confirmation.h"
+#include "subsys/communication/ota/ota_session.h"
+#include "subsys/communication/ota/ota_uart.h"
+#include "subsys/communication/uart/uart_messages.h"
 
 #if CONFIG_MOTOR_DEMO
 static uint8_t demo_stage;
@@ -126,13 +126,13 @@ void ServiceRuntime_Run(void) {
   const uint32_t now_ms = time_uptime_ms();
 
   uart_run();
-  if (OtaUartTransport_IsEnabled()) {
-    OtaUartTransport_Run();
+  if (OtaUart_IsEnabled()) {
+    OtaUart_Run();
   } else {
     Console_Run();
   }
   while (Console_TakeCommand(&console_command)) {
-    ChassisConsoleCommands_Process(&console_command, now_ms);
+    ConsoleCommands_Process(&console_command, now_ms);
   }
 
 #if CONFIG_MOTOR_DEMO
@@ -141,7 +141,7 @@ void ServiceRuntime_Run(void) {
 
   while (CanTransport_Receive(&frame) == 0) {
     if (frame.id == OTA_CAN_REQUEST_ID) {
-      (void)OtaCanTransport_OnRxFrame(&frame);
+      (void)OtaCan_OnRxFrame(&frame);
     } else {
       ChassisProtocol_ProcessFrame(&frame);
     }
@@ -154,7 +154,7 @@ void ServiceRuntime_Run(void) {
     ChassisProtocol_ResetLink(CHASSIS_PROTOCOL_LINK_READY);
   }
   if (ChassisProtocol_TakeSessionInvalidated()) {
-    OtaCanTransport_Invalidate();
+    OtaCan_Invalidate();
     OtaSession_AbortSource(OTA_SOURCE_CAN_FD, now_ms);
     kernel_critical_enter();
     if (CommandManager_GetOwner() == COMMAND_SOURCE_CAN_REMOTE) {
@@ -212,9 +212,9 @@ void ServiceRuntime_Run(void) {
       (void)snprintf(fields, sizeof(fields), "sequence=%lu error_count=%lu",
                      (unsigned long)storage.sequence,
                      (unsigned long)storage.error_count);
-      (void)UartProtocol_SendLog(
+      (void)UartMessages_SendLog(
           now_ms,
-          save_success ? UART_PROTOCOL_LOG_INFO : UART_PROTOCOL_LOG_ERROR,
+          save_success ? UART_MESSAGES_LOG_INFO : UART_MESSAGES_LOG_ERROR,
           "parameters", save_success ? "SAVED" : "SAVE_FAILED", fields);
     }
   }
@@ -224,7 +224,7 @@ void ServiceRuntime_Run(void) {
   }
   MotorSelfTest_Run(now_ms);
   ControlRuntime_ReleaseFinishedSelfTestLock();
-  if (!OtaUartTransport_IsEnabled()) {
+  if (!OtaUart_IsEnabled()) {
     DiagnosticReport_Run(now_ms);
   }
 
@@ -234,9 +234,9 @@ void ServiceRuntime_Run(void) {
   }
   if (OtaSession_IsResetRequested(now_ms) &&
       ((OtaSession_GetSource() == OTA_SOURCE_UART &&
-        OtaUartTransport_IsTxIdle()) ||
+        OtaUart_IsTxIdle()) ||
        (OtaSession_GetSource() == OTA_SOURCE_CAN_FD &&
-        OtaCanTransport_IsTxIdle()))) {
+        OtaCan_IsTxIdle()))) {
     ControlRuntime_Stop();
     ControlRuntime_CoastOutputs();
     if (watchdog_prepare_for_bootloader()) {
@@ -244,7 +244,7 @@ void ServiceRuntime_Run(void) {
     }
   }
 
-  if (!OtaUartTransport_IsEnabled() && Telemetry_IsDue(now_ms)) {
+  if (!OtaUart_IsEnabled() && Telemetry_IsDue(now_ms)) {
     WheelControllerSnapshot wheel_snapshot;
     MotorSelfTestSnapshot motor_test_snapshot;
     OdometrySnapshot odometry_snapshot;

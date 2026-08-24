@@ -2,12 +2,12 @@
 
 #include <stddef.h>
 
-#include "subsys/communication/ota_transport/ota_can_transport.h"
-#include "subsys/communication/ota_transport/ota_session.h"
-#include "subsys/communication/ota_transport/ota_uart_arm_guard.h"
-#include "subsys/communication/ota_transport/ota_uart_transport.h"
+#include "subsys/communication/ota/ota_can.h"
+#include "subsys/communication/ota/ota_session.h"
+#include "subsys/communication/ota/ota_uart_arm_guard.h"
+#include "subsys/communication/ota/ota_uart.h"
 #include "app/diagnostics/telemetry.h"
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/uart/uart_messages.h"
 #include "app/chassis/command_manager.h"
 
 #define OTA_UART_ARM_TIMEOUT_MS 30000U
@@ -38,7 +38,7 @@ bool ChassisMaintenance_ArmUartOta(uint32_t now_ms)
     return false;
   }
   Telemetry_SetMode(TELEMETRY_MODE_OFF);
-  OtaUartTransport_Enable();
+  OtaUart_Enable();
   OtaUartArmGuard_Arm(&ota_uart_arm_guard, now_ms);
   ota_terminal_cleaned = false;
   return true;
@@ -52,15 +52,15 @@ void ChassisMaintenance_Run(uint32_t now_ms)
   bool response_submitted;
 
   if (!ota_response_waiting &&
-      (OtaCanTransport_TakeMessage(&message) ||
-       OtaUartTransport_TakeMessage(&message))) {
+      (OtaCan_TakeMessage(&message) ||
+       OtaUart_TakeMessage(&message))) {
     prepared_here = false;
     if (message.type == OTA_MESSAGE_BEGIN && !OtaSession_IsActive() &&
         CommandManager_GetOwner() != COMMAND_SOURCE_OTA) {
       prepared_here = maintenance_port.acquire_ota_lock();
     }
     begin_allowed = CommandManager_GetOwner() == COMMAND_SOURCE_OTA;
-    if (message.type == OTA_MESSAGE_BEGIN && OtaUartTransport_IsEnabled() &&
+    if (message.type == OTA_MESSAGE_BEGIN && OtaUart_IsEnabled() &&
         message.source != OTA_SOURCE_UART) {
       begin_allowed = false;
     }
@@ -82,15 +82,15 @@ void ChassisMaintenance_Run(uint32_t now_ms)
   if (ota_response_waiting) {
     response_submitted =
         ota_response.source == OTA_SOURCE_CAN_FD
-            ? OtaCanTransport_SendResponse(&ota_response)
+            ? OtaCan_SendResponse(&ota_response)
             : ota_response.source == OTA_SOURCE_UART
-                  ? OtaUartTransport_SendResponse(&ota_response)
+                  ? OtaUart_SendResponse(&ota_response)
                   : false;
     if (response_submitted) {
       ota_response_waiting = false;
       OtaSession_ResponseSubmitted();
       if (ota_response.source == OTA_SOURCE_CAN_FD) {
-        OtaCanTransport_ResponseAccepted();
+        OtaCan_ResponseAccepted();
       }
     }
   }
@@ -100,22 +100,22 @@ void ChassisMaintenance_Run(uint32_t now_ms)
        OtaSession_GetState() == OTA_TRANSFER_FAILED) &&
       !OtaSession_IsActive()) {
     if (OtaSession_GetSource() == OTA_SOURCE_UART) {
-      OtaUartTransport_Disable();
+      OtaUart_Disable();
       OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
     }
     maintenance_port.release_ota_lock();
     ota_terminal_cleaned = true;
   }
 
-  if (OtaUartTransport_IsEnabled() &&
+  if (OtaUart_IsEnabled() &&
       OtaUartArmGuard_ShouldTimeout(
           &ota_uart_arm_guard, now_ms, OTA_UART_ARM_TIMEOUT_MS,
           OtaSession_IsActive(), ota_response_waiting)) {
-    OtaUartTransport_Disable();
+    OtaUart_Disable();
     OtaUartArmGuard_EndWait(&ota_uart_arm_guard);
     maintenance_port.release_ota_lock();
     ota_terminal_cleaned = true;
-    (void)UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_WARN, "ota",
+    (void)UartMessages_SendLog(now_ms, UART_MESSAGES_LOG_WARN, "ota",
                                "UART_ARM_TIMEOUT", "code=TIMEOUT");
   }
 }

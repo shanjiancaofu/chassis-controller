@@ -21,9 +21,9 @@
 #include "drivers/safety/emergency_stop.h"
 #include "drivers/time.h"
 #include "kernel/critical.h"
-#include "subsys/communication/ota_transport/ota_confirmation.h"
-#include "subsys/communication/ota_transport/ota_session.h"
-#include "subsys/communication/ota_transport/ota_uart_transport.h"
+#include "subsys/communication/ota/ota_confirmation.h"
+#include "subsys/communication/ota/ota_session.h"
+#include "subsys/communication/ota/ota_uart.h"
 
 #if MOTOR_CONTROL_OUTPUT_LIMIT > MOTOR_COMPARE_MAX
 #error "MOTOR_CONTROL_OUTPUT_LIMIT exceeds TIM8 compare range"
@@ -237,7 +237,7 @@ bool ControlRuntime_AcquireSelfTestLock(void) {
   if (IwdgSelfTest_IsResetRequested() ||
       QspiSelfTest_GetStatus() == QSPI_SELF_TEST_RUNNING ||
       OtaConfirmation_IsUsingQspi() || ParameterStorage_IsUsingQspi() ||
-      OtaSession_IsActive() || OtaUartTransport_IsEnabled() ||
+      OtaSession_IsActive() || OtaUart_IsEnabled() ||
       motor_test.running) {
     return false;
   }

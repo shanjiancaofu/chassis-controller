@@ -87,6 +87,10 @@ ota sha256=2f07e6b0d720010bccb06974d84e7fc2eeb95e88e8a50d654923f4377a86aba8
 
 0x101 和状态/心跳/故障 schema 尚未接入真实产品发送/控制；本批未烧录，不构成硬件 `PASS`。
 
+同日完成 communication 最终命名收口后再次执行 Debug/Release、14 项 C host、5 项架构检查和
+完整 `tools/test/run_all.py`；尺寸及 BIN/OTA SHA-256 与上表一致，证明目录和 API 重命名未改变
+Release payload。本批仍未烧录目标板。
+
 ### Application 内部第二次收敛（2026-08-24）
 
 产品域已从 `app/modules` 提升到 `app/`；Console、参数持久化、诊断报告和 telemetry 不再伪装为
@@ -1055,7 +1059,7 @@ Application 跳过所有文本诊断和遥测输出；`send_uart.py` 已同步�
 旧版准备行只用于主机工具从旧固件单向升级，不放宽新 Application 的输出格式。
 `test_command_manager.c` 重新通过宿主机 `-Werror` 回归，覆盖明确的 `ACCEPTED`、`NOT_OWNER` 和
 `INVALID_ARGUMENT` 提交结果。目标板首次验证发现 nano printf 不正确支持 `%lld`，导致编码器
-显示为 `ld` 并让后续变参错位；现已用 `UartProtocol_FormatSigned64()` 替代 Application 内全部
+显示为 `ld` 并让后续变参错位；现已用 `UartMessages_FormatSigned64()` 替代 Application 内全部
 `%lld`。新增 C 测试覆盖 `0`、`INT64_MAX`、`INT64_MIN` 和容量不足。
 
 执行：
@@ -1066,7 +1070,7 @@ cmake --build --preset arm-debug --clean-first --parallel
 cmake --preset arm-release
 cmake --build --preset arm-release --clean-first --parallel
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/ota -p 'test_*.py' -v
-gcc -std=c11 -Wall -Wextra -Werror -DUART_PROTOCOL_HOST_TEST ...
+gcc -std=c11 -Wall -Wextra -Werror -DUART_MESSAGES_HOST_TEST ...
 gcc -std=c11 -Wall -Wextra -Werror -DCOMMAND_MANAGER_HOST_TEST ...
 git diff --check
 ```

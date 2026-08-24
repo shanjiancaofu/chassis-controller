@@ -1,6 +1,6 @@
 add_library(chassis_app STATIC
   ../chassis_app.c
-  ../console/chassis_console_commands.c
+  ../console/commands.c
   ../diagnostics/system_status_collector.c
   ../maintenance/chassis_maintenance.c
   app_bootstrap.c

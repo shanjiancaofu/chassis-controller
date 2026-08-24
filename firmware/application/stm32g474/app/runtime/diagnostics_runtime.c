@@ -14,9 +14,9 @@
 #include "drivers/sensor/sr501.h"
 #include "drivers/time.h"
 #include "drivers/watchdog.h"
-#include "subsys/communication/can_transport/can_transport.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol.h"
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/can/can_transport.h"
+#include "subsys/communication/can/chassis_protocol.h"
+#include "subsys/communication/uart/uart_messages.h"
 
 static const struct device *imu;
 static uint32_t last_heartbeat_ms;
@@ -50,13 +50,13 @@ bool DiagnosticsRuntime_Init(const struct device *imu_device) {
     (void)snprintf(fields, sizeof(fields), "device=ICM45686 who_am_i=0x%02X",
                    (unsigned int)snapshot.who_am_i);
     if (snapshot.status == ICM45686_READY) {
-      (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO,
+      (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_INFO,
                                  "imu", "READY", fields);
     } else if (snapshot.status == ICM45686_NOT_FOUND) {
-      (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_WARN,
+      (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_WARN,
                                  "imu", "NOT_FOUND", fields);
     } else {
-      (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
+      (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_ERROR,
                                  "imu", "INIT_FAILED", fields);
     }
   }

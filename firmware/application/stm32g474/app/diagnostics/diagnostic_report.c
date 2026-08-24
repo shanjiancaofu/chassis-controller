@@ -6,9 +6,9 @@
 #include "drivers/reset/reset.h"
 #include "config/build_info.h"
 #include "config/storage_layout.h"
-#include "subsys/communication/ota_transport/ota_confirmation.h"
+#include "subsys/communication/ota/ota_confirmation.h"
 #include "app/diagnostics/telemetry.h"
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/uart/uart_messages.h"
 #include "app/diagnostics/system_status.h"
 #include "app/maintenance/self_test/qspi_self_test.h"
 
@@ -65,7 +65,7 @@ void DiagnosticReport_Run(uint32_t now_ms)
     return;
   }
   if (iwdg_report_requested &&
-      UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_WARN, "iwdg",
+      UartMessages_SendLog(now_ms, UART_MESSAGES_LOG_WARN, "iwdg",
                            "RESET_TEST_ARMED",
                            "state=ARMED timeout_ms=10000")) {
     iwdg_report_requested = false;
@@ -90,8 +90,8 @@ void DiagnosticReport_RequestIwdgArmed(void)
 static bool WriteSelfTestReport(uint32_t now_ms)
 {
   SystemStatusSnapshot status;
-  UartProtocolTelemetryLine lines[4];
-  const uint32_t sequence = UartProtocol_NextTelemetrySequence();
+  UartMessagesTelemetryLine lines[4];
+  const uint32_t sequence = UartMessages_NextTelemetrySequence();
   char left_encoder[24];
   char right_encoder[24];
 
@@ -258,15 +258,15 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       TelemetryModeText(status.telemetry_mode),
       status.board_health.iwdg_reset_test_passed ? 1U : 0U);
 
-  lines[0] = (UartProtocolTelemetryLine){.section = "system",
+  lines[0] = (UartMessagesTelemetryLine){.section = "system",
                                         .fields = system_fields};
-  lines[1] = (UartProtocolTelemetryLine){.section = "motor",
+  lines[1] = (UartMessagesTelemetryLine){.section = "motor",
                                         .fields = motor_fields};
-  lines[2] = (UartProtocolTelemetryLine){.section = "sensors",
+  lines[2] = (UartMessagesTelemetryLine){.section = "sensors",
                                         .fields = sensor_fields};
-  lines[3] = (UartProtocolTelemetryLine){.section = "communication",
+  lines[3] = (UartMessagesTelemetryLine){.section = "communication",
                                         .fields = communication_fields};
-  return UartProtocol_SendTelemetryBlock(now_ms, sequence, lines, 4U);
+  return UartMessages_SendTelemetryBlock(now_ms, sequence, lines, 4U);
 }
 
 static bool WriteQspiTestReport(uint32_t now_ms)
@@ -281,15 +281,15 @@ static bool WriteQspiTestReport(uint32_t now_ms)
   (void)snprintf(fields, sizeof(fields),
                  "state=%s address=0x%08lX size=1024", result,
                  (unsigned long)QSPI_TEST_START);
-  return UartProtocol_SendLog(
-      now_ms, status == QSPI_SELF_TEST_PASSED ? UART_PROTOCOL_LOG_INFO
-                                                 : UART_PROTOCOL_LOG_ERROR,
+  return UartMessages_SendLog(
+      now_ms, status == QSPI_SELF_TEST_PASSED ? UART_MESSAGES_LOG_INFO
+                                                 : UART_MESSAGES_LOG_ERROR,
       "qspi", "RW_TEST", fields);
 }
 
 static void FormatEncoderCount(char *buffer, size_t capacity, int64_t value)
 {
-  if (!UartProtocol_FormatSigned64(buffer, capacity, value)) {
+  if (!UartMessages_FormatSigned64(buffer, capacity, value)) {
     if (buffer != NULL && capacity > 1U) {
       buffer[0] = '0';
       buffer[1] = '\0';

@@ -1,4 +1,4 @@
-#include "subsys/communication/ota_transport/ota_uart_transport.h"
+#include "subsys/communication/ota/ota_uart.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -22,7 +22,7 @@ static void ResetParser(void);
 static uint32_t ReadU32(const uint8_t *data);
 static void WriteU32(uint8_t *data, uint32_t value);
 
-void OtaUartTransport_Init(void)
+void OtaUart_Init(void)
 {
   enabled = false;
   message_pending = false;
@@ -31,14 +31,14 @@ void OtaUartTransport_Init(void)
   ResetParser();
 }
 
-void OtaUartTransport_Enable(void)
+void OtaUart_Enable(void)
 {
   enabled = true;
   message_pending = false;
   ResetParser();
 }
 
-void OtaUartTransport_Disable(void)
+void OtaUart_Disable(void)
 {
   enabled = false;
   message_pending = false;
@@ -46,7 +46,7 @@ void OtaUartTransport_Disable(void)
   response_tx_token = 0U;
 }
 
-void OtaUartTransport_Run(void)
+void OtaUart_Run(void)
 {
   uint8_t bytes[UART_OTA_READ_CHUNK_SIZE];
   size_t count;
@@ -63,12 +63,12 @@ void OtaUartTransport_Run(void)
   } while (count == sizeof(bytes));
 }
 
-bool OtaUartTransport_IsEnabled(void)
+bool OtaUart_IsEnabled(void)
 {
   return enabled;
 }
 
-bool OtaUartTransport_TakeMessage(OtaMessage *message)
+bool OtaUart_TakeMessage(OtaMessage *message)
 {
   if (message == NULL || !message_pending) {
     return false;
@@ -78,7 +78,7 @@ bool OtaUartTransport_TakeMessage(OtaMessage *message)
   return true;
 }
 
-bool OtaUartTransport_SendResponse(const OtaResponse *response)
+bool OtaUart_SendResponse(const OtaResponse *response)
 {
   uint8_t frame[OTA_UART_HEADER_SIZE + 2U + OTA_UART_CRC_SIZE] = {0};
   uint32_t crc;
@@ -115,12 +115,12 @@ bool OtaUartTransport_SendResponse(const OtaResponse *response)
   return false;
 }
 
-bool OtaUartTransport_IsTxIdle(void)
+bool OtaUart_IsTxIdle(void)
 {
   return uart_is_tx_idle();
 }
 
-uint32_t OtaUartTransport_GetErrorCount(void)
+uint32_t OtaUart_GetErrorCount(void)
 {
   return error_count;
 }

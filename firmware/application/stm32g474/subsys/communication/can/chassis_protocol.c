@@ -1,9 +1,9 @@
-#include "subsys/communication/chassis_protocol/chassis_protocol.h"
+#include "subsys/communication/can/chassis_protocol.h"
 
 #include <stddef.h>
 #include <string.h>
 
-#include "subsys/communication/chassis_protocol/chassis_protocol_ids.h"
+#include "subsys/communication/can/chassis_protocol_ids.h"
 
 #define HANDSHAKE_SIZE 8U
 #define RESPONSE_RETRY_LIMIT 3U

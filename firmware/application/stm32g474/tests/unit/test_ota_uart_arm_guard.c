@@ -2,7 +2,7 @@
 
 #include <assert.h>
 
-#include "subsys/communication/ota_transport/ota_uart_arm_guard.h"
+#include "subsys/communication/ota/ota_uart_arm_guard.h"
 
 int main(void)
 {

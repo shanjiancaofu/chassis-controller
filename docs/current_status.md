@@ -53,7 +53,7 @@
   编码器异常保护和欠压保护代码已实现，带负载阶跃、异常脉冲和欠压注入仍待实测；SR501
   高电平闭环继续标记为 `NOT VERIFIED`，但不阻塞后续软件开发。`0.12.0` 已完成 UART OTA confirmed，统一采样时间戳和差速轮式里程计
   已运行；`0.14.0` 已完成 UART OTA confirmed，新版 LCD UI 视觉、文字排版和四页切换已人工确认正常。
-- CAN FD 的机器可读 schema、纯 `chassis_protocol`、0x100/开发握手迁移、0x101 CRC16 codec、
+- CAN FD 的机器可读 schema、纯 `subsys/communication/can/chassis_protocol`、0x100/开发握手迁移、0x101 CRC16 codec、
   14 项 C 主机测试和 4 场景配置矩阵已完成；0x101 和状态/心跳/故障帧尚未接入产品运行时。
 
 ## 当前实现
@@ -126,7 +126,7 @@
   OTA 解码全部在 `service_task` 执行；communication 公共接口不再暴露 HAL。RTC、单调时间、LED、
   E-STOP、IWDG、SPI/GPIO 回调和复位已通过 drivers/Core 边界访问；TIM6 启动由 Core 回调注入 RTOS。
   IMU SPI/FIFO/DMA 保留在 `drivers/sensor/icm45686_stm32.c`，Mahony/Kalman 状态迁入 `app/sensors/imu_orientation`；Console
-  命令执行和 OTA 维护协调分别位于 `app/console/chassis_console_commands` 与 `app/maintenance/chassis_maintenance`，
+  命令执行和 OTA 维护协调分别位于 `app/console/commands` 与 `app/maintenance/chassis_maintenance`，
   LCD 状态 presenter 迁入 `app/ui/lcd`。
 - motor/encoder 已完成首批 Device Model 迁移：`drive0`、`left_encoder`、`right_encoder` 由
   `DEVICE_DT_DEFINE()` 注册，WheelController 通过 generic motor API 装配，编码器按左右 device

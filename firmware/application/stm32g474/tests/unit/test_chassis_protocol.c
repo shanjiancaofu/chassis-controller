@@ -3,8 +3,8 @@
 #include <assert.h>
 #include <string.h>
 
-#include "subsys/communication/chassis_protocol/chassis_protocol.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol_ids.h"
+#include "subsys/communication/can/chassis_protocol.h"
+#include "subsys/communication/can/chassis_protocol_ids.h"
 
 static struct can_frame sent_frame;
 static uint32_t send_count;

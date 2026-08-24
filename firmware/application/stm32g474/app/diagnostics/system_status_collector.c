@@ -7,12 +7,12 @@
 #include "drivers/rtc.h"
 #include "devicetree.h"
 #include "drivers/sensor/sr501.h"
-#include "subsys/communication/can_transport/can_transport.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol.h"
-#include "subsys/communication/ota_transport/ota_can_transport.h"
-#include "subsys/communication/ota_transport/ota_confirmation.h"
-#include "subsys/communication/ota_transport/ota_session.h"
-#include "subsys/communication/ota_transport/ota_uart_transport.h"
+#include "subsys/communication/can/can_transport.h"
+#include "subsys/communication/can/chassis_protocol.h"
+#include "subsys/communication/ota/ota_can.h"
+#include "subsys/communication/ota/ota_confirmation.h"
+#include "subsys/communication/ota/ota_session.h"
+#include "subsys/communication/ota/ota_uart.h"
 #include "app/diagnostics/telemetry.h"
 #include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
@@ -222,8 +222,8 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   status.ota_source = (uint32_t)OtaSession_GetSource();
   status.ota_state = (uint32_t)OtaSession_GetState();
   status.ota_next_offset = OtaSession_GetNextOffset();
-  status.uart_error_count = OtaUartTransport_GetErrorCount();
-  status.can_drop_count = OtaCanTransport_GetDroppedCount();
+  status.uart_error_count = OtaUart_GetErrorCount();
+  status.can_drop_count = OtaCan_GetDroppedCount();
   status.telemetry_mode = (uint32_t)Telemetry_GetMode();
 
   kernel_critical_enter();

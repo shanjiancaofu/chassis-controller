@@ -1,5 +1,5 @@
-#ifndef CHASSIS_CONSOLE_COMMANDS_H
-#define CHASSIS_CONSOLE_COMMANDS_H
+#ifndef CONSOLE_COMMANDS_H
+#define CONSOLE_COMMANDS_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -19,10 +19,10 @@ typedef struct {
   bool (*acquire_self_test_lock)(void);
   bool (*start_motor_self_test)(MotorSelfTestAction action,
                                   uint32_t now_ms);
-} ChassisConsoleCommandPort;
+} ConsoleCommandPort;
 
-bool ChassisConsoleCommands_Init(const ChassisConsoleCommandPort *port);
-void ChassisConsoleCommands_Process(const ConsoleCommand *command,
+bool ConsoleCommands_Init(const ConsoleCommandPort *port);
+void ConsoleCommands_Process(const ConsoleCommand *command,
                                     uint32_t now_ms);
 
 #endif

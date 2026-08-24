@@ -1,10 +1,10 @@
-#include "subsys/communication/ota_transport/ota_session.h"
+#include "subsys/communication/ota/ota_session.h"
 
 #include <stddef.h>
 #include <string.h>
 
 #include "drivers/flash.h"
-#include "subsys/communication/ota_transport/ota_metadata.h"
+#include "subsys/communication/ota/ota_metadata.h"
 #include "lib/crc/crc32.h"
 #include "config/storage_layout.h"
 #include "../../../../../shared/firmware_image.h"

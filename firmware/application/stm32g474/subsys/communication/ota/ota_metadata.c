@@ -1,4 +1,4 @@
-#include "subsys/communication/ota_transport/ota_metadata.h"
+#include "subsys/communication/ota/ota_metadata.h"
 
 #include <stddef.h>
 

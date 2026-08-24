@@ -1,4 +1,4 @@
-#include "subsys/communication/ota_transport/ota_can_transport.h"
+#include "subsys/communication/ota/ota_can.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -23,7 +23,7 @@ static uint32_t ReadU32(const uint8_t *data);
 static void WriteU32(uint8_t *data, uint32_t value);
 static void PollTxEvent(void);
 
-void OtaCanTransport_Init(const struct device *device)
+void OtaCan_Init(const struct device *device)
 {
   can_device = device;
   message_pending = false;
@@ -37,7 +37,7 @@ void OtaCanTransport_Init(const struct device *device)
   pending_message = (OtaMessage){0};
 }
 
-bool OtaCanTransport_OnRxFrame(const struct can_frame *frame)
+bool OtaCan_OnRxFrame(const struct can_frame *frame)
 {
   OtaMessage message = {0};
   uint8_t index;
@@ -73,7 +73,7 @@ bool OtaCanTransport_OnRxFrame(const struct can_frame *frame)
   return true;
 }
 
-bool OtaCanTransport_TakeMessage(OtaMessage *message)
+bool OtaCan_TakeMessage(OtaMessage *message)
 {
   if (message == NULL) {
     return false;
@@ -86,7 +86,7 @@ bool OtaCanTransport_TakeMessage(OtaMessage *message)
   return true;
 }
 
-bool OtaCanTransport_SendResponse(const OtaResponse *response)
+bool OtaCan_SendResponse(const OtaResponse *response)
 {
   struct can_frame frame = {
       .id = OTA_CAN_RESPONSE_ID,
@@ -123,19 +123,19 @@ bool OtaCanTransport_SendResponse(const OtaResponse *response)
   return false;
 }
 
-void OtaCanTransport_ResponseAccepted(void)
+void OtaCan_ResponseAccepted(void)
 {
   response_confirmation_ready = false;
 }
 
-bool OtaCanTransport_IsTxIdle(void)
+bool OtaCan_IsTxIdle(void)
 {
   PollTxEvent();
   return last_response_confirmed && !response_in_progress &&
          can_is_tx_idle(can_device);
 }
 
-void OtaCanTransport_Invalidate(void)
+void OtaCan_Invalidate(void)
 {
   message_pending = false;
   response_in_progress = false;
@@ -143,7 +143,7 @@ void OtaCanTransport_Invalidate(void)
   last_response_confirmed = false;
 }
 
-uint32_t OtaCanTransport_GetDroppedCount(void)
+uint32_t OtaCan_GetDroppedCount(void)
 {
   return __atomic_load_n(&dropped_count, __ATOMIC_RELAXED);
 }

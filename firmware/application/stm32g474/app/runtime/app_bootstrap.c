@@ -5,7 +5,7 @@
 #include "app/chassis/command_manager.h"
 #include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
-#include "app/console/chassis_console_commands.h"
+#include "app/console/commands.h"
 #include "app/console/console.h"
 #include "app/diagnostics/board_health.h"
 #include "app/diagnostics/diagnostic_report.h"
@@ -34,14 +34,14 @@
 #include "drivers/time.h"
 #include "drivers/uart.h"
 #include "drivers/watchdog.h"
-#include "subsys/communication/can_transport/can_transport.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol_ids.h"
-#include "subsys/communication/ota_transport/ota_can_transport.h"
-#include "subsys/communication/ota_transport/ota_confirmation.h"
-#include "subsys/communication/ota_transport/ota_session.h"
-#include "subsys/communication/ota_transport/ota_uart_transport.h"
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/can/can_transport.h"
+#include "subsys/communication/can/chassis_protocol.h"
+#include "subsys/communication/can/chassis_protocol_ids.h"
+#include "subsys/communication/ota/ota_can.h"
+#include "subsys/communication/ota/ota_confirmation.h"
+#include "subsys/communication/ota/ota_session.h"
+#include "subsys/communication/ota/ota_uart.h"
+#include "subsys/communication/uart/uart_messages.h"
 
 static const OdometryConfig odometry_config = {
     .encoder_counts_per_revolution = MOTOR_ENCODER_COUNTS_PER_REVOLUTION,
@@ -62,7 +62,7 @@ static const ChassisMaintenancePort maintenance_port = {
     .release_ota_lock = ControlRuntime_ReleaseOtaLock,
 };
 
-static const ChassisConsoleCommandPort console_command_port = {
+static const ConsoleCommandPort console_command_port = {
     .submit_motion_command = ControlRuntime_SubmitMotionCommand,
     .start_control = ControlRuntime_Start,
     .stop_control = ControlRuntime_Stop,
@@ -82,28 +82,28 @@ static bool InitializeCommunication(const struct device *can_device,
   if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_uart)))) {
     return false;
   }
-  UartProtocol_Init();
+  UartMessages_Init();
   Console_Init();
   Telemetry_Init();
-  (void)UartProtocol_SendLog(now_ms, UART_PROTOCOL_LOG_INFO, "boot", "STARTED",
+  (void)UartMessages_SendLog(now_ms, UART_MESSAGES_LOG_INFO, "boot", "STARTED",
                              "fw=" CHASSIS_FIRMWARE_VERSION
                              " build=" CHASSIS_FIRMWARE_BUILD_STRING);
   if (CanTransport_Init(can_device, accepted_filters,
                         sizeof(accepted_filters) /
                             sizeof(accepted_filters[0])) < 0 ||
       !ChassisProtocol_Init(&chassis_protocol_port)) {
-    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
+    (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_ERROR,
                                "board", "FDCAN_INIT_FAILED",
                                "code=UNAVAILABLE");
     return false;
   }
-  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
+  (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_INFO, "board",
                              "FDCAN_READY", NULL);
-  OtaCanTransport_Init(can_device);
-  OtaUartTransport_Init();
+  OtaCan_Init(can_device);
+  OtaUart_Init();
   OtaSession_Init();
   return ChassisMaintenance_Init(&maintenance_port) &&
-         ChassisConsoleCommands_Init(&console_command_port);
+         ConsoleCommands_Init(&console_command_port);
 }
 
 static bool InitializeHardware(const struct device *drive,
@@ -111,26 +111,26 @@ static bool InitializeHardware(const struct device *drive,
                                const struct device *right_encoder,
                                const struct device *imu) {
   if (!device_is_ready(drive) || motor_start(drive) < 0) {
-    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
+    (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_ERROR,
                                "motor", "INIT_FAILED", "code=UNAVAILABLE");
     return false;
   }
   if (!device_is_ready(left_encoder) || !device_is_ready(right_encoder) ||
       encoder_start(left_encoder) < 0 || encoder_start(right_encoder) < 0 ||
       !device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_power)))) {
-    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
+    (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_ERROR,
                                "board", "MOTION_IO_INIT_FAILED",
                                "code=UNAVAILABLE");
     return false;
   }
-  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "board",
+  (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_INFO, "board",
                              "MOTION_IO_READY", NULL);
   if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons))) ||
       !device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_estop))) ||
       !device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_watchdog)))) {
     return false;
   }
-  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "sr501",
+  (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_INFO, "sr501",
                              "WARMING_UP", "warmup_ms=60000");
   return DiagnosticsRuntime_Init(imu) && DisplayRuntime_Init();
 }
@@ -172,21 +172,21 @@ static bool InitializeProductModules(void) {
                    (unsigned int)initial_parameters.right_pid.kp,
                    (unsigned int)initial_parameters.right_pid.ki,
                    (unsigned int)initial_parameters.right_pid.kd);
-    (void)UartProtocol_SendLog(
+    (void)UartMessages_SendLog(
         time_uptime_ms(),
         parameter_storage.status == PARAMETER_STORAGE_ERROR
-            ? UART_PROTOCOL_LOG_ERROR
-            : UART_PROTOCOL_LOG_INFO,
+            ? UART_MESSAGES_LOG_ERROR
+            : UART_MESSAGES_LOG_INFO,
         "parameters", parameters_loaded ? "LOADED" : "DEFAULTS", fields);
   }
   if (!Odometry_Init(&odometry_config)) {
-    (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_ERROR,
+    (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_ERROR,
                                "odometry", "INIT_FAILED",
                                "code=INVALID_GEOMETRY");
     return false;
   }
-  (void)UartProtocol_SendLog(
-      time_uptime_ms(), UART_PROTOCOL_LOG_INFO, "odometry", "READY",
+  (void)UartMessages_SendLog(
+      time_uptime_ms(), UART_MESSAGES_LOG_INFO, "odometry", "READY",
       "counts_per_rev=1320 wheel_diameter_mm=65 track_width_mm=220");
   SystemStatus_Init();
   OtaConfirmation_Init();
@@ -216,7 +216,7 @@ bool AppBootstrap_Init(void) {
       !InitializeProductModules()) {
     return false;
   }
-  (void)UartProtocol_SendLog(time_uptime_ms(), UART_PROTOCOL_LOG_INFO,
+  (void)UartMessages_SendLog(time_uptime_ms(), UART_MESSAGES_LOG_INFO,
                              "application", "READY", "tasks=4");
   if (SafetyManager_IsEmergencyStopLatched()) {
     WheelController_EmergencyStop();

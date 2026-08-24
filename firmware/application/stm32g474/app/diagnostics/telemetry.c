@@ -7,7 +7,7 @@
 #include "drivers/uart.h"
 #include "config/control_config.h"
 #include "config/protocol_config.h"
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/uart/uart_messages.h"
 
 static TelemetryMode telemetry_mode;
 static uint32_t last_transmit_ms;
@@ -87,9 +87,9 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
         (long)snapshot->supply_mv, (unsigned long)snapshot->control_state,
         (unsigned long)snapshot->fault_flags);
   } else {
-    (void)UartProtocol_FormatSigned64(left_total, sizeof(left_total),
+    (void)UartMessages_FormatSigned64(left_total, sizeof(left_total),
                                       snapshot->left_total);
-    (void)UartProtocol_FormatSigned64(right_total, sizeof(right_total),
+    (void)UartMessages_FormatSigned64(right_total, sizeof(right_total),
                                       snapshot->right_total);
     length = snprintf(
         transmit_buffer, sizeof(transmit_buffer),
@@ -124,8 +124,8 @@ void Telemetry_Run(uint32_t now_ms, const TelemetrySnapshot *snapshot)
       last_transmit_ms = now_ms;
     }
   } else if (length > 0 && (size_t)length < sizeof(transmit_buffer)) {
-    sequence = UartProtocol_NextTelemetrySequence();
-    if (UartProtocol_SendTelemetry(now_ms, sequence, "motor",
+    sequence = UartMessages_NextTelemetrySequence();
+    if (UartMessages_SendTelemetry(now_ms, sequence, "motor",
                                    transmit_buffer)) {
       last_transmit_ms = now_ms;
     }

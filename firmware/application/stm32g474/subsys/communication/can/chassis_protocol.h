@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "drivers/can.h"
-#include "subsys/communication/chassis_protocol/chassis_protocol_types.h"
+#include "subsys/communication/can/chassis_protocol_types.h"
 
 #define CHASSIS_PROTOCOL_SCHEMA_VERSION 1U
 #define CHASSIS_PROTOCOL_WHEEL_RAW_SIZE 8U

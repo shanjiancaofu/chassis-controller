@@ -1,4 +1,4 @@
-#include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/can/can_transport.h"
 
 #include <errno.h>
 

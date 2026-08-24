@@ -1,10 +1,10 @@
-#include "subsys/communication/ota_transport/ota_confirmation.h"
+#include "subsys/communication/ota/ota_confirmation.h"
 
 #include <stddef.h>
 #include <string.h>
 
 #include "drivers/flash.h"
-#include "subsys/communication/ota_transport/ota_metadata.h"
+#include "subsys/communication/ota/ota_metadata.h"
 #include "config/storage_layout.h"
 #include "../../../../../shared/ota_metadata.h"
 

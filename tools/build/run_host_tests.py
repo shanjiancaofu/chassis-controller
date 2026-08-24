@@ -19,13 +19,13 @@ TESTS = {
     ),
     "can_transport": (
         "CAN_TRANSPORT_HOST_TEST",
-        ["tests/unit/test_can_transport.c", "subsys/communication/can_transport/can_transport.c",
+        ["tests/unit/test_can_transport.c", "subsys/communication/can/can_transport.c",
          "drivers/can/can_common.c"],
     ),
     "chassis_protocol": (
         "CHASSIS_PROTOCOL_HOST_TEST",
         ["tests/unit/test_chassis_protocol.c",
-         "subsys/communication/chassis_protocol/chassis_protocol.c"],
+         "subsys/communication/can/chassis_protocol.c"],
     ),
     "command_manager": (
         "COMMAND_MANAGER_HOST_TEST",
@@ -46,7 +46,7 @@ TESTS = {
     ),
     "ota_metadata": (
         "OTA_METADATA_HOST_TEST",
-        ["tests/unit/test_ota_metadata.c", "subsys/communication/ota_transport/ota_metadata.c",
+        ["tests/unit/test_ota_metadata.c", "subsys/communication/ota/ota_metadata.c",
          "lib/crc/crc32.c"],
     ),
     "ota_uart_arm_guard": (
@@ -58,9 +58,10 @@ TESTS = {
         ["tests/unit/test_parameter_record.c", "app/parameters/parameter_record.c",
          "lib/crc/crc32.c"],
     ),
-    "uart_protocol": (
-        "UART_PROTOCOL_HOST_TEST",
-        ["tests/unit/test_uart_protocol.c", "subsys/communication/uart_protocol/uart_protocol.c"],
+    "uart_messages": (
+        "UART_MESSAGES_HOST_TEST",
+        ["tests/unit/test_uart_messages.c",
+         "subsys/communication/uart/uart_messages.c"],
     ),
     "wheel_controller": (
         "WHEEL_CONTROLLER_HOST_TEST",

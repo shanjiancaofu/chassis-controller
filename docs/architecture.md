@@ -77,10 +77,10 @@ chassis-controller/
 │  │     │  ├─ imu_fusion/
 │  │     │  └─ pid/
 │  │     ├─ subsys/                  # 平台服务
-│  │     │  ├─ communication/
-│  │     │  │  ├─ can_transport/
-│  │     │  │  ├─ ota_transport/
-│  │     │  │  └─ uart_protocol/
+│  │     │  └─ communication/
+│  │     │     ├─ can/               # CAN transport + chassis protocol
+│  │     │     ├─ uart/              # [RSP]/[LOG]/[TEL] message emitter
+│  │     │     └─ ota/               # OTA session + CAN/UART adapters
 │  │     ├─ kernel/                  # Device/Init 和 FreeRTOS runtime
 │  │     │  ├─ device.c
 │  │     │  ├─ init.c
@@ -135,9 +135,11 @@ chassis-controller/
 │           └─ unit/
 │
 ├─ protocol/
+│  ├─ README.md
+│  ├─ chassis_canfd.yaml
 │  ├─ canfd_protocol.md
 │  ├─ ota_canfd_protocol.md
-│  └─ schema/
+│  └─ uart_message_protocol.md
 ├─ docs/
 │  ├─ architecture/
 │  ├─ requirements/
@@ -194,10 +196,11 @@ SPI DMA、片选和背光，不持有页面、字体或产品状态 DTO。
 
 ### `subsys/communication`
 
-处理总线帧、字段校验、序号、握手和链路状态。当前 `ota_transport/` 已包含
-UART/CAN FD 收发适配、统一 OTA 会话、QSPI 分块写入、元数据提交和 Application
-试运行确认状态机。communication 公共接口不暴露 HAL 类型，CAN 解码只在任务上下文执行。线协议以
-`protocol/canfd_protocol.md` 和 `protocol/ota_canfd_protocol.md` 为准。
+保存固件内可复用的通信实现，并按通信职责分为三个稳定边界：`can/` 保存 CAN 帧收发、
+错误恢复和 chassis 报文编解码；`uart/` 保存 `[RSP]`、`[LOG]`、`[TEL]` 消息输出；
+`ota/` 保存跨 CAN/UART 的 OTA 适配、统一会话、QSPI 分块写入、元数据提交和 Application
+试运行确认状态机。communication 公共接口不暴露 HAL 类型，CAN 解码只在任务上下文执行。
+线协议以仓库顶层 `protocol/` 中的 schema 和协议文档为准。
 
 除通信外，当前没有为了目录名而保留空泛的 subsystem。Console、诊断、遥测和参数存储与
 底盘 DTO/命令强绑定，归入对应 `app` 产品域。
@@ -247,7 +250,7 @@ USART1 轮询输出启动诊断，不依赖 CubeMX UART 初始化。
 
 ### `protocol` 与 `docs`
 
-`protocol` 保存线上兼容契约，`docs` 保存架构、路线、硬件、验证和升级设计。
+`protocol` 保存跨 STM32、Jetson 和主机工具的线上兼容契约，`docs` 保存架构、路线、硬件、验证和升级设计。
 当前文档按唯一职责平铺；同类文档形成实际集合后，再迁入最终分类目录。
 
 `protocol/` 保持仓库顶层，因为 CAN FD 和 OTA 传输协议同时约束 STM32、

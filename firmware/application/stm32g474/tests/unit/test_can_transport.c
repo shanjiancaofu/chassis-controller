@@ -1,5 +1,5 @@
 #ifdef CAN_TRANSPORT_HOST_TEST
-#include "subsys/communication/can_transport/can_transport.h"
+#include "subsys/communication/can/can_transport.h"
 #include <assert.h>
 #include <errno.h>
 static struct can_frame queued_frame;

@@ -1,4 +1,4 @@
-#include "subsys/communication/uart_protocol/uart_protocol.h"
+#include "subsys/communication/uart/uart_messages.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -9,7 +9,7 @@
 static uint32_t next_telemetry_sequence;
 static char message_buffer[UART_MAX_WRITE_SIZE];
 
-bool UartProtocol_FormatSigned64(char *buffer, size_t capacity,
+bool UartMessages_FormatSigned64(char *buffer, size_t capacity,
                                 int64_t value)
 {
   char reversed[20];
@@ -54,16 +54,16 @@ static bool SendFormattedMessage(const char *format, ...)
          uart_write(message_buffer, (size_t)length);
 }
 
-static const char *LogLevelText(UartProtocolLogLevel level)
+static const char *LogLevelText(UartMessagesLogLevel level)
 {
   switch (level) {
-    case UART_PROTOCOL_LOG_DEBUG:
+    case UART_MESSAGES_LOG_DEBUG:
       return "DEBUG";
-    case UART_PROTOCOL_LOG_INFO:
+    case UART_MESSAGES_LOG_INFO:
       return "INFO";
-    case UART_PROTOCOL_LOG_WARN:
+    case UART_MESSAGES_LOG_WARN:
       return "WARN";
-    case UART_PROTOCOL_LOG_ERROR:
+    case UART_MESSAGES_LOG_ERROR:
       return "ERROR";
     default:
       return "ERROR";
@@ -81,7 +81,7 @@ static const char *OptionalFieldsText(const char *fields)
 }
 
 static bool FormatTelemetryMessage(uint32_t now_ms, uint32_t sequence,
-                                   const UartProtocolTelemetryLine *line,
+                                   const UartMessagesTelemetryLine *line,
                                    size_t *length)
 {
   int formatted_length;
@@ -104,13 +104,13 @@ static bool FormatTelemetryMessage(uint32_t now_ms, uint32_t sequence,
   return true;
 }
 
-void UartProtocol_Init(void)
+void UartMessages_Init(void)
 {
   next_telemetry_sequence = 0U;
   (void)memset(message_buffer, 0, sizeof(message_buffer));
 }
 
-uint32_t UartProtocol_NextTelemetrySequence(void)
+uint32_t UartMessages_NextTelemetrySequence(void)
 {
   const uint32_t sequence = next_telemetry_sequence;
 
@@ -118,7 +118,7 @@ uint32_t UartProtocol_NextTelemetrySequence(void)
   return sequence;
 }
 
-bool UartProtocol_SendResponse(uint32_t now_ms, const char *command,
+bool UartMessages_SendResponse(uint32_t now_ms, const char *command,
                                bool success, const char *fields)
 {
   if (command == NULL || command[0] == '\0') {
@@ -131,7 +131,7 @@ bool UartProtocol_SendResponse(uint32_t now_ms, const char *command,
       OptionalFieldsSeparator(fields), OptionalFieldsText(fields));
 }
 
-bool UartProtocol_SendLog(uint32_t now_ms, UartProtocolLogLevel level,
+bool UartMessages_SendLog(uint32_t now_ms, UartMessagesLogLevel level,
                           const char *module, const char *event,
                           const char *fields)
 {
@@ -146,18 +146,18 @@ bool UartProtocol_SendLog(uint32_t now_ms, UartProtocolLogLevel level,
       OptionalFieldsSeparator(fields), OptionalFieldsText(fields));
 }
 
-bool UartProtocol_SendTelemetry(uint32_t now_ms, uint32_t sequence,
+bool UartMessages_SendTelemetry(uint32_t now_ms, uint32_t sequence,
                                 const char *section, const char *fields)
 {
-  const UartProtocolTelemetryLine line = {.section = section,
+  const UartMessagesTelemetryLine line = {.section = section,
                                           .fields = fields};
 
-  return UartProtocol_SendTelemetryBlock(now_ms, sequence, &line, 1U);
+  return UartMessages_SendTelemetryBlock(now_ms, sequence, &line, 1U);
 }
 
-bool UartProtocol_SendTelemetryBlock(
+bool UartMessages_SendTelemetryBlock(
     uint32_t now_ms, uint32_t sequence,
-    const UartProtocolTelemetryLine *lines, size_t line_count)
+    const UartMessagesTelemetryLine *lines, size_t line_count)
 {
   size_t length;
   size_t index;
