@@ -24,14 +24,15 @@
   `chassis_app.c` 从 935 行缩为 57 行，五类运行时位于 `app/runtime/`。
 - `0.15.0 build12` 已完成 UART OTA、普通复位和启动静态状态回归：四任务 RUNNING，ADC、QSPI、
   IMU、LCD 和 GPIO 正常，控制为 STOPPED、fault 为 0，四路 PWM/target/speed 为零。
-- Application 当前候选源码：`1.0.0 build1`；板上 confirmed 镜像：`0.15.0 build12`。
+- Application 当前源码和板上 confirmed 镜像：`1.0.0 build1`。
 - Bootloader：`0.1.0 build22`。
 - `0.15.0 build12` 是最后一个 pre-1.0 confirmed 基线；`1.0.0 build1` 是架构、Device/Init、
   配置系统、CAN FD V1 和 STM32 GPIO/callback 修复收口后的首个正式候选。版本提升不改 CAN、
   UART、OTA 或参数存储线协议。
-- `1.0.0 build1` 已通过全量 host/schema/config matrix/LCD preview、Debug/Release clean build 和
-  OTA 打包。Release payload 为 `111016` 字节、CRC32 `0x781EE3F3`，OTA 包为 `111080` 字节；
-  尚未烧录，目标板状态为 `NOT VERIFIED`。
+- `1.0.0 build1` 已通过全量 host/schema/config matrix/LCD preview、Debug/Release clean build、
+  OTA 打包和真实 UART OTA。普通 ST-Link 复位后仍启动 1.0.0，稳定状态为 STOPPED、fault=0、
+  四任务 RUNNING、PWM/target/speed 全零，ADC、IMU、LCD、QSPI、GPIO 和 SR501 READY；Release
+  payload 为 `111016` 字节、CRC32 `0x781EE3F3`，OTA 包为 `111080` 字节。
 - b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.10.0`、`0.11.0`
   的既有验证记录继续保留；`0.11.1`、`0.12.0`、`0.13.0` 和 `0.14.0` 的历史证据不被新版本覆盖。
 - 最新 Release `build/arm-release/app-v0.12.0-b1.ota` 的 payload 为 `98088` 字节、CRC32 为
@@ -45,8 +46,8 @@
 - build12 已修复 SPI HAL callback 对象未进入 ELF、ADC 成功值映射、DTS pin 编号到 STM32 HAL
   GPIO mask 的转换，以及急停 ISR/任务确认和机械反跳安全处理。PD2 保持内部上拉、低有效、
   下降沿触发；按下接通 GND，不按时断开。
-- build12 已实测按下急停进入 `EMERGENCY_STOP/fault=0x2` 且 PWM 为零；“持续按住后松开仍保持
-  锁存”这一最终反跳场景因测试提前结束，仍为 `NOT VERIFIED`，不得写成硬件通过。
+- 1.0.0 已实测持续按住急停后进入 `EMERGENCY_STOP/fault=0x2` 且左右 target/speed/PWM 全零；
+  松开并等待 2 秒后状态和零输出保持不变，机械反跳不会自动解除锁存，记为 `HARDWARE PASS`。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
   目标板条件。上述硬件项目继续按机会单独验收，未实测内容保持 `NOT VERIFIED`。SR501 代码、
@@ -192,6 +193,9 @@
   callback、ADC valid 与安全输入修复后的稳定状态为四任务 RUNNING、`control=STOPPED`、
   `fault=0`、PWM/target/speed 全零，ADC、IMU、LCD、QSPI 和 GPIO 正常。最终急停松开锁存场景
   未执行，保持 `NOT VERIFIED`。
+- 2026-08-25 `1.0.0 build1` 完成 UART OTA confirmed、普通复位和稳定外设回归；持续按住 PD2
+  后进入 `EMERGENCY_STOP/fault=0x2`，松开 2 秒后仍保持锁存和左右零 PWM，最终反跳安全场景
+  已取得目标板证据。
 - ICM45686 实测 `WHO_AM_I=0xE9`。修正端序配置后，调试快照连续 588 帧无解析、timestamp、
   DMA 或传输错误，采样周期为 `10 ms`；200 个静止样本后零偏标定、Mahony 和 Kalman 均有效。
   普通复位后的 UART `status` 再次报告 224 帧、`imu_fifo_errors=0`、
@@ -288,8 +292,8 @@
 - confirmed `0.12.0 build1` 真实断电重上电和四路 PWM 电气零输出：`NOT VERIFIED`；此前完成普通
   复位和 UART OTA 确认，未执行断电测试。
 - `0.14.0 build1` LCD 新布局已上板且驱动报告 `READY`；状态颜色、文字排版和四页切换已人工目视确认正常。
-- `0.15.0 build12` 已完成 UART OTA、普通复位、四任务、静态零 PWM 和外设启动复核；LCD 动态
-  页面目视细节、真实 CAN FD V1、电机闭环以及最终急停松开锁存场景仍按各自条目验证。
+- `1.0.0 build1` 已完成 UART OTA、普通复位、四任务、静态零 PWM、外设启动和急停松开保持锁存
+  复核；LCD 动态页面目视细节、真实 CAN FD V1 和电机闭环仍按各自条目验证。
 - `0.12.0 build1` 的里程计方向、直线距离、原地旋转角度、时间对齐误差和 LCD 里程计动态显示
   尚未验证；当前只确认固件启动快照中的静态零位输出。
 - CAN FD OTA：`NOT VERIFIED`，纳入当前 UART/CAN OTA 同批验收。

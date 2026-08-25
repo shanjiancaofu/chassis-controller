@@ -124,6 +124,6 @@ CubeIDE 当前会更新 ELF，但不保证同步重建 BIN。打包或组合镜�
 `archive/` 下的文件不属于发布产物。
 
 `0.15.0 build12` 是最后一个 pre-1.0 confirmed 镜像：payload 为 111016 字节、CRC32
-`0x46CA92E2`，`app-v0.15.0-b12.ota` 为 111080 字节。当前候选源码 `1.0.0 build1` 的 Release
+`0x46CA92E2`，`app-v0.15.0-b12.ota` 为 111080 字节。当前板上和源码基线 `1.0.0 build1` 的 Release
 payload 为 111016 字节、CRC32 `0x781EE3F3`，`app-v1.0.0-b1.ota` 为 111080 字节；已完成软件
-验证和 OTA header 回读，尚未形成新的目标板 confirmed 结论。
+验证、OTA header 回读、真实 UART OTA、TRIAL/CONFIRMED 和普通复位回归，现为当前板上基线。

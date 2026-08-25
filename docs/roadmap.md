@@ -213,12 +213,12 @@ OTA V1 的 UART 主链已通过，但代码和验收范围不再冻结。以下�
 | 上一板上 | LCD UI 信息层级与布局优化 | `0.13.0 build1` | UART OTA confirmed；旧版视觉验收记录保留 |
 | 当前板上 | LCD 暗色工业仪表 UI 重构 | `0.14.0 build1` | UART OTA confirmed；四任务、零 PWM 和视觉已复核 |
 | 最后 pre-1.0 板上基线 | 平台边界与 STM32 adapter 修复 | `0.15.0 build12` | UART OTA confirmed；普通复位、四任务、静态零 PWM 和主要外设启动已复核 |
-| 当前候选源码 | 首个正式稳定候选 | `1.0.0 build1` | 不改变现有线协议；等待构建回归和必要的目标板发布验收 |
+| 当前板上/源码 | 首个正式稳定基线 | `1.0.0 build1` | UART OTA confirmed；普通复位、四任务、静态零 PWM 和主要外设启动已复核 |
 
 ### 阶段 3：LCD 硬件总览
 
-状态：`IMPLEMENTED / HARDWARE STARTUP VERIFIED`（0.15.0 build12 已上板报告 LCD READY；动态页面
-细节沿用既有 0.14.0 人工视觉证据，需要时随 1.0.0 发布验收复核）
+状态：`IMPLEMENTED / HARDWARE STARTUP VERIFIED`（1.0.0 build1 已上板报告 LCD READY；动态页面
+细节沿用既有 0.14.0 人工视觉证据，需要时单独复核）
 
 - 已保留原始 taifei 全屏资源，并生成带透明掩码的 40x40 RGB565 小 Logo；独立封面页已移除，
   Logo 固定显示在功能页右上角，释放一个页面位置。

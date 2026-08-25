@@ -41,7 +41,7 @@
 | 编码器异常保护 | `NOT VERIFIED` | 0.10.0 已实现异常增量 critical fault 急停；尚未注入异常脉冲 |
 | 欠压保护 | `NOT VERIFIED` | 0.10.0 已实现低于 9000 mV 锁存并急停；尚未做可控欠压注入 |
 | 急停触发与零输出 | `HARDWARE PASS` | build12 前序实测 PD2 按下进入 `EMERGENCY_STOP/fault=0x2` 且 PWM 为零 |
-| 急停松开保持锁存 | `NOT VERIFIED` | build12 已实现反跳保护；持续按住后松开的最终目标板验收因测试提前结束未执行 |
+| 急停松开保持锁存 | `HARDWARE PASS` | 1.0.0 build1 持续按住后进入 `EMERGENCY_STOP/fault=0x2`，松开并等待 2 秒后仍保持锁存和左右零 PWM |
 | IWDG 受控复位 | `HARDWARE PASS` | 复位后报告测试通过 |
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
 | 低速 PID 闭环 | `NOT VERIFIED` | 参数持久化和 6500 开环启动已验证；低速闭环、停车和稳定性重新纳入当前验收 |
@@ -84,8 +84,49 @@ ota sha256=de9a88dd1c4036a0f441b9c4bab0ae0b7aede7ea7b102db857956c8b525031d8
 ```
 
 OTA header 已回读确认 format 1、payload 111016、version `1.0.0`、build 1、rollback counter 0，
-payload CRC 与 BIN 一致。本节只有软件和产物证据；`1.0.0 build1` 尚未烧录，目标板结果为
-`NOT VERIFIED`。
+payload CRC 与 BIN 一致。
+
+随后在 `/dev/ttyUSB0`、115200 8N1 上执行真实 UART OTA。OTA 前 build12 为 STOPPED、fault=0、
+四任务 RUNNING、左右 PWM/target/speed 全零，ADC、IMU、LCD 和 QSPI 正常。传输 111080 字节后，
+Bootloader 依次报告：
+
+```text
+INSTALL VERIFIED
+TRIAL COMMITTED
+TRIAL VERIFIED
+```
+
+Application 启动为 `fw=1.0.0 build=1`，健康窗口后 `ota_confirmation=CONFIRMED`。使用 ST-Link
+执行普通 `reset run`，约 100 秒后的稳定快照再次确认：
+
+```text
+fw=1.0.0 build=1
+control=STOPPED fault=0x00000000
+left_target=0 left_speed=0 left_pwm=0
+right_target=0 right_speed=0 right_pwm=0
+service/control/diagnostics/display=RUNNING
+adc_valid=1 supply_mv=12100
+imu=READY who_am_i=0xE9 fifo_errors=0 timestamp_errors=0 kalman=1
+qspi_read=1 qspi_id=1 qspi_jedec=EF4017
+lcd=READY sr501=READY
+ota_confirmation=NOT_REQUIRED
+```
+
+因此 UART OTA、TRIAL/CONFIRMED、普通复位、启动静态零输出和上述外设状态记为
+`HARDWARE PASS`。本轮没有驱动电机。
+
+随后持续按住 PD2 急停超过 2 秒，在线快照为：
+
+```text
+control=EMERGENCY_STOP fault=0x00000002
+left_target=0 left_speed=0 left_pwm=0
+right_target=0 right_speed=0 right_pwm=0
+service/control/diagnostics/display=RUNNING
+```
+
+松开急停并等待 2 秒后再次读取，`control=EMERGENCY_STOP`、`fault=0x00000002` 和左右
+target/speed/PWM 全零均保持不变。该结果证明松开和机械反跳不会自动解除安全锁存，1.0.0 的
+急停触发、零输出和松开保持锁存记为 `HARDWARE PASS`。
 
 ### 0.15.0 build12 confirmed 与 1.0.0 候选基线（2026-08-25）
 

@@ -11,8 +11,13 @@
   TX/RX callback，默认配置仍完整要求三个 SPI callback。
 - 全量 host/schema/config matrix/LCD preview 通过，Debug/Release clean build 通过；Release
   payload 为 111016 字节、CRC32 `0x781EE3F3`，`app-v1.0.0-b1.ota` 为 111080 字节。
+- 1.0.0 已通过真实 UART OTA 的 INSTALL VERIFIED、TRIAL COMMITTED、TRIAL VERIFIED 和
+  CONFIRMED；普通 ST-Link 复位后仍启动 1.0.0，稳定状态为 STOPPED、fault=0、四任务 RUNNING、
+  PWM/target/speed 全零，ADC、IMU、LCD、QSPI 和 SR501 READY。
+- 持续按住 PD2 急停后实测进入 `EMERGENCY_STOP/fault=0x2` 且左右 PWM 为零；松开并等待 2 秒
+  后故障、控制状态和零输出保持不变，急停反跳与锁存验收通过。
 - build12 的 UART OTA、普通复位、四任务、静态零 PWM、ADC、IMU、LCD、QSPI 和 GPIO 启动证据
-  已收敛到权威验证文档；最终“急停持续按住后松开仍保持锁存”仍为 `NOT VERIFIED`。
+  已收敛到权威验证文档；build12 当时未完成的急停松开锁存场景现已由 1.0.0 实测补齐。
 
 ## 2026-08-25：0.15.0 build12 GPIO 与急停安全修复上板
 
@@ -764,14 +769,13 @@
 | 历史板上 | `0.13.0 build1` | LCD UI 信息层级与布局优化，UART OTA confirmed；视觉验收待完成 |
 | 历史板上 | `0.14.0 build1` | 暗色工业仪表 UI 已 UART OTA confirmed；视觉人工确认正常 |
 | 当前板上 | `0.15.0 build12` | 平台边界和 STM32 adapter 修复，UART OTA confirmed，普通复位与静态安全状态通过 |
-| 当前候选 | `1.0.0 build1` | 首个正式稳定候选；不改变现有线协议 |
+| 当前板上 | `1.0.0 build1` | 首个正式稳定基线；UART OTA、普通复位、静态零输出、主要外设和急停锁存已通过 |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
 - `0.13.0 build1` 的页眉指示、标签层级、配色、文本排版和四页切换人工目视确认仍保留为历史待办。
-- `1.0.0 build1` 的目标板发布验收，以及 build12 最终急停松开保持锁存场景。
 - ICM45686 正负轴向动作、动态姿态、静止回归和长期漂移；模块固定安装前保持 `DEFERRED`。
 - `0.12.0 build1` 的编码器/ADC/IMU 本地时间字段、轮式里程计方向和 LCD/UART 动态输出上板复核，
   以及落地直线距离、原地旋转角度和轮径/轮距校准。
