@@ -29,10 +29,10 @@
 
 | ID 范围 | 方向 | 用途 | 当前状态 |
 | --- | --- | --- | --- |
-| `0x100` | Jetson -> STM32 | 双电机速度控制 | 已实现，待实车整定 |
-| `0x101` | Jetson -> STM32 | 物理速度控制 | 已接入差速转换和安全控制链 |
+| `0x100` | Jetson -> STM32 | Legacy wheel raw 控制 | 仅开发兼容，要求开发握手 |
+| `0x101` | Jetson -> STM32 | 正式物理速度控制 | V1 正式接口，不依赖开发握手 |
 | `0x180`-`0x1FF` | STM32 -> Jetson | 状态反馈 | Motion/Odometry 已实现 |
-| `0x200`-`0x23F` | 双向 | 心跳和运行状态 | STM32 Heartbeat 已实现 |
+| `0x200`-`0x23F` | 双向 | 心跳和运行状态 | 双向 Heartbeat 已实现 |
 | `0x240`-`0x27F` | STM32 -> Jetson | 故障和诊断 | Fault Status 已实现 |
 | `0x280`-`0x2FF` | 双向 | 参数和管理 | ID 区间保留，消息尚未冻结 |
 | `0x700`-`0x77F` | 双向 | 开发联调 | 仅开发阶段使用 |
@@ -42,9 +42,9 @@ OTA V1 使用 `0x730/0x731` 的固定 64 字节 CAN FD+BRS 帧，详细格式见
 
 正式报文采用固定 ID 和固定长度，不在同一个 ID 下复用多种数据布局。
 
-## 双电机速度控制
+## Legacy Wheel Raw 控制
 
-`0x100` 是 8 byte CAN FD+BRS 标准帧：
+`0x100 CHASSIS_CMD_WHEEL_RAW` 是 8 byte CAN FD+BRS 标准帧：
 
 | Byte | 字段 | 格式 |
 | --- | --- | --- |
@@ -55,7 +55,9 @@ OTA V1 使用 `0x730/0x731` 的固定 64 字节 CAN FD+BRS 帧，详细格式见
 | 4-5 | 左轮目标 | `int16` 小端，单位 `counts/10 ms` |
 | 6-7 | 右轮目标 | `int16` 小端，单位 `counts/10 ms` |
 
-目标范围暂时限制为 `-100` 到 `100 counts/10 ms`。使能为 `0` 时左右目标必须同时为 `0`。只有完成外部链路三步握手后，版本、保留位、目标范围和计数器均有效的控制帧才会刷新命令时间。
+目标范围限制为 `-100` 到 `100 counts/10 ms`。使能为 `0` 时左右目标必须同时为 `0`。
+该帧属于 `legacy/development compatibility`，只为既有联调脚本和底层轮控诊断保留；只有开发
+握手状态为 `PASSED` 后才接收。新 Jetson 产品代码不得使用该帧。
 
 有效控制帧中断超过 200 ms 后，STM32 清零四路 PWM、重置 PID 并进入 `CHASSIS_CONTROL_COMMAND_TIMEOUT`。恢复必须收到下一帧有效控制命令，旧输出不会自动恢复。
 
@@ -67,29 +69,39 @@ OTA V1 使用 `0x730/0x731` 的固定 64 字节 CAN FD+BRS 帧，详细格式见
 Application 根据当前 `1320 counts/rev`、`65 mm` 轮径、`220 mm` 轮距和 `10 ms` 控制周期换算
 左右轮目标，任一轮超过 `100 counts/tick` 时拒绝该命令，不刷新控制超时。
 
-正式 Jetson 接口最终使用 `0x101`；`0x100` 作为已验证的 wheel raw 兼容报文保留。
+正式 Jetson V1 接口使用 `0x101`，不要求也不读取 `0x720/0x721` 开发握手状态；只要帧版本、
+CRC、保留位、范围和 sequence 合法，就可以进入现有 CommandManager/SafetyManager。`0x100`
+只作为 legacy/development compatibility 保留。
 两种控制报文共用一条 rolling sequence；切换 ID 时 sequence 仍必须连续，第一帧允许任意起始值。
 这能防止通过交替发送 `0x100/0x101` 绕过重复和乱序保护。
 
-## STM32 状态上报
+## 双向 Heartbeat 与状态上报
 
-状态发送仅在现有开发握手进入 `PASSED` 后启用，避免总线上没有其他节点 ACK 时周期发送造成
-错误累积。发送失败不推进 rolling sequence，并在后续 service 周期重试。OTA、QSPI 自检或
+Jetson 和 STM32 都以 100 ms 周期发送 `0x200 CHASSIS_HEARTBEAT`。每个方向独立维护 rolling
+sequence、发送端 monotonic uptime、节点状态和故障摘要。接收端第一帧允许任意 sequence；后续只
+接受前向 rolling sequence，重复、倒序、非法版本、保留位或 CRC 错误均不得刷新接收时间。
+连续 300 ms 没有新的合法对端 heartbeat 时，对端状态变为 `TIMEOUT`；下一帧新的合法 sequence
+可恢复为 `ALIVE`。
+
+STM32 的 Motion/Odometry/Fault 状态发送以 Jetson heartbeat `ALIVE` 为正式对端在线依据，
+不依赖 development handshake。发送失败不推进 rolling sequence，并在后续 service 周期重试。
+OTA、QSPI 自检或
 电机自检持有维护资源时暂停 Motion/Odometry，只保留 Fault 和低频 Heartbeat，避免与维护传输争用。
 
 - `0x180 CHASSIS_STATUS_MOTION`：20 ms 周期，报告左右轮速度、底盘线/角速度、控制状态以及
   左右输出 permille。flags bit0 表示数据有效，bit1 表示闭环运行。
 - `0x181 CHASSIS_REPORT_ODOMETRY`：20 ms 周期并与 Motion 错峰 5 ms，报告 monotonic
   timestamp、`x/y mm`、`heading mrad` 和线/角速度。flags bit0 表示里程计有效。
-- `0x200 CHASSIS_HEARTBEAT`：100 ms 周期，报告节点状态、uptime 和低 16 位当前故障摘要；
-  flags bit0 表示开发链路握手已通过。节点状态为 STARTING、READY、RUNNING、DEGRADED、FAULT
-  或 MAINTENANCE。
+- `0x200 CHASSIS_HEARTBEAT`：双向 100 ms 周期，报告发送节点状态、uptime 和低 16 位当前故障
+  摘要；flags bit0 表示发送节点已完成自身初始化并可参与正式链路。节点状态为 STARTING、READY、
+  RUNNING、DEGRADED、FAULT 或 MAINTENANCE。
 - `0x240 CHASSIS_FAULT_STATUS`：故障集合变化时立即发送，并以 100 ms 周期保活。active faults
   表示当前未清除故障，latched faults 表示本次启动以来曾出现的故障，fault sequence 在 active
   集合发生变化时递增。severity 为 NONE、WARNING 或 CRITICAL。
 
 Motion/Odometry 使用 CAN FD 链路 CRC；Heartbeat/Fault 使用本文定义的项目级 CRC16。Heartbeat
-只用于节点观测，绝不调用 CommandManager，也不刷新 200 ms 运动命令超时。
+只用于节点在线观测和状态上报门控，绝不调用 CommandManager，也不刷新、延长或替代 200 ms
+运动命令 timeout。即使 heartbeat 持续正常，0x101 中断 200 ms 仍必须停车。
 
 Fault 位定义：
 
@@ -106,9 +118,9 @@ Fault 位定义：
 
 ## 通用规则
 
-- `0x100/0x101` 共用递增计数器，STM32 检测重复、乱序和长时间中断。
+- `0x100/0x101` 共用递增计数器；0x101 正式控制不依赖开发握手或 heartbeat 前置条件。
 - 控制报文超时后必须进入安全状态，不能继续保持最后一次运动命令。
-- 心跳只能说明节点运行，不能代替执行器状态反馈。
+- heartbeat 只能说明对端节点在线，不能代替控制命令或执行器状态反馈。
 - 故障报文需要区分当前故障和历史故障。
 - 普通状态和旧 `0x100` 使用 CAN FD 链路 CRC；新控制、Heartbeat 和 Fault schema 使用项目级
   CRC16-CCITT-FALSE（poly `0x1021`、init `0xFFFF`、xorout `0`、不反射）。输入为 CAN ID
@@ -130,9 +142,11 @@ Fault 位定义：
 - 每个正式消息 Byte 0 为 `schema_version`；未知版本必须拒绝，不能猜测字段布局。
 - 控制、周期状态和 heartbeat 使用 `uint8` rolling sequence；heartbeat 不得刷新 200 ms 运动命令超时。
 
-## 外部链路测试
+## 开发联调握手
 
-外部测试采用三步握手，只有 Jetson 确认收到响应后，STM32 才将链路标记为 `PASS`。
+`0x720/0x721 CHASSIS_DEV_HANDSHAKE_*` 仅用于开发阶段验证两端控制器、收发器、接线、终端电阻和
+双向收发。它维护独立的 development handshake 状态，不属于正式 V1 会话，不门控 0x101、
+heartbeat 或正式状态报文。
 
 | 步骤 | CAN ID | 方向 | Payload |
 | --- | --- | --- | --- |
@@ -140,7 +154,8 @@ Fault 位定义：
 | 响应 | `0x721` | STM32 -> Jetson | `43 48 41 53 53 49 53 01` |
 | 确认 | `0x720` | Jetson -> STM32 | `50 41 53 53 01 00 00 00` |
 
-三帧均为 8 byte CAN FD+BRS 标准帧。该握手只验证两端控制器、收发器、接线、终端电阻和双向收发，不属于正式车端控制协议，也不会启动电机。
+三帧均为 8 byte CAN FD+BRS 标准帧。握手失败不得使合法 0x101 失效；只有 legacy `0x100`
+明确要求握手 `PASSED`。该握手本身不会启动电机。
 
 ## 尚未冻结
 

@@ -11,10 +11,15 @@
 #define RESPONSE_RETRY_DELAY_MS 10U
 
 static ChassisProtocolPort protocol_port;
-static ChassisProtocolLinkStatus link_status;
+static ChassisProtocolDevelopmentHandshakeStatus development_handshake_status;
+static ChassisProtocolPeerHeartbeatStatus peer_heartbeat_status;
+static ChassisProtocolHeartbeat peer_heartbeat;
+static uint32_t peer_heartbeat_received_ms;
+static bool peer_heartbeat_sequence_valid;
+static uint8_t last_peer_heartbeat_sequence;
 static ChassisProtocolControlCommand pending_control_command;
 static bool control_command_pending;
-static bool session_invalidated;
+static bool transport_invalidated;
 static bool control_sequence_valid;
 static uint8_t last_control_sequence;
 static uint8_t motion_tx_sequence;
@@ -27,6 +32,15 @@ static uint8_t response_attempts;
 
 static int16_t GetI16Le(const uint8_t *data) {
   return (int16_t)((uint16_t)data[0] | ((uint16_t)data[1] << 8U));
+}
+
+static uint16_t GetU16Le(const uint8_t *data) {
+  return (uint16_t)data[0] | ((uint16_t)data[1] << 8U);
+}
+
+static uint32_t GetU32Le(const uint8_t *data) {
+  return (uint32_t)data[0] | ((uint32_t)data[1] << 8U) |
+         ((uint32_t)data[2] << 16U) | ((uint32_t)data[3] << 24U);
 }
 
 static void PutI16Le(uint8_t *data, int16_t value) {
@@ -57,13 +71,21 @@ static void ResetControlSession(void) {
   pending_control_command = (ChassisProtocolControlCommand){0};
 }
 
+static void ResetPeerHeartbeat(void) {
+  peer_heartbeat_status = CHASSIS_PROTOCOL_PEER_HEARTBEAT_UNKNOWN;
+  peer_heartbeat = (ChassisProtocolHeartbeat){0};
+  peer_heartbeat_received_ms = 0U;
+  peer_heartbeat_sequence_valid = false;
+  last_peer_heartbeat_sequence = 0U;
+}
+
 bool ChassisProtocol_Init(const ChassisProtocolPort *port) {
   if (port == NULL || port->send == NULL) {
     return false;
   }
   protocol_port = *port;
-  link_status = CHASSIS_PROTOCOL_LINK_READY;
-  session_invalidated = false;
+  development_handshake_status = CHASSIS_PROTOCOL_DEV_HANDSHAKE_READY;
+  transport_invalidated = false;
   response_pending = false;
   response_retry_due_ms = 0U;
   response_attempts = 0U;
@@ -72,6 +94,7 @@ bool ChassisProtocol_Init(const ChassisProtocolPort *port) {
   heartbeat_tx_sequence = 0U;
   fault_tx_sequence = 0U;
   ResetControlSession();
+  ResetPeerHeartbeat();
   return true;
 }
 
@@ -112,13 +135,15 @@ ChassisProtocol_DecodeWheelRaw(const struct can_frame *frame,
   return CHASSIS_PROTOCOL_DECODE_OK;
 }
 
-void ChassisProtocol_ProcessFrame(const struct can_frame *frame) {
+void ChassisProtocol_ProcessFrame(const struct can_frame *frame,
+                                  uint32_t now_ms) {
   static const uint8_t request[HANDSHAKE_SIZE] = {'P', 'I', 'N', 'G',
                                                   1U,  0U,  0U,  0U};
   static const uint8_t confirmation[HANDSHAKE_SIZE] = {'P', 'A', 'S', 'S',
                                                        1U,  0U,  0U,  0U};
   ChassisProtocolWheelRawCommand command;
   ChassisProtocolVelocityCommand velocity;
+  ChassisProtocolHeartbeat heartbeat;
   ChassisProtocolControlCommand normalized;
   ChassisProtocolDecodeResult decode_result;
 
@@ -127,26 +152,46 @@ void ChassisProtocol_ProcessFrame(const struct can_frame *frame) {
   }
   if (frame->id == CHASSIS_CAN_ID_DEV_HANDSHAKE_REQUEST) {
     if (frame->dlc != HANDSHAKE_SIZE) {
-      ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_FAILED);
+      development_handshake_status = CHASSIS_PROTOCOL_DEV_HANDSHAKE_FAILED;
+      response_pending = false;
     } else if (memcmp(frame->data, request, sizeof(request)) == 0) {
-      ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_READY);
+      development_handshake_status = CHASSIS_PROTOCOL_DEV_HANDSHAKE_READY;
       response_attempts = 0U;
       response_retry_due_ms = 0U;
       response_pending = true;
     } else if (memcmp(frame->data, confirmation, sizeof(confirmation)) == 0) {
-      link_status = CHASSIS_PROTOCOL_LINK_PASSED;
-      ResetControlSession();
+      development_handshake_status = CHASSIS_PROTOCOL_DEV_HANDSHAKE_PASSED;
       response_pending = false;
     } else {
-      ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_FAILED);
+      development_handshake_status = CHASSIS_PROTOCOL_DEV_HANDSHAKE_FAILED;
       response_pending = false;
     }
     return;
   }
-  if (link_status != CHASSIS_PROTOCOL_LINK_PASSED) {
+  if (frame->id == CHASSIS_CAN_ID_HEARTBEAT) {
+    if (ChassisProtocol_DecodeHeartbeat(frame, &heartbeat) ==
+        CHASSIS_PROTOCOL_DECODE_OK) {
+      const uint8_t sequence_delta =
+          (uint8_t)(heartbeat.sequence - last_peer_heartbeat_sequence);
+
+      if (!peer_heartbeat_sequence_valid ||
+          (peer_heartbeat_status == CHASSIS_PROTOCOL_PEER_HEARTBEAT_TIMEOUT &&
+           sequence_delta != 0U) ||
+          (sequence_delta != 0U && sequence_delta < 128U)) {
+        peer_heartbeat = heartbeat;
+        peer_heartbeat_received_ms = now_ms;
+        last_peer_heartbeat_sequence = heartbeat.sequence;
+        peer_heartbeat_sequence_valid = true;
+        peer_heartbeat_status = CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE;
+      }
+    }
     return;
   }
   if (frame->id == CHASSIS_CAN_ID_CMD_WHEEL_RAW) {
+    if (development_handshake_status !=
+        CHASSIS_PROTOCOL_DEV_HANDSHAKE_PASSED) {
+      return;
+    }
     decode_result = ChassisProtocol_DecodeWheelRaw(frame, &command);
     if (decode_result == CHASSIS_PROTOCOL_DECODE_OK) {
       normalized = (ChassisProtocolControlCommand){
@@ -193,36 +238,47 @@ void ChassisProtocol_Run(uint32_t now_ms) {
       .data = {'C', 'H', 'A', 'S', 'S', 'I', 'S', 1U},
   };
 
-  if (!response_pending || (int32_t)(now_ms - response_retry_due_ms) < 0) {
-    return;
+  if (peer_heartbeat_status == CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE &&
+      now_ms - peer_heartbeat_received_ms >=
+          CHASSIS_PROTOCOL_HEARTBEAT_TIMEOUT_MS) {
+    peer_heartbeat_status = CHASSIS_PROTOCOL_PEER_HEARTBEAT_TIMEOUT;
   }
-  response_pending = false;
-  if (protocol_port.send(&response) < 0) {
-    ++response_attempts;
-    if (response_attempts < RESPONSE_RETRY_LIMIT) {
-      response_retry_due_ms = now_ms + RESPONSE_RETRY_DELAY_MS;
-      response_pending = true;
+  if (response_pending &&
+      (int32_t)(now_ms - response_retry_due_ms) >= 0) {
+    response_pending = false;
+    if (protocol_port.send(&response) < 0) {
+      ++response_attempts;
+      if (response_attempts < RESPONSE_RETRY_LIMIT) {
+        response_retry_due_ms = now_ms + RESPONSE_RETRY_DELAY_MS;
+        response_pending = true;
+      } else {
+        response_attempts = 0U;
+        development_handshake_status =
+            CHASSIS_PROTOCOL_DEV_HANDSHAKE_FAILED;
+      }
     } else {
       response_attempts = 0U;
-      ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_FAILED);
     }
-  } else {
-    response_attempts = 0U;
   }
 }
 
-void ChassisProtocol_InvalidateLink(ChassisProtocolLinkStatus status) {
-  link_status = status;
-  ResetControlSession();
-  session_invalidated = true;
-}
-
-void ChassisProtocol_ResetLink(ChassisProtocolLinkStatus status) {
-  link_status = status;
+void ChassisProtocol_InvalidateTransport(void) {
+  development_handshake_status = CHASSIS_PROTOCOL_DEV_HANDSHAKE_FAILED;
   response_pending = false;
   response_attempts = 0U;
   response_retry_due_ms = 0U;
   ResetControlSession();
+  ResetPeerHeartbeat();
+  transport_invalidated = true;
+}
+
+void ChassisProtocol_ResetTransport(void) {
+  development_handshake_status = CHASSIS_PROTOCOL_DEV_HANDSHAKE_READY;
+  response_pending = false;
+  response_attempts = 0U;
+  response_retry_due_ms = 0U;
+  ResetControlSession();
+  ResetPeerHeartbeat();
 }
 
 void ChassisProtocol_RequestHandshakeResponse(void) {
@@ -231,13 +287,29 @@ void ChassisProtocol_RequestHandshakeResponse(void) {
   response_pending = true;
 }
 
-ChassisProtocolLinkStatus ChassisProtocol_GetLinkStatus(void) {
-  return link_status;
+ChassisProtocolDevelopmentHandshakeStatus
+ChassisProtocol_GetDevelopmentHandshakeStatus(void) {
+  return development_handshake_status;
 }
 
-bool ChassisProtocol_TakeSessionInvalidated(void) {
-  const bool invalidated = session_invalidated;
-  session_invalidated = false;
+void ChassisProtocol_GetPeerHeartbeat(
+    uint32_t now_ms, ChassisProtocolPeerHeartbeatSnapshot *snapshot) {
+  if (snapshot == NULL) {
+    return;
+  }
+  *snapshot = (ChassisProtocolPeerHeartbeatSnapshot){
+      .status = peer_heartbeat_status,
+      .heartbeat = peer_heartbeat,
+      .received_ms = peer_heartbeat_received_ms,
+      .age_ms = peer_heartbeat_sequence_valid
+                    ? now_ms - peer_heartbeat_received_ms
+                    : 0U,
+  };
+}
+
+bool ChassisProtocol_TakeTransportInvalidated(void) {
+  const bool invalidated = transport_invalidated;
+  transport_invalidated = false;
   return invalidated;
 }
 
@@ -315,6 +387,42 @@ ChassisProtocol_DecodeVelocity(const struct can_frame *frame,
       .sequence = frame->data[2],
       .linear_velocity_mm_s = linear,
       .angular_velocity_mrad_s = GetI16Le(&frame->data[6]),
+  };
+  return CHASSIS_PROTOCOL_DECODE_OK;
+}
+
+ChassisProtocolDecodeResult
+ChassisProtocol_DecodeHeartbeat(const struct can_frame *frame,
+                                ChassisProtocolHeartbeat *heartbeat) {
+  uint16_t expected_crc;
+  uint16_t received_crc;
+
+  if (frame == NULL || heartbeat == NULL ||
+      frame->id != CHASSIS_CAN_ID_HEARTBEAT) {
+    return CHASSIS_PROTOCOL_DECODE_WRONG_ID;
+  }
+  if (frame->dlc != CHASSIS_PROTOCOL_HEARTBEAT_SIZE) {
+    return CHASSIS_PROTOCOL_DECODE_WRONG_LENGTH;
+  }
+  if (frame->data[0] != CHASSIS_PROTOCOL_SCHEMA_VERSION) {
+    return CHASSIS_PROTOCOL_DECODE_VERSION;
+  }
+  if (frame->data[1] > CHASSIS_PROTOCOL_NODE_MAINTENANCE ||
+      (frame->data[3] &
+       ~CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY) != 0U) {
+    return CHASSIS_PROTOCOL_DECODE_RESERVED;
+  }
+  expected_crc = ChassisProtocol_Crc16(frame->id, frame->data, 10U);
+  received_crc = GetU16Le(&frame->data[10]);
+  if (expected_crc != received_crc) {
+    return CHASSIS_PROTOCOL_DECODE_CRC;
+  }
+  *heartbeat = (ChassisProtocolHeartbeat){
+      .node_state = (ChassisProtocolNodeState)frame->data[1],
+      .sequence = frame->data[2],
+      .flags = frame->data[3],
+      .uptime_ms = GetU32Le(&frame->data[4]),
+      .fault_summary = GetU16Le(&frame->data[8]),
   };
   return CHASSIS_PROTOCOL_DECODE_OK;
 }
@@ -408,7 +516,7 @@ bool ChassisProtocol_EncodeHeartbeat(
 
   if (heartbeat == NULL || frame == NULL ||
       heartbeat->node_state > CHASSIS_PROTOCOL_NODE_MAINTENANCE ||
-      (heartbeat->flags & ~CHASSIS_PROTOCOL_HEARTBEAT_FLAG_LINK_PASSED) !=
+      (heartbeat->flags & ~CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY) !=
           0U) {
     return false;
   }

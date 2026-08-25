@@ -12,12 +12,12 @@ power/button/SR501/display 运行态均已落地。第二批又完成 UART/QSPI/
 覆盖 device/init、UART/QSPI、OTA resume/BUSY/重复确认/错误 offset/session。CubeMX/CubeIDE
 工程也已集中到 `cubemx/`；Application 手写顶层目录已收敛，linker script 位于
 `boards/chassis_g474/application.ld`。Application 内部反向依赖和正式代码依赖 tests 已清零，
-五类 runtime 拆分完成，目录结构进入冻结状态。Chassis CAN FD schema、纯协议层、0x101
-物理速度控制、四类状态上报、host 整链测试和轻量配置矩阵已完成；剩余为 vcan/目标板收尾：
+五类 runtime 拆分完成，目录结构进入冻结状态。Chassis CAN FD V1、正式 0x101、双向 heartbeat、
+四类状态上报、host/vcan 整链测试和轻量配置矩阵已完成；剩余为产品/目标板收尾：
 
 1. 用户确认后的 UART OTA、静态状态、LCD/IMU/GPIO 和电机安全目标板回归。
-2. cockpit-system 的独立 `ChassisCanCodec` 和 `can-simulator --protocol chassis` 已完成主机
-   `vcan0` 闭环；下一步把状态 DTO 接入 Navigator 的 vehicle/chassis 数据服务，再切真实 `can0`。
+2. cockpit-system 的独立 `ChassisCanCodec` 和 `can-simulator --protocol chassis` 已完成正式
+   无握手及可选开发握手 `vcan0` 闭环；下一步把状态 DTO 接入 Navigator，再切真实 `can0`。
 
 上述代码批次完成后进入目标板回归；`NOT VERIFIED` 不阻塞代码迁移，但不能据此记录硬件通过。
 
@@ -102,7 +102,7 @@ Application 与 Bootloader 的 Debug 和 Release 已在 OTA 代码落地后重�
 - Bootloader 固定使用 16 MHz HSI；不主动启动或重配置 IWDG，只刷新 Application 继承的实例；
   Application 正常周期约 10 秒，OTA 复位前约 30 秒，Recovery 停止刷新
 - 运动命令与维护 owner 已拆分；`pid stop` 不能释放 OTA 锁，Console 目标持续到明确停止，
-  CAN 目标仍使用 200 ms heartbeat timeout
+  CAN 运动目标仍使用 200 ms 命令 timeout；双向 heartbeat 只维护 300 ms 对端在线状态
 - OTA 擦除阶段使用独立总时限和内部进度时限，人工 QSPI 测试与试运行确认失败后均等待
   DMA 终止和 Flash WIP 清除
 - CAN OTA 响应使用 Tx Event 确认和软件重试；候选安装失败时自动回滚 confirmed 槽

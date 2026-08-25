@@ -75,10 +75,11 @@ static const ConsoleCommandPort console_command_port = {
 static bool InitializeCommunication(const struct device *can_device,
                                     uint32_t now_ms) {
   static const struct can_filter accepted_filters[] = {
-      {.id = CHASSIS_CAN_ID_DEV_HANDSHAKE_REQUEST, .mask = 0x7FFU},
-      {.id = CHASSIS_CAN_ID_CMD_WHEEL_RAW, .mask = 0x7FFU},
-      {.id = CHASSIS_CAN_ID_CMD_VELOCITY, .mask = 0x7FFU},
-      {.id = OTA_CAN_REQUEST_ID, .mask = 0x7FFU},
+      /* Legacy 0x100 and formal 0x101 control. */
+      {.id = CHASSIS_CAN_ID_CMD_WHEEL_RAW, .mask = 0x7FEU},
+      {.id = CHASSIS_CAN_ID_HEARTBEAT, .mask = 0x7FFU},
+      /* Development handshake 0x720 and OTA request 0x730. */
+      {.id = CHASSIS_CAN_ID_DEV_HANDSHAKE_REQUEST, .mask = 0x7EFU},
   };
   if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_uart)))) {
     return false;

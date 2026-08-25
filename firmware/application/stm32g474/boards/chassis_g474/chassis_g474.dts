@@ -51,7 +51,7 @@
         sample-point = <800>;
         bitrate-data = <2000000>;
         sample-point-data = <824>;
-        standard-filter-count = <2>;
+        standard-filter-count = <3>;
     };
 
     spi3 {

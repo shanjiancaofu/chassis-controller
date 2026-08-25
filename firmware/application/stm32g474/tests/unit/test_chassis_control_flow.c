@@ -1,7 +1,6 @@
 #ifdef CHASSIS_CONTROL_FLOW_HOST_TEST
 
 #include <assert.h>
-#include <string.h>
 
 #include "app/chassis/command_manager.h"
 #include "app/chassis/differential_drive.h"
@@ -14,24 +13,6 @@
 static int Send(const struct can_frame *frame)
 {
   return frame != NULL ? 0 : -1;
-}
-
-static void CompleteHandshake(void)
-{
-  static const uint8_t ping[8] = {'P', 'I', 'N', 'G', 1U, 0U, 0U, 0U};
-  static const uint8_t pass[8] = {'P', 'A', 'S', 'S', 1U, 0U, 0U, 0U};
-  struct can_frame frame = {
-      .id = CHASSIS_CAN_ID_DEV_HANDSHAKE_REQUEST,
-      .dlc = 8U,
-      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
-  };
-
-  memcpy(frame.data, ping, sizeof(ping));
-  ChassisProtocol_ProcessFrame(&frame);
-  ChassisProtocol_Run(0U);
-  memcpy(frame.data, pass, sizeof(pass));
-  ChassisProtocol_ProcessFrame(&frame);
-  assert(ChassisProtocol_GetLinkStatus() == CHASSIS_PROTOCOL_LINK_PASSED);
 }
 
 int main(void)
@@ -53,10 +34,9 @@ int main(void)
   FaultManager_Init();
   SafetyManager_Init(false);
   assert(ChassisProtocol_Init(&port));
-  CompleteHandshake();
 
   assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
-  ChassisProtocol_ProcessFrame(&frame);
+  ChassisProtocol_ProcessFrame(&frame, 1000U);
   assert(ChassisProtocol_TakeControlCommand(&control));
   assert(DifferentialDrive_VelocityToWheelTargets(
       control.target.velocity.linear_velocity_mm_s,
@@ -79,14 +59,14 @@ int main(void)
   assert(!CommandManager_IsTimedOut(1199U));
   assert(CommandManager_IsTimedOut(1200U));
 
-  ChassisProtocol_ProcessFrame(&frame);
+  ChassisProtocol_ProcessFrame(&frame, 1100U);
   assert(!ChassisProtocol_TakeControlCommand(&control));
 
   velocity.sequence = 2U;
   velocity.enabled = false;
   velocity.linear_velocity_mm_s = 0;
   assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
-  ChassisProtocol_ProcessFrame(&frame);
+  ChassisProtocol_ProcessFrame(&frame, 1200U);
   assert(ChassisProtocol_TakeControlCommand(&control));
   assert(!control.enabled);
 

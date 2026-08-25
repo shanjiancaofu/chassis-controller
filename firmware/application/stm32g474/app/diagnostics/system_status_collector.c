@@ -31,12 +31,13 @@ _Static_assert((uint32_t)BUTTON_COUNT ==
                    (uint32_t)SYSTEM_STATUS_BUTTON_COUNT,
                "button snapshot count mismatch");
 
-static SystemStatusCanState MapCanState(ChassisProtocolLinkStatus state)
+static SystemStatusCanState MapCanState(
+    ChassisProtocolPeerHeartbeatStatus state)
 {
   switch (state) {
-    case CHASSIS_PROTOCOL_LINK_PASSED:
+    case CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE:
       return SYSTEM_STATUS_CAN_PASSED;
-    case CHASSIS_PROTOCOL_LINK_FAILED:
+    case CHASSIS_PROTOCOL_PEER_HEARTBEAT_TIMEOUT:
       return SYSTEM_STATUS_CAN_FAILED;
     default:
       return SYSTEM_STATUS_CAN_READY;
@@ -194,6 +195,7 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   ImuOrientationSnapshot orientation;
   Sr501Snapshot sr501;
   PowerSampleSnapshot power_sample;
+  ChassisProtocolPeerHeartbeatSnapshot peer_heartbeat;
   MotorSelfTestSnapshot motor_test;
   RtcDateTime date_time = {0};
 
@@ -213,7 +215,8 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   CopySr501Snapshot(&status.sr501, &sr501);
   CopyPowerSnapshot(&status.power_sample, &power_sample);
 
-  status.can_state = MapCanState(ChassisProtocol_GetLinkStatus());
+  ChassisProtocol_GetPeerHeartbeat(now_ms, &peer_heartbeat);
+  status.can_state = MapCanState(peer_heartbeat.status);
   status.lcd_state = MapLcdState(LcdUi_GetStatus());
   status.supply_valid = power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &status.supply_mv);
   status.fault_flags = FaultManager_GetFlags();

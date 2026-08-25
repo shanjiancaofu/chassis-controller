@@ -129,6 +129,7 @@ static ChassisProtocolNodeState ProtocolNodeState(
 
 static void PublishChassisStatus(uint32_t now_ms) {
   SystemStatusSnapshot status;
+  ChassisProtocolPeerHeartbeatSnapshot peer;
   WheelControllerSnapshot wheels;
   MotorSelfTestSnapshot motor_test;
   OdometrySnapshot odometry;
@@ -140,7 +141,8 @@ static void PublishChassisStatus(uint32_t now_ms) {
       (active_faults & CHASSIS_FAULT_EMERGENCY_STOP) != 0U;
   bool maintenance_active;
 
-  if (ChassisProtocol_GetLinkStatus() != CHASSIS_PROTOCOL_LINK_PASSED) {
+  ChassisProtocol_GetPeerHeartbeat(now_ms, &peer);
+  if (peer.status != CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE) {
     motion_tx_due_ms = now_ms + CHASSIS_PROTOCOL_MOTION_PERIOD_MS;
     odometry_tx_due_ms = now_ms + CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS + 5U;
     heartbeat_tx_due_ms = now_ms + CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS + 10U;
@@ -226,7 +228,7 @@ static void PublishChassisStatus(uint32_t now_ms) {
     const ChassisProtocolHeartbeat heartbeat = {
         .node_state = ProtocolNodeState(&status, active_faults,
                                         protocol_critical_fault),
-        .flags = CHASSIS_PROTOCOL_HEARTBEAT_FLAG_LINK_PASSED,
+        .flags = CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY,
         .uptime_ms = now_ms,
         .fault_summary = (uint16_t)active_faults,
     };
@@ -353,17 +355,17 @@ void ServiceRuntime_Run(void) {
     if (frame.id == OTA_CAN_REQUEST_ID) {
       (void)OtaCan_OnRxFrame(&frame);
     } else {
-      ChassisProtocol_ProcessFrame(&frame);
+      ChassisProtocol_ProcessFrame(&frame, now_ms);
     }
   }
   CanTransport_Run();
   if (CanTransport_TakeSessionInvalidated()) {
-    ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_FAILED);
+    ChassisProtocol_InvalidateTransport();
   }
   if (CanTransport_TakeRecovered()) {
-    ChassisProtocol_ResetLink(CHASSIS_PROTOCOL_LINK_READY);
+    ChassisProtocol_ResetTransport();
   }
-  if (ChassisProtocol_TakeSessionInvalidated()) {
+  if (ChassisProtocol_TakeTransportInvalidated()) {
     OtaCan_Invalidate();
     OtaSession_AbortSource(OTA_SOURCE_CAN_FD, now_ms);
     kernel_critical_enter();

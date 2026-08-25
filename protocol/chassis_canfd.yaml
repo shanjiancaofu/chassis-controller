@@ -29,6 +29,8 @@
       "id": 256, "name": "CHASSIS_CMD_WHEEL_RAW", "channel": "control",
       "direction": "jetson_to_stm32", "payload_size": 8,
       "period_ms": 20, "timeout_ms": 200, "schema_version": 1, "crc": "can_fd",
+      "lifecycle": "legacy", "scope": "development_compatibility",
+      "requires_development_handshake": true,
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
         {"name": "enable", "type": "bool", "offset": 1},
@@ -42,7 +44,8 @@
       "id": 257, "name": "CHASSIS_CMD_VELOCITY", "channel": "control",
       "direction": "jetson_to_stm32", "payload_size": 12,
       "period_ms": 20, "timeout_ms": 200, "schema_version": 1,
-      "crc": "crc16_ccitt_false",
+      "crc": "crc16_ccitt_false", "lifecycle": "formal",
+      "requires_development_handshake": false,
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
         {"name": "flags", "type": "flags8", "offset": 1, "bits": {"0": "enable"}},
@@ -91,12 +94,12 @@
     {
       "id": 512, "name": "CHASSIS_HEARTBEAT", "channel": "heartbeat",
       "direction": "bidirectional", "payload_size": 12, "period_ms": 100,
-      "schema_version": 1, "crc": "crc16_ccitt_false",
+      "peer_timeout_ms": 300, "schema_version": 1, "crc": "crc16_ccitt_false",
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
         {"name": "node_state", "type": "enum8", "offset": 1, "values": {"0": "starting", "1": "ready", "2": "running", "3": "degraded", "4": "fault", "5": "maintenance"}},
         {"name": "sequence", "type": "u8", "offset": 2},
-        {"name": "flags", "type": "flags8", "offset": 3, "bits": {"0": "link_passed"}},
+        {"name": "flags", "type": "flags8", "offset": 3, "bits": {"0": "sender_ready"}},
         {"name": "uptime_ms", "type": "u32", "offset": 4, "unit": "ms"},
         {"name": "fault_summary", "type": "flags16", "offset": 8},
         {"name": "crc16", "type": "u16", "offset": 10}
@@ -117,7 +120,7 @@
         {"name": "crc16", "type": "u16", "offset": 14}
       ]
     },
-    {"id": 1824, "name": "CHASSIS_DEV_HANDSHAKE_REQUEST", "channel": "development", "direction": "jetson_to_stm32", "payload_size": 8, "schema_version": 1, "crc": "can_fd", "fields": [{"name": "payload", "type": "bytes", "size": 8, "offset": 0}]},
-    {"id": 1825, "name": "CHASSIS_DEV_HANDSHAKE_RESPONSE", "channel": "development", "direction": "stm32_to_jetson", "payload_size": 8, "schema_version": 1, "crc": "can_fd", "fields": [{"name": "payload", "type": "bytes", "size": 8, "offset": 0}]}
+    {"id": 1824, "name": "CHASSIS_DEV_HANDSHAKE_REQUEST", "channel": "development", "scope": "development_only", "direction": "jetson_to_stm32", "payload_size": 8, "schema_version": 1, "crc": "can_fd", "fields": [{"name": "payload", "type": "bytes", "size": 8, "offset": 0}]},
+    {"id": 1825, "name": "CHASSIS_DEV_HANDSHAKE_RESPONSE", "channel": "development", "scope": "development_only", "direction": "stm32_to_jetson", "payload_size": 8, "schema_version": 1, "crc": "can_fd", "fields": [{"name": "payload", "type": "bytes", "size": 8, "offset": 0}]}
   ]
 }

@@ -70,27 +70,19 @@ static int Start(const struct device *device, const struct can_filter *filters,
   FDCAN_FilterTypeDef filter = {0};
 
   if (filters == NULL || filter_count == 0U ||
-      filter_count > (size_t)config->filter_capacity * 2U) {
+      filter_count > config->filter_capacity) {
     return -EINVAL;
   }
   filter.IdType = FDCAN_STANDARD_ID;
   filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-  for (size_t index = 0U; index < filter_count; index += 2U) {
-    if (filters[index].id > 0x7FFU || filters[index].mask != 0x7FFU ||
-        (index + 1U < filter_count &&
-         (filters[index + 1U].id > 0x7FFU ||
-          filters[index + 1U].mask != 0x7FFU))) {
+  filter.FilterType = FDCAN_FILTER_MASK;
+  for (size_t index = 0U; index < filter_count; ++index) {
+    if (filters[index].id > 0x7FFU || filters[index].mask > 0x7FFU) {
       return -EINVAL;
     }
-    filter.FilterIndex = (uint32_t)(index / 2U);
+    filter.FilterIndex = (uint32_t)index;
     filter.FilterID1 = filters[index].id;
-    if (index + 1U < filter_count) {
-      filter.FilterType = FDCAN_FILTER_DUAL;
-      filter.FilterID2 = filters[index + 1U].id;
-    } else {
-      filter.FilterType = FDCAN_FILTER_MASK;
-      filter.FilterID2 = 0x7FFU;
-    }
+    filter.FilterID2 = filters[index].mask;
     if (HAL_FDCAN_ConfigFilter(config->handle, &filter) != HAL_OK) {
       return -EIO;
     }

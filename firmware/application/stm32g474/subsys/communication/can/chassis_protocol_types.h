@@ -5,10 +5,16 @@
 #include <stdint.h>
 
 typedef enum {
-  CHASSIS_PROTOCOL_LINK_READY = 0,
-  CHASSIS_PROTOCOL_LINK_PASSED,
-  CHASSIS_PROTOCOL_LINK_FAILED
-} ChassisProtocolLinkStatus;
+  CHASSIS_PROTOCOL_DEV_HANDSHAKE_READY = 0,
+  CHASSIS_PROTOCOL_DEV_HANDSHAKE_PASSED,
+  CHASSIS_PROTOCOL_DEV_HANDSHAKE_FAILED
+} ChassisProtocolDevelopmentHandshakeStatus;
+
+typedef enum {
+  CHASSIS_PROTOCOL_PEER_HEARTBEAT_UNKNOWN = 0,
+  CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE,
+  CHASSIS_PROTOCOL_PEER_HEARTBEAT_TIMEOUT
+} ChassisProtocolPeerHeartbeatStatus;
 
 typedef enum {
   CHASSIS_PROTOCOL_DECODE_OK = 0,
@@ -102,6 +108,13 @@ typedef struct {
   uint32_t uptime_ms;
   uint16_t fault_summary;
 } ChassisProtocolHeartbeat;
+
+typedef struct {
+  ChassisProtocolPeerHeartbeatStatus status;
+  ChassisProtocolHeartbeat heartbeat;
+  uint32_t received_ms;
+  uint32_t age_ms;
+} ChassisProtocolPeerHeartbeatSnapshot;
 
 typedef struct {
   ChassisProtocolFaultSeverity severity;

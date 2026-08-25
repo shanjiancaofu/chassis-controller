@@ -38,6 +38,12 @@ class ChassisSchemaTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid flag bit"):
             validate(broken)
 
+    def test_formal_velocity_cannot_require_development_handshake(self) -> None:
+        broken = copy.deepcopy(self.schema)
+        broken["messages"][1]["requires_development_handshake"] = True
+        with self.assertRaisesRegex(ValueError, "handshake-independent"):
+            validate(broken)
+
 
 if __name__ == "__main__":
     unittest.main()

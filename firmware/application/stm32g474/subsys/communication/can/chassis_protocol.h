@@ -17,6 +17,7 @@
 #define CHASSIS_PROTOCOL_MOTION_PERIOD_MS 20U
 #define CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS 20U
 #define CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS 100U
+#define CHASSIS_PROTOCOL_HEARTBEAT_TIMEOUT_MS 300U
 #define CHASSIS_PROTOCOL_FAULT_PERIOD_MS 100U
 #define CHASSIS_PROTOCOL_WHEEL_RAW_TARGET_LIMIT 100
 #define CHASSIS_PROTOCOL_LINEAR_VELOCITY_LIMIT_MM_S 2000
@@ -25,7 +26,7 @@
 #define CHASSIS_PROTOCOL_MOTION_FLAG_VALID (1U << 0)
 #define CHASSIS_PROTOCOL_MOTION_FLAG_RUNNING (1U << 1)
 #define CHASSIS_PROTOCOL_ODOMETRY_FLAG_VALID (1U << 0)
-#define CHASSIS_PROTOCOL_HEARTBEAT_FLAG_LINK_PASSED (1U << 0)
+#define CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY (1U << 0)
 #define CHASSIS_PROTOCOL_FAULT_FLAG_ACTIVE (1U << 0)
 #define CHASSIS_PROTOCOL_FAULT_FLAG_CRITICAL (1U << 1)
 
@@ -34,13 +35,17 @@ typedef struct {
 } ChassisProtocolPort;
 
 bool ChassisProtocol_Init(const ChassisProtocolPort *port);
-void ChassisProtocol_ProcessFrame(const struct can_frame *frame);
+void ChassisProtocol_ProcessFrame(const struct can_frame *frame,
+                                  uint32_t now_ms);
 void ChassisProtocol_Run(uint32_t now_ms);
-void ChassisProtocol_InvalidateLink(ChassisProtocolLinkStatus status);
-void ChassisProtocol_ResetLink(ChassisProtocolLinkStatus status);
+void ChassisProtocol_InvalidateTransport(void);
+void ChassisProtocol_ResetTransport(void);
 void ChassisProtocol_RequestHandshakeResponse(void);
-ChassisProtocolLinkStatus ChassisProtocol_GetLinkStatus(void);
-bool ChassisProtocol_TakeSessionInvalidated(void);
+ChassisProtocolDevelopmentHandshakeStatus
+ChassisProtocol_GetDevelopmentHandshakeStatus(void);
+void ChassisProtocol_GetPeerHeartbeat(
+    uint32_t now_ms, ChassisProtocolPeerHeartbeatSnapshot *snapshot);
+bool ChassisProtocol_TakeTransportInvalidated(void);
 bool ChassisProtocol_TakeControlCommand(
     ChassisProtocolControlCommand *command);
 
@@ -50,6 +55,9 @@ ChassisProtocol_DecodeWheelRaw(const struct can_frame *frame,
 ChassisProtocolDecodeResult
 ChassisProtocol_DecodeVelocity(const struct can_frame *frame,
                                ChassisProtocolVelocityCommand *command);
+ChassisProtocolDecodeResult
+ChassisProtocol_DecodeHeartbeat(const struct can_frame *frame,
+                                ChassisProtocolHeartbeat *heartbeat);
 bool ChassisProtocol_EncodeVelocity(
     const ChassisProtocolVelocityCommand *command, struct can_frame *frame);
 bool ChassisProtocol_EncodeMotion(

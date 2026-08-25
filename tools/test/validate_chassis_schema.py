@@ -20,6 +20,7 @@ def validate(schema: dict) -> None:
     channels = {entry["name"]: entry for entry in schema["channels"]}
     ids: set[int] = set()
     names: set[str] = set()
+    messages_by_name: dict[str, dict] = {}
     for message in schema["messages"]:
         identifier = message["id"]
         name = message["name"]
@@ -28,6 +29,7 @@ def validate(schema: dict) -> None:
             raise ValueError(f"duplicate message id/name: {name}")
         ids.add(identifier)
         names.add(name)
+        messages_by_name[name] = message
         if size not in CAN_FD_LENGTHS:
             raise ValueError(f"{name}: invalid CAN FD payload size {size}")
         channel = channels.get(message["channel"])
@@ -82,6 +84,22 @@ def validate(schema: dict) -> None:
             crc = message["fields"][-1]
             if crc["name"] != "crc16" or crc["offset"] != size - 2:
                 raise ValueError(f"{name}: CRC16 must be the final field")
+    wheel_raw = messages_by_name["CHASSIS_CMD_WHEEL_RAW"]
+    velocity = messages_by_name["CHASSIS_CMD_VELOCITY"]
+    heartbeat = messages_by_name["CHASSIS_HEARTBEAT"]
+    if (wheel_raw.get("lifecycle") != "legacy" or
+            wheel_raw.get("scope") != "development_compatibility" or
+            wheel_raw.get("requires_development_handshake") is not True):
+        raise ValueError("CHASSIS_CMD_WHEEL_RAW: legacy development metadata required")
+    if (velocity.get("lifecycle") != "formal" or
+            velocity.get("requires_development_handshake") is not False):
+        raise ValueError("CHASSIS_CMD_VELOCITY: formal handshake-independent metadata required")
+    if (heartbeat.get("direction") != "bidirectional" or
+            heartbeat.get("period_ms") != 100 or heartbeat.get("peer_timeout_ms") != 300):
+        raise ValueError("CHASSIS_HEARTBEAT: bidirectional 100/300 ms semantics required")
+    for name in ("CHASSIS_DEV_HANDSHAKE_REQUEST", "CHASSIS_DEV_HANDSHAKE_RESPONSE"):
+        if messages_by_name[name].get("scope") != "development_only":
+            raise ValueError(f"{name}: development-only scope required")
 
 
 def main() -> None:

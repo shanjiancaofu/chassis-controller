@@ -68,6 +68,7 @@ bool DiagnosticsRuntime_Init(const struct device *imu_device) {
 
 void DiagnosticsRuntime_Run(void) {
   const uint32_t now_ms = time_uptime_ms();
+  ChassisProtocolPeerHeartbeatSnapshot peer_heartbeat;
 
   sr501_run(DEVICE_DT_GET(DT_CHOSEN(chassis_sr501)), now_ms);
 #if CONFIG_ICM45686
@@ -81,9 +82,11 @@ void DiagnosticsRuntime_Run(void) {
   }
   led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_GREEN, false);
   led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_RED, false);
-  if (ChassisProtocol_GetLinkStatus() == CHASSIS_PROTOCOL_LINK_PASSED) {
+  ChassisProtocol_GetPeerHeartbeat(now_ms, &peer_heartbeat);
+  if (peer_heartbeat.status == CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE) {
     led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_GREEN, true);
-  } else if (ChassisProtocol_GetLinkStatus() == CHASSIS_PROTOCOL_LINK_FAILED) {
+  } else if (peer_heartbeat.status ==
+             CHASSIS_PROTOCOL_PEER_HEARTBEAT_TIMEOUT) {
     led_set(DEVICE_DT_GET(DT_CHOSEN(chassis_leds)), LED_RED, true);
   }
 

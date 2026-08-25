@@ -1,5 +1,18 @@
 # 变更记录
 
+## 2026-08-25：Chassis CAN FD V1 语义收口
+
+- `0x720/0x721 CHASSIS_DEV_HANDSHAKE_*` 限定为独立开发联调状态；正式 `0x101` 不依赖该握手。
+- `0x100` 标记为 legacy/development compatibility，仅开发握手 `PASSED` 后接收；`0x101` 为正式
+  物理速度接口，两者继续共享 control rolling sequence。
+- `0x200` 完成双向 encode/decode、独立 rolling sequence 和 300 ms peer ALIVE/TIMEOUT；重复、
+  倒序或 CRC 错误 heartbeat 不刷新时间，heartbeat 不触碰 200 ms 运动命令 timeout。
+- FDCAN 标准过滤器从 2 增至 3，窄 mask 接收 `0x100/0x101`、`0x200`、`0x720/0x730`；bit timing 不变。
+- cockpit-system chassis 模式默认发送 heartbeat + 0x101，开发握手改为显式选项；codec 增加
+  heartbeat monitor。正式和开发兼容 vcan 场景均通过。
+- `tools/test/run_all.py`、Debug/Release clean build 和两端 Debug/Release codec/simulator 测试通过；
+  最新 payload `110000` 字节、CRC32 `0xCB08F5B7`。未烧录、未新增硬件结论。
+
 ## 2026-08-25：Chassis CAN FD 运行时接入
 
 - `0x101 CHASSIS_CMD_VELOCITY` 已进入统一 rolling sequence、差速运动学换算、CommandManager
