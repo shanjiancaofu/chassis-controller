@@ -72,8 +72,11 @@ Application 根据当前 `1320 counts/rev`、`65 mm` 轮径、`220 mm` 轮距和
 正式 Jetson V1 接口使用 `0x101`，不要求也不读取 `0x720/0x721` 开发握手状态；只要帧版本、
 CRC、保留位、范围和 sequence 合法，就可以进入现有 CommandManager/SafetyManager。`0x100`
 只作为 legacy/development compatibility 保留。
-两种控制报文共用一条 rolling sequence；切换 ID 时 sequence 仍必须连续，第一帧允许任意起始值。
-这能防止通过交替发送 `0x100/0x101` 绕过重复和乱序保护。
+两种控制报文共用一条 rolling sequence；第一帧允许任意起始值，后续以无符号 `uint8` delta
+判断：`delta=0` 为重复并拒绝，`1..127` 为前向帧并接受，其中 `delta>1` 表示中间丢帧，
+`128..255` 为旧帧/倒序并拒绝。切换 ID 不能绕过该规则。合法 STOP 与普通控制使用相同前向规则，
+因此中间丢帧不会阻挡停车。连续 200 ms 没有合法控制命令后清除 sequence baseline，Jetson 进程
+重启后下一帧可用新的 sequence 建立基线。
 
 ## 双向 Heartbeat 与状态上报
 
@@ -83,10 +86,11 @@ sequence、发送端 monotonic uptime、节点状态和故障摘要。接收端�
 连续 300 ms 没有新的合法对端 heartbeat 时，对端状态变为 `TIMEOUT`；下一帧新的合法 sequence
 可恢复为 `ALIVE`。
 
-STM32 的 Motion/Odometry/Fault 状态发送以 Jetson heartbeat `ALIVE` 为正式对端在线依据，
-不依赖 development handshake。发送失败不推进 rolling sequence，并在后续 service 周期重试。
-OTA、QSPI 自检或
-电机自检持有维护资源时暂停 Motion/Odometry，只保留 Fault 和低频 Heartbeat，避免与维护传输争用。
+STM32 Heartbeat 始终按 100 ms 周期发送，Fault 始终允许按变化立即发送并以 100 ms 保活；二者不
+依赖对端 heartbeat，避免双方启动时互相等待，也保证对端离线期间仍有故障诊断机会。
+Motion/Odometry 以 Jetson heartbeat `ALIVE` 为发送门控。所有发送失败均不推进对应 rolling
+sequence，并在后续 service 周期重试。OTA、QSPI 自检或电机自检持有维护资源时暂停
+Motion/Odometry，但不停止 Heartbeat/Fault。
 
 - `0x180 CHASSIS_STATUS_MOTION`：20 ms 周期，报告左右轮速度、底盘线/角速度、控制状态以及
   左右输出 permille。flags bit0 表示数据有效，bit1 表示闭环运行。

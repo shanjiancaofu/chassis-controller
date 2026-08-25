@@ -1,5 +1,18 @@
 # 变更记录
 
+## 2026-08-25：修复 CAN V1 sequence 和 heartbeat 调度风险
+
+- control rolling sequence 改为接受 `delta=1..127` 的前向帧，允许 CAN 丢帧；重复和旧帧继续拒绝。
+- 合法 STOP 可跨前向 sequence gap 立即进入控制队列；200 ms 无合法控制命令后清除 sequence
+  baseline，Jetson 进程重启并从 `seq=0` 开始时可恢复。
+- STM32 Heartbeat 改为无条件 100 ms 周期发送，Fault 无条件按变化/周期发送；仅 Motion/Odometry
+  由 peer heartbeat ALIVE 门控，没有新增 FreeRTOS task。
+- peer heartbeat 多字段状态的写入、timeout 更新和 Diagnostics 快照读取统一使用 FreeRTOS 临界区。
+- host tests 新增 `10→12`、gap STOP、`137→timeout→0`，并证明 heartbeat 不刷新 CommandManager
+  的 200 ms timeout。
+- `tools/test/run_all.py`、Debug/Release clean build、cockpit Debug/Release CTest 和正式/开发兼容
+  vcan 回归通过；最新 payload `110060` 字节、CRC32 `0x4E3E35D5`。未烧录。
+
 ## 2026-08-25：Chassis CAN FD V1 语义收口
 
 - `0x720/0x721 CHASSIS_DEV_HANDSHAKE_*` 限定为独立开发联调状态；正式 `0x101` 不依赖该握手。

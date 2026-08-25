@@ -38,7 +38,7 @@
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
 - 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已在 Chassis CAN FD V1 收口后重新
-  打包：payload `110000` 字节、CRC32 `0xCB08F5B7`，OTA 包 `110064` 字节；仅完成构建、格式和
+  打包：payload `110060` 字节、CRC32 `0x4E3E35D5`，OTA 包 `110124` 字节；仅完成构建、格式和
   主机回归，尚未烧录。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
@@ -54,7 +54,9 @@
   已运行；`0.14.0` 已完成 UART OTA confirmed，新版 LCD UI 视觉、文字排版和四页切换已人工确认正常。
 - Chassis CAN FD V1 已收口：正式 `0x101` 不依赖开发握手，`0x100` 仅保留 legacy/development
   compatibility；`0x200` 为双向 heartbeat，300 ms 超时只更新对端在线状态，不刷新 200 ms
-  运动命令 timeout。cockpit-system `can-simulator` 已在隔离 `vcan0` 上完成无开发握手正式链路、
+  运动命令 timeout。control sequence 允许前向丢帧、拒绝重复/旧帧，并在 200 ms timeout 后重建
+  baseline；Heartbeat/Fault 无条件发送，Motion/Odometry 才由 peer ALIVE 门控。cockpit-system
+  `can-simulator` 已在隔离 `vcan0` 上完成无开发握手正式链路、
   heartbeat 超时、可选开发握手和状态解码；Navigator 产品接入和目标板 `can0` 尚未联调。
 
 ## 当前实现

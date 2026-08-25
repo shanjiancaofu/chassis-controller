@@ -121,6 +121,48 @@ int main(void)
   assert(ChassisProtocol_DecodeWheelRaw(&frame, &wheel) ==
          CHASSIS_PROTOCOL_DECODE_WRONG_LENGTH);
 
+  assert(ChassisProtocol_Init(&port));
+  velocity = (ChassisProtocolVelocityCommand){
+      .enabled = true,
+      .sequence = 10U,
+      .linear_velocity_mm_s = 500,
+      .angular_velocity_mrad_s = 0,
+  };
+  assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
+  ChassisProtocol_ProcessFrame(&frame, 100U);
+  assert(ChassisProtocol_TakeControlCommand(&control));
+  assert(control.sequence == 10U && control.enabled);
+
+  velocity.sequence = 12U;
+  assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
+  ChassisProtocol_ProcessFrame(&frame, 120U);
+  assert(ChassisProtocol_TakeControlCommand(&control));
+  assert(control.sequence == 12U && control.enabled);
+  ChassisProtocol_ProcessFrame(&frame, 121U);
+  assert(!ChassisProtocol_TakeControlCommand(&control));
+
+  velocity.sequence = 14U;
+  velocity.enabled = false;
+  velocity.linear_velocity_mm_s = 0;
+  assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
+  ChassisProtocol_ProcessFrame(&frame, 140U);
+  assert(ChassisProtocol_TakeControlCommand(&control));
+  assert(control.sequence == 14U && !control.enabled);
+
+  velocity.sequence = 137U;
+  velocity.enabled = true;
+  velocity.linear_velocity_mm_s = 500;
+  assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
+  ChassisProtocol_ProcessFrame(&frame, 150U);
+  assert(ChassisProtocol_TakeControlCommand(&control));
+  assert(control.sequence == 137U);
+  ChassisProtocol_Run(350U);
+  velocity.sequence = 0U;
+  assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
+  ChassisProtocol_ProcessFrame(&frame, 351U);
+  assert(ChassisProtocol_TakeControlCommand(&control));
+  assert(control.sequence == 0U);
+
   velocity.angular_velocity_mrad_s = 10001;
   assert(!ChassisProtocol_EncodeVelocity(&velocity, &frame));
   velocity.enabled = false;

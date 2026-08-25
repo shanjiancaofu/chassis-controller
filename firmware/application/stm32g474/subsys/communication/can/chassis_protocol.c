@@ -4,6 +4,11 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "config/protocol_config.h"
+#if !defined(CHASSIS_PROTOCOL_HOST_TEST) && \
+    !defined(CHASSIS_CONTROL_FLOW_HOST_TEST)
+#include "kernel/critical.h"
+#endif
 #include "subsys/communication/can/chassis_protocol_ids.h"
 
 #define HANDSHAKE_SIZE 8U
@@ -22,6 +27,7 @@ static bool control_command_pending;
 static bool transport_invalidated;
 static bool control_sequence_valid;
 static uint8_t last_control_sequence;
+static uint32_t last_control_received_ms;
 static uint8_t motion_tx_sequence;
 static uint8_t odometry_tx_sequence;
 static uint8_t heartbeat_tx_sequence;
@@ -29,6 +35,20 @@ static uint8_t fault_tx_sequence;
 static bool response_pending;
 static uint32_t response_retry_due_ms;
 static uint8_t response_attempts;
+
+static void LockPeerHeartbeat(void) {
+#if !defined(CHASSIS_PROTOCOL_HOST_TEST) && \
+    !defined(CHASSIS_CONTROL_FLOW_HOST_TEST)
+  kernel_critical_enter();
+#endif
+}
+
+static void UnlockPeerHeartbeat(void) {
+#if !defined(CHASSIS_PROTOCOL_HOST_TEST) && \
+    !defined(CHASSIS_CONTROL_FLOW_HOST_TEST)
+  kernel_critical_exit();
+#endif
+}
 
 static int16_t GetI16Le(const uint8_t *data) {
   return (int16_t)((uint16_t)data[0] | ((uint16_t)data[1] << 8U));
@@ -68,15 +88,18 @@ static void ResetControlSession(void) {
   control_command_pending = false;
   control_sequence_valid = false;
   last_control_sequence = 0U;
+  last_control_received_ms = 0U;
   pending_control_command = (ChassisProtocolControlCommand){0};
 }
 
 static void ResetPeerHeartbeat(void) {
+  LockPeerHeartbeat();
   peer_heartbeat_status = CHASSIS_PROTOCOL_PEER_HEARTBEAT_UNKNOWN;
   peer_heartbeat = (ChassisProtocolHeartbeat){0};
   peer_heartbeat_received_ms = 0U;
   peer_heartbeat_sequence_valid = false;
   last_peer_heartbeat_sequence = 0U;
+  UnlockPeerHeartbeat();
 }
 
 bool ChassisProtocol_Init(const ChassisProtocolPort *port) {
@@ -171,9 +194,11 @@ void ChassisProtocol_ProcessFrame(const struct can_frame *frame,
   if (frame->id == CHASSIS_CAN_ID_HEARTBEAT) {
     if (ChassisProtocol_DecodeHeartbeat(frame, &heartbeat) ==
         CHASSIS_PROTOCOL_DECODE_OK) {
-      const uint8_t sequence_delta =
-          (uint8_t)(heartbeat.sequence - last_peer_heartbeat_sequence);
+      uint8_t sequence_delta;
 
+      LockPeerHeartbeat();
+      sequence_delta =
+          (uint8_t)(heartbeat.sequence - last_peer_heartbeat_sequence);
       if (!peer_heartbeat_sequence_valid ||
           (peer_heartbeat_status == CHASSIS_PROTOCOL_PEER_HEARTBEAT_TIMEOUT &&
            sequence_delta != 0U) ||
@@ -184,6 +209,7 @@ void ChassisProtocol_ProcessFrame(const struct can_frame *frame,
         peer_heartbeat_sequence_valid = true;
         peer_heartbeat_status = CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE;
       }
+      UnlockPeerHeartbeat();
     }
     return;
   }
@@ -221,10 +247,19 @@ void ChassisProtocol_ProcessFrame(const struct can_frame *frame,
     return;
   }
   if (control_sequence_valid &&
-      normalized.sequence != (uint8_t)(last_control_sequence + 1U)) {
-    return;
+      now_ms - last_control_received_ms >= MOTOR_COMMAND_TIMEOUT_MS) {
+    control_sequence_valid = false;
+  }
+  if (control_sequence_valid) {
+    const uint8_t sequence_delta =
+        (uint8_t)(normalized.sequence - last_control_sequence);
+
+    if (sequence_delta == 0U || sequence_delta >= 128U) {
+      return;
+    }
   }
   last_control_sequence = normalized.sequence;
+  last_control_received_ms = now_ms;
   control_sequence_valid = true;
   pending_control_command = normalized;
   control_command_pending = true;
@@ -238,10 +273,16 @@ void ChassisProtocol_Run(uint32_t now_ms) {
       .data = {'C', 'H', 'A', 'S', 'S', 'I', 'S', 1U},
   };
 
+  LockPeerHeartbeat();
   if (peer_heartbeat_status == CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE &&
       now_ms - peer_heartbeat_received_ms >=
           CHASSIS_PROTOCOL_HEARTBEAT_TIMEOUT_MS) {
     peer_heartbeat_status = CHASSIS_PROTOCOL_PEER_HEARTBEAT_TIMEOUT;
+  }
+  UnlockPeerHeartbeat();
+  if (control_sequence_valid &&
+      now_ms - last_control_received_ms >= MOTOR_COMMAND_TIMEOUT_MS) {
+    control_sequence_valid = false;
   }
   if (response_pending &&
       (int32_t)(now_ms - response_retry_due_ms) >= 0) {
@@ -297,6 +338,7 @@ void ChassisProtocol_GetPeerHeartbeat(
   if (snapshot == NULL) {
     return;
   }
+  LockPeerHeartbeat();
   *snapshot = (ChassisProtocolPeerHeartbeatSnapshot){
       .status = peer_heartbeat_status,
       .heartbeat = peer_heartbeat,
@@ -305,6 +347,7 @@ void ChassisProtocol_GetPeerHeartbeat(
                     ? now_ms - peer_heartbeat_received_ms
                     : 0U,
   };
+  UnlockPeerHeartbeat();
 }
 
 bool ChassisProtocol_TakeTransportInvalidated(void) {

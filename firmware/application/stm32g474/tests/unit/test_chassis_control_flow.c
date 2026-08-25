@@ -26,6 +26,12 @@ int main(void)
   };
   ChassisProtocolControlCommand control;
   CommandManagerCommand stored;
+  ChassisProtocolHeartbeat heartbeat = {
+      .node_state = CHASSIS_PROTOCOL_NODE_RUNNING,
+      .sequence = 1U,
+      .flags = CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY,
+      .uptime_ms = 1150U,
+  };
   struct can_frame frame;
   int32_t left_target;
   int32_t right_target;
@@ -57,16 +63,16 @@ int main(void)
   assert(CommandManager_Get(&stored));
   assert(stored.left_target == 32 && stored.right_target == 32);
   assert(!CommandManager_IsTimedOut(1199U));
+  assert(ChassisProtocol_EncodeHeartbeat(&heartbeat, &frame));
+  ChassisProtocol_ProcessFrame(&frame, 1150U);
+  assert(!ChassisProtocol_TakeControlCommand(&control));
   assert(CommandManager_IsTimedOut(1200U));
 
-  ChassisProtocol_ProcessFrame(&frame, 1100U);
-  assert(!ChassisProtocol_TakeControlCommand(&control));
-
-  velocity.sequence = 2U;
+  velocity.sequence = 0U;
   velocity.enabled = false;
   velocity.linear_velocity_mm_s = 0;
   assert(ChassisProtocol_EncodeVelocity(&velocity, &frame));
-  ChassisProtocol_ProcessFrame(&frame, 1200U);
+  ChassisProtocol_ProcessFrame(&frame, 1201U);
   assert(ChassisProtocol_TakeControlCommand(&control));
   assert(!control.enabled);
 

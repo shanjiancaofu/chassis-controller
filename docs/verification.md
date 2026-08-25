@@ -61,20 +61,25 @@ legacy `0x100` 在开发握手前拒绝、握手 `PASSED` 后保持兼容。双�
 前向 rolling sequence、重复/倒序/CRC 拒绝以及 300 ms ALIVE/TIMEOUT；heartbeat 测试明确确认不
 生成控制命令，也不刷新 CommandManager 的 200 ms 运动命令 timeout。
 
+风险修正回归进一步覆盖 `seq=10 -> 12` 前向丢帧、`12 -> 14 STOP`、`seq=137 -> 200 ms timeout
+-> seq=0` 重建 baseline。peer heartbeat 的 Service 写入、timeout 更新和 Diagnostics 快照读取已
+统一使用临界区。源码调度确认 Heartbeat/Fault 位于 peer ALIVE gate 之前，Motion/Odometry 位于
+gate 之后；未新增 heartbeat task。
+
 `python3 tools/test/run_all.py` 通过 16 项 C host、3 项 Kconfig、3 项 DTS、5 项架构、5 项 schema、
 18 项 OTA/Python、四场景配置矩阵和 LCD 同源预览。随后单独执行 Debug/Release clean build。
 
 | 配置 | text | data | bss | 结果 |
 | --- | ---: | ---: | ---: | --- |
-| Debug | 124912 | 96 | 55440 | `BUILD PASS` |
-| Release | 109896 | 96 | 55424 | `BUILD PASS` |
+| Debug | 125012 | 96 | 55448 | `BUILD PASS` |
+| Release | 109956 | 96 | 55432 | `BUILD PASS` |
 
 ```text
-application.bin=110000 bytes
-payload_crc32=0xCB08F5B7
-application.bin sha256=c2bd2d81a719a37b705e586177663a08cbda777814368f52370a51b1beb1f9de
-app-v0.15.0-b1.ota=110064 bytes
-ota sha256=60dbd6d004861381a1e42c98958bb325a98cbce8edabea9cfce9c8e96393e33b
+application.bin=110060 bytes
+payload_crc32=0x4E3E35D5
+application.bin sha256=ac15d8451d13478cfad086cb8caca0840070b730f06ada35dad6d4ee198c7946
+app-v0.15.0-b1.ota=110124 bytes
+ota sha256=353e86679ad83ce682ca3f545c95375ccda0ee6d3f10a53328e8defabdeb3f88
 ```
 
 本批未执行真实 `can0`、UART OTA 或目标板电机测试，不构成硬件 `PASS`。

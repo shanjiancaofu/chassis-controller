@@ -141,16 +141,6 @@ static void PublishChassisStatus(uint32_t now_ms) {
       (active_faults & CHASSIS_FAULT_EMERGENCY_STOP) != 0U;
   bool maintenance_active;
 
-  ChassisProtocol_GetPeerHeartbeat(now_ms, &peer);
-  if (peer.status != CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE) {
-    motion_tx_due_ms = now_ms + CHASSIS_PROTOCOL_MOTION_PERIOD_MS;
-    odometry_tx_due_ms = now_ms + CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS + 5U;
-    heartbeat_tx_due_ms = now_ms + CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS + 10U;
-    fault_tx_due_ms = now_ms + CHASSIS_PROTOCOL_FAULT_PERIOD_MS + 15U;
-    fault_sequence_sent = false;
-    return;
-  }
-
   SystemStatus_GetSnapshot(&status);
   kernel_critical_enter();
   WheelController_GetSnapshot(&wheels);
@@ -161,6 +151,7 @@ static void PublishChassisStatus(uint32_t now_ms) {
   status.motor_test.running = motor_test.running;
   maintenance_active = OtaSession_IsActive() || motor_test.running ||
                        QspiSelfTest_GetStatus() == QSPI_SELF_TEST_RUNNING;
+  ChassisProtocol_GetPeerHeartbeat(now_ms, &peer);
 
   if (!fault_sequence_sent || fault_sequence != last_fault_sequence_sent ||
       IsDue(now_ms, fault_tx_due_ms)) {
@@ -186,7 +177,26 @@ static void PublishChassisStatus(uint32_t now_ms) {
       fault_sequence_sent = true;
       fault_tx_due_ms = now_ms + CHASSIS_PROTOCOL_FAULT_PERIOD_MS;
     }
-  } else if (!maintenance_active && IsDue(now_ms, motion_tx_due_ms)) {
+  }
+  if (IsDue(now_ms, heartbeat_tx_due_ms)) {
+    const ChassisProtocolHeartbeat heartbeat = {
+        .node_state = ProtocolNodeState(&status, active_faults,
+                                        protocol_critical_fault),
+        .flags = CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY,
+        .uptime_ms = now_ms,
+        .fault_summary = (uint16_t)active_faults,
+    };
+
+    if (ChassisProtocol_SendHeartbeat(&heartbeat) == 0) {
+      heartbeat_tx_due_ms = now_ms + CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS;
+    }
+  }
+  if (peer.status != CHASSIS_PROTOCOL_PEER_HEARTBEAT_ALIVE) {
+    motion_tx_due_ms = now_ms + CHASSIS_PROTOCOL_MOTION_PERIOD_MS;
+    odometry_tx_due_ms = now_ms + CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS + 5U;
+    return;
+  }
+  if (!maintenance_active && IsDue(now_ms, motion_tx_due_ms)) {
     const ChassisProtocolMotionStatus motion = {
         .valid = odometry.valid,
         .running = status.control_state == CHASSIS_CONTROL_RUNNING,
@@ -223,18 +233,6 @@ static void PublishChassisStatus(uint32_t now_ms) {
 
     if (ChassisProtocol_SendOdometry(&report) == 0) {
       odometry_tx_due_ms = now_ms + CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS;
-    }
-  } else if (IsDue(now_ms, heartbeat_tx_due_ms)) {
-    const ChassisProtocolHeartbeat heartbeat = {
-        .node_state = ProtocolNodeState(&status, active_faults,
-                                        protocol_critical_fault),
-        .flags = CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY,
-        .uptime_ms = now_ms,
-        .fault_summary = (uint16_t)active_faults,
-    };
-
-    if (ChassisProtocol_SendHeartbeat(&heartbeat) == 0) {
-      heartbeat_tx_due_ms = now_ms + CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS;
     }
   }
 }
