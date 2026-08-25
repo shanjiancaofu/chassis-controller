@@ -77,6 +77,12 @@ def main() -> None:
     for device_id, compatible in expected_compatibles.items():
         require_equal(f"{device_id} compatible",
                       devices[device_id]["compatible"], compatible)
+    require_equal("E-stop EXTI mode", ioc.get("PD2.GPIO_ModeDefaultEXTI"),
+                  "GPIO_MODE_IT_FALLING")
+    require_equal("E-stop pull", ioc.get("PD2.GPIO_PuPd"), "GPIO_PULLUP")
+    estop_gpio = manifest["phandle_arrays"]["estop0"]["gpios"][0]
+    require_equal("E-stop GPIO controller", estop_gpio["controller"], "gpiod")
+    require_equal("E-stop GPIO pin/flags", estop_gpio["cells"], [2, 1])
     print("CubeMX/DTS hardware configuration verified")
 
 
