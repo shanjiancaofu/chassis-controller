@@ -6,6 +6,16 @@
 #include <stdint.h>
 
 typedef enum { HAL_OK = 0, HAL_ERROR = 1 } HAL_StatusTypeDef;
+typedef enum { GPIO_PIN_RESET = 0, GPIO_PIN_SET = 1 } GPIO_PinState;
+
+typedef struct {
+  uint32_t unused;
+} GPIO_TypeDef;
+
+GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin);
+void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin,
+                       GPIO_PinState state);
+void HAL_GPIO_TogglePin(GPIO_TypeDef *port, uint16_t pin);
 
 typedef struct {
   uint32_t unused;

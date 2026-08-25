@@ -32,5 +32,8 @@ void ControlRuntime_CoastOutputs(void);
 void ControlRuntime_FatalError(void);
 void ControlRuntime_PanicStopFromException(void);
 bool ControlRuntime_ClearEmergencyStop(void);
+void ControlRuntime_NotifyEmergencyStopFromIsr(void);
+bool ControlRuntime_TakeEmergencyStopEvent(void);
+void ControlRuntime_StopForEmergencyStopEvent(void);
 
 #endif

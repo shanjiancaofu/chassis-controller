@@ -54,6 +54,56 @@
 
 ## 构建基线
 
+### 0.15.0 build1 UART OTA 与 build2 回归修复（2026-08-25）
+
+OTA 前 0.14.0 状态为 `control=STOPPED`、`fault=0`、左右 target/speed/PWM 全零、四任务 RUNNING，
+QSPI `EF4017/8 MiB`。随后 `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0` 完成 build1：
+
+```text
+STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED
+```
+
+Application 启动为 `0.15.0 build1`；普通 ST-Link `reset run` 后 Bootloader metadata 为
+`STATE=0x00000005`，再次启动 0.15.0。稳定状态证明四任务 RUNNING、critical tasks healthy、QSPI
+READY、左右 target/speed/PWM 全零，但不构成完整硬件 PASS：
+
+```text
+control=EMERGENCY_STOP fault=0x00000002
+adc_valid=0 with supply_mv about 12.15 V
+imu=DEGRADED samples=0
+lcd=DRAWING after 65 seconds
+```
+
+SWD 只读 `GPIOD_IDR=0x60`，PD2 bit2 为 0；结合 active-low DTS 和 CubeMX pull-up/falling-edge，
+确认急停为真实物理有效状态，安全锁存正确，PWM 始终为零。SPI2/SPI3 DMA transfer count 已归零，
+但最终 ELF 的三个 callback 为 HAL weak `W`；`interrupts_stm32.c` 位于 archive 且无普通引用，链接器
+未提取该对象。这解释 LCD/IMU DMA callback 未执行。ADC 电压读取实际成功，`adc_valid=0` 来自把
+成功返回值 `0` 直接赋给 bool。
+
+build2 已建立显式 callback adapter 链接引用、修正 ADC `== 0` 判断，并增加构建门禁，确认：
+
+```text
+HAL_SPI_TxCpltCallback   T
+HAL_SPI_TxRxCpltCallback T
+HAL_SPI_ErrorCallback    T
+```
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug build2 | 125388 | 96 | 55448 | `BUILD PASS` |
+| Release build2 | 110312 | 96 | 55432 | `BUILD PASS` |
+
+```text
+application.bin=110416 bytes
+payload_crc32=0x8EFB9966
+application.bin sha256=7e420d86a45e64149aeb287c19d431eece1f65c706b1bbb95281afac51b94c1c
+app-v0.15.0-b2.ota=110480 bytes
+ota sha256=efc30b2df1f9bf371b841c7bc63939bac96fb7c97328dd203f6be0a5806031bf
+```
+
+build2 OTA 入口返回 `[RSP] ... result=ERROR command=ota_uart code=BUSY`，原因是物理急停仍有效；
+工具未进入 binary mode、未传输 build2，板上继续是 confirmed build1。
+
 ### Chassis CAN FD V1 收口（2026-08-25）
 
 正式 `0x101` 已证明无需 `0x720/0x721` 即可进入差速换算、CommandManager 和 SafetyManager；

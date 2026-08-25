@@ -24,7 +24,7 @@
   `chassis_app.c` 从 935 行缩为 57 行，五类运行时位于 `app/runtime/`。
 - 尚未完成：本轮架构代码的 UART OTA、启动静态状态、UART/QSPI/IMU/GPIO/LCD 和电机零输出目标板回归。
 
-- Application 工作树：`0.15.0 build1`；板上 confirmed 镜像：`0.14.0 build1`。
+- Application 工作树：`0.15.0 build2`；板上 confirmed 镜像：`0.15.0 build1`。
 - Bootloader：`0.1.0 build22`。
 - 板上 confirmed 镜像已通过 UART OTA 更新为 Application `0.14.0 build1`；Bootloader 仍为
   build22，b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.10.0`
@@ -37,9 +37,13 @@
   `0x5BEC2E71`；OTA 包共 `99692` 字节，已通过 UART OTA 写入并确认。
 - 当前工作树 Release `build/arm-release/app-v0.15.0-b1.ota` 的 payload 为 `101764` 字节、
   CRC32 为 `0x447F9AC9`；OTA 包共 `101828` 字节。该包只完成构建、打包和主机验证，尚未烧录。
-- 最新 Release `build/arm-release/app-v0.15.0-b1.ota` 已在 Chassis CAN FD V1 收口后重新
-  打包：payload `110060` 字节、CRC32 `0x4E3E35D5`，OTA 包 `110124` 字节；仅完成构建、格式和
-  主机回归，尚未烧录。
+- `0.15.0 build1` 已通过 UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED ->
+  TRIAL VERIFIED -> CONFIRMED`。稳定状态保持四任务 RUNNING 和左右 PWM/target/speed 全零，但
+  暴露 SPI HAL callback adapter 未进入 ELF，导致 LCD 长期 DRAWING、IMU 零样本，以及 ADC
+  `int/-errno` 成功值被反向映射为 invalid。当前修复版 build2 payload `110416` 字节、CRC32
+  `0x8EFB9966`，OTA 包 `110480` 字节；已完成构建和主机验证，尚未烧录。
+- 当前板上 PD2 急停原始电平为低，`EMERGENCY_STOP/fault=0x2` 是真实 active-low 安全输入；
+  build2 UART OTA 因维护锁返回 `code=BUSY`，没有开始传输。物理释放急停后才能继续 OTA。
 - 当前阶段：此前 OTA V1 冻结范围已解除开发阻塞，后续软件架构、协议、主机测试和构建不再等待
   CAN FD OTA、断电恢复、回滚、电气零输出、SR501 高电平、PID 闭环、里程计或 IMU 动态轴向的
   目标板条件。上述硬件项目继续按机会单独验收，未实测内容保持 `NOT VERIFIED`。SR501 代码、

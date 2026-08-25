@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-08-25：0.15.0 build1 上板与 SPI callback 修复
+
+- build1 已完成 UART OTA、Bootloader 安装、Trial 和 CONFIRMED；普通复位后仍启动 0.15.0。
+- 静态零输出和四任务通过，但目标板发现 LCD DRAWING、IMU 零样本和 ADC valid 错误，未标硬件 PASS。
+- 定位 HAL SPI callback adapter 未被静态库链接器提取；新增显式 init 引用，并增加 ELF 强符号门禁。
+- 修正 power sample `int/-errno` 成功返回值到 bool 的映射，工作树提升为 `0.15.0 build2`。
+- SWD 确认 PD2 为低，急停锁存是真实安全输入；build2 OTA 被 `code=BUSY` 正确拒绝，尚未烧录。
+
 ## 2026-08-25：修复 CAN V1 sequence 和 heartbeat 调度风险
 
 - control rolling sequence 改为接受 `delta=1..127` 的前向帧，允许 CAN 丢帧；重复和旧帧继续拒绝。

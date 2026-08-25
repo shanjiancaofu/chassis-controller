@@ -218,7 +218,9 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   ChassisProtocol_GetPeerHeartbeat(now_ms, &peer_heartbeat);
   status.can_state = MapCanState(peer_heartbeat.status);
   status.lcd_state = MapLcdState(LcdUi_GetStatus());
-  status.supply_valid = power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &status.supply_mv);
+  status.supply_valid =
+      power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)),
+                                   &status.supply_mv) == 0;
   status.fault_flags = FaultManager_GetFlags();
   status.latched_fault_flags = FaultManager_GetLatchedFlags();
   status.fault_sequence = FaultManager_GetSequence();

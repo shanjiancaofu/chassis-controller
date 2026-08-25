@@ -126,6 +126,8 @@ static const char *LcdValueText(LcdUiValueState state)
 static const char *LcdControlText(LcdUiControlState state)
 {
   switch (state) {
+    case LCD_UI_CONTROL_STARTING:
+      return "STARTING";
     case LCD_UI_CONTROL_RUNNING:
       return "RUNNING";
     case LCD_UI_CONTROL_TIMEOUT:

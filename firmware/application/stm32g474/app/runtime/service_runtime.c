@@ -27,6 +27,7 @@
 #include "drivers/adc/power_sample.h"
 #include "drivers/motor/motor.h"
 #include "drivers/reset/reset.h"
+#include "drivers/safety/emergency_stop.h"
 #include "drivers/time.h"
 #include "drivers/uart.h"
 #include "drivers/watchdog.h"
@@ -45,9 +46,82 @@ static uint32_t heartbeat_tx_due_ms;
 static uint32_t fault_tx_due_ms;
 static uint16_t last_fault_sequence_sent;
 static bool fault_sequence_sent;
+static uint32_t startup_started_ms;
+static uint32_t startup_candidate_started_ms;
+static bool startup_candidate_asserted;
+static bool startup_candidate_valid;
+static bool emergency_stop_confirmation_pending;
+static uint32_t emergency_stop_confirmation_started_ms;
+
+#define EMERGENCY_STOP_STARTUP_SETTLE_MS 500U
+#define EMERGENCY_STOP_STARTUP_STABLE_MS 50U
+#define EMERGENCY_STOP_CONFIRM_MS 50U
 
 static bool IsDue(uint32_t now_ms, uint32_t due_ms) {
   return (int32_t)(now_ms - due_ms) >= 0;
+}
+
+static bool RunStartupArming(uint32_t now_ms) {
+  const bool asserted = emergency_stop_is_asserted(
+      DEVICE_DT_GET(DT_CHOSEN(chassis_estop)));
+
+  if (!SafetyManager_IsStarting()) {
+    return true;
+  }
+  (void)ControlRuntime_TakeEmergencyStopEvent();
+  ControlRuntime_CoastOutputs();
+  if (now_ms - startup_started_ms < EMERGENCY_STOP_STARTUP_SETTLE_MS) {
+    return false;
+  }
+  if (!startup_candidate_valid || asserted != startup_candidate_asserted) {
+    startup_candidate_asserted = asserted;
+    startup_candidate_started_ms = now_ms;
+    startup_candidate_valid = true;
+    return false;
+  }
+  if (now_ms - startup_candidate_started_ms <
+      EMERGENCY_STOP_STARTUP_STABLE_MS) {
+    return false;
+  }
+
+  SafetyManager_CompleteStartup(asserted);
+  if (asserted) {
+    ControlRuntime_EmergencyStopOutputs();
+  } else if (!ControlRuntime_ClearEmergencyStop()) {
+    SafetyManager_CompleteStartup(true);
+    ControlRuntime_EmergencyStopOutputs();
+  }
+  return true;
+}
+
+static void RunEmergencyStopConfirmation(uint32_t now_ms) {
+  const struct device *estop = DEVICE_DT_GET(DT_CHOSEN(chassis_estop));
+
+  if (ControlRuntime_TakeEmergencyStopEvent()) {
+    ControlRuntime_StopForEmergencyStopEvent();
+    if (SafetyManager_IsEmergencyStopLatched()) {
+      emergency_stop_confirmation_pending = false;
+      ControlRuntime_EmergencyStopOutputs();
+      return;
+    }
+    emergency_stop_confirmation_pending = true;
+    emergency_stop_confirmation_started_ms = now_ms;
+  }
+  if (!emergency_stop_confirmation_pending) {
+    return;
+  }
+  if (!emergency_stop_is_asserted(estop)) {
+    emergency_stop_confirmation_pending = false;
+    (void)ControlRuntime_ClearEmergencyStop();
+    return;
+  }
+  if (now_ms - emergency_stop_confirmation_started_ms <
+      EMERGENCY_STOP_CONFIRM_MS) {
+    return;
+  }
+  emergency_stop_confirmation_pending = false;
+  SafetyManager_LatchEmergencyStop();
+  ControlRuntime_EmergencyStopOutputs();
 }
 
 static int16_t RoundToI16(float value) {
@@ -316,6 +390,12 @@ bool ServiceRuntime_Init(void) {
   fault_tx_due_ms = now_ms + CHASSIS_PROTOCOL_FAULT_PERIOD_MS + 15U;
   last_fault_sequence_sent = 0U;
   fault_sequence_sent = false;
+  startup_started_ms = now_ms;
+  startup_candidate_started_ms = 0U;
+  startup_candidate_asserted = false;
+  startup_candidate_valid = false;
+  emergency_stop_confirmation_pending = false;
+  emergency_stop_confirmation_started_ms = 0U;
 #if CONFIG_MOTOR_DEMO
   demo_stage = 0U;
   demo_stage_started_ms = now_ms;
@@ -336,6 +416,10 @@ void ServiceRuntime_Run(void) {
   const uint32_t now_ms = time_uptime_ms();
 
   uart_run();
+  if (!RunStartupArming(now_ms)) {
+    return;
+  }
+  RunEmergencyStopConfirmation(now_ms);
   if (OtaUart_IsEnabled()) {
     OtaUart_Run();
   } else {

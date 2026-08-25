@@ -127,6 +127,13 @@ stm32g474_target(application
   "${APP_ROOT}/boards/chassis_g474/application.ld" "application.map")
 add_custom_command(TARGET application POST_BUILD
   COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/build/check_required_symbols.py"
+          --nm-tool "${CMAKE_NM}"
+          --elf "$<TARGET_FILE:application>"
+          --symbol HAL_SPI_TxCpltCallback
+          --symbol HAL_SPI_TxRxCpltCallback
+          --symbol HAL_SPI_ErrorCallback
+  COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/tools/build/check_image_size.py"
           --size-tool "${CMAKE_SIZE}"
           --elf "$<TARGET_FILE:application>"

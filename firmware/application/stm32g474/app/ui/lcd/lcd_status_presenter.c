@@ -58,6 +58,8 @@ static int32_t MilliFromFloat(float value)
 static LcdUiControlState MapControlState(ChassisControlState state)
 {
   switch (state) {
+    case CHASSIS_CONTROL_STARTING:
+      return LCD_UI_CONTROL_STARTING;
     case CHASSIS_CONTROL_RUNNING:
       return LCD_UI_CONTROL_RUNNING;
     case CHASSIS_CONTROL_COMMAND_TIMEOUT:

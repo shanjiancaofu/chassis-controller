@@ -355,6 +355,8 @@ static const char *ResetCauseText(uint32_t flags)
 static const char *ControlStateText(ChassisControlState state)
 {
   switch (state) {
+    case CHASSIS_CONTROL_STARTING:
+      return "STARTING";
     case CHASSIS_CONTROL_RUNNING:
       return "RUNNING";
     case CHASSIS_CONTROL_COMMAND_TIMEOUT:

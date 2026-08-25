@@ -44,6 +44,16 @@ TESTS = {
         "FAULT_MANAGER_HOST_TEST",
         ["tests/unit/test_fault_manager.c", "app/safety/fault_manager.c"],
     ),
+    "gpio_stm32": (
+        "GPIO_STM32_HOST_TEST",
+        ["tests/unit/test_gpio_stm32.c", "drivers/gpio/gpio_common.c",
+         "drivers/gpio/gpio_stm32.c", "kernel/device.c"],
+    ),
+    "safety_manager": (
+        "SAFETY_MANAGER_HOST_TEST",
+        ["tests/unit/test_safety_manager.c", "app/safety/safety_manager.c",
+         "app/safety/fault_manager.c"],
+    ),
     "icm45686": (
         "ICM45686_HOST_TEST",
         ["tests/unit/test_icm45686.c", "lib/icm45686/icm45686.c"],

@@ -9,6 +9,7 @@
 #include "drivers/encoder/encoder_stm32_private.h"
 #include "drivers/flash/flash_stm32_qspi_private.h"
 #include "drivers/gpio.h"
+#include "drivers/gpio/interrupts_stm32_private.h"
 #include "drivers/led/led_stm32_private.h"
 #include "drivers/motor/motor_stm32_private.h"
 #include "drivers/rtc.h"
@@ -24,6 +25,12 @@
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
+
+static int BoardInterruptCallbacks_Init(void) {
+  return InterruptsStm32_Link();
+}
+
+SYS_INIT(BoardInterruptCallbacks_Init, PRE_KERNEL_2, 49);
 
 static const CanStm32FdcanConfig can0_config = {
     .handle = &hfdcan2,

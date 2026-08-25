@@ -33,6 +33,7 @@ static const struct device *drive_device;
 static const struct device *left_encoder_device;
 static const struct device *right_encoder_device;
 static uint32_t consecutive_control_overruns;
+static volatile bool emergency_stop_event;
 
 static void ReleaseMotionOwner(void);
 static void ApplyPendingControlParameters(void);
@@ -79,7 +80,27 @@ bool ControlRuntime_Init(void) {
     return false;
   }
   consecutive_control_overruns = 0U;
+  emergency_stop_event = false;
   return WheelController_Init(&wheel_controller_motor_port);
+}
+
+void ControlRuntime_NotifyEmergencyStopFromIsr(void) {
+  SafetyManager_StopFromEmergencyStopIsr();
+  __atomic_store_n(&emergency_stop_event, true, __ATOMIC_RELEASE);
+}
+
+bool ControlRuntime_TakeEmergencyStopEvent(void) {
+  return __atomic_exchange_n(&emergency_stop_event, false,
+                             __ATOMIC_ACQ_REL);
+}
+
+void ControlRuntime_StopForEmergencyStopEvent(void) {
+  kernel_critical_enter();
+  CommandManager_ClearCommand();
+  ReleaseMotionOwner();
+  WheelController_Stop();
+  SafetyManager_Stop();
+  kernel_critical_exit();
 }
 
 bool ControlRuntime_Start(void) {

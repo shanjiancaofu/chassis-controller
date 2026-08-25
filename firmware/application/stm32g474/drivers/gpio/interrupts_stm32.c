@@ -1,9 +1,12 @@
 #include "devicetree.h"
 #include "drivers/button/button.h"
 #include "drivers/display/lcd.h"
+#include "drivers/gpio/interrupts_stm32_private.h"
 #include "drivers/safety/emergency_stop.h"
 #include "drivers/sensor/icm45686.h"
 #include "main.h"
+
+int InterruptsStm32_Link(void) { return 0; }
 
 void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin) {
   if (gpio_pin == BUTTON_1_Pin || gpio_pin == BUTTON_2_Pin) {

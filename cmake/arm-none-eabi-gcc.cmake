@@ -30,6 +30,7 @@ set(CMAKE_C_COMPILER "${_arm_bin}/arm-none-eabi-gcc${_tool_suffix}")
 set(CMAKE_ASM_COMPILER "${CMAKE_C_COMPILER}")
 set(CMAKE_OBJCOPY "${_arm_bin}/arm-none-eabi-objcopy${_tool_suffix}" CACHE FILEPATH "")
 set(CMAKE_OBJDUMP "${_arm_bin}/arm-none-eabi-objdump${_tool_suffix}" CACHE FILEPATH "")
+set(CMAKE_NM "${_arm_bin}/arm-none-eabi-nm${_tool_suffix}" CACHE FILEPATH "")
 set(CMAKE_SIZE "${_arm_bin}/arm-none-eabi-size${_tool_suffix}" CACHE FILEPATH "")
 
 execute_process(

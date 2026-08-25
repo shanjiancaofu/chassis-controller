@@ -144,10 +144,9 @@ static bool InitializeProductModules(void) {
 
   CommandManager_Init();
   FaultManager_Init();
-  SafetyManager_Init(
-      emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN(chassis_estop))));
+  SafetyManager_BeginStartup();
   emergency_stop_set_callback(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)),
-                              SafetyManager_LatchEmergencyStopFromIsr);
+                              ControlRuntime_NotifyEmergencyStopFromIsr);
   BoardHealth_Init();
   ParameterManager_Init(parameters_loaded ? &initial_parameters : NULL);
   if (!ControlRuntime_Init()) {
