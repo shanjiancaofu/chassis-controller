@@ -125,14 +125,22 @@ target_link_libraries(application PRIVATE
 chassis_target_setup(application)
 stm32g474_target(application
   "${APP_ROOT}/boards/chassis_g474/application.ld" "application.map")
+set(APP_REQUIRED_HAL_CALLBACKS
+  HAL_SPI_TxCpltCallback
+  HAL_SPI_ErrorCallback)
+if(CONFIG_ICM45686)
+  list(APPEND APP_REQUIRED_HAL_CALLBACKS HAL_SPI_TxRxCpltCallback)
+endif()
+set(APP_REQUIRED_HAL_CALLBACK_ARGS)
+foreach(callback IN LISTS APP_REQUIRED_HAL_CALLBACKS)
+  list(APPEND APP_REQUIRED_HAL_CALLBACK_ARGS --symbol "${callback}")
+endforeach()
 add_custom_command(TARGET application POST_BUILD
   COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/tools/build/check_required_symbols.py"
           --nm-tool "${CMAKE_NM}"
           --elf "$<TARGET_FILE:application>"
-          --symbol HAL_SPI_TxCpltCallback
-          --symbol HAL_SPI_TxRxCpltCallback
-          --symbol HAL_SPI_ErrorCallback
+          ${APP_REQUIRED_HAL_CALLBACK_ARGS}
   COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/tools/build/check_image_size.py"
           --size-tool "${CMAKE_SIZE}"

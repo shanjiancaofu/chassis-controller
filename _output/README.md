@@ -123,7 +123,7 @@ CubeIDE 当前会更新 ELF，但不保证同步重建 BIN。打包或组合镜�
 
 `archive/` 下的文件不属于发布产物。
 
-`0.15.0 build1` 已完成 UART OTA confirmed，但目标板暴露 SPI callback 链接和 ADC valid 回归，
-不复制到正式 `_output/application/`。当前工作树为 `0.15.0 build2`；最新
-`build/arm-release/application.bin` 为 110416 字节、CRC32 `0x8EFB9966`，
-`app-v0.15.0-b2.ota` 为 110480 字节。build2 尚未烧录；物理急停有效时 OTA 维护锁会返回 BUSY。
+`0.15.0 build12` 是最后一个 pre-1.0 confirmed 镜像：payload 为 111016 字节、CRC32
+`0x46CA92E2`，`app-v0.15.0-b12.ota` 为 111080 字节。当前候选源码 `1.0.0 build1` 的 Release
+payload 为 111016 字节、CRC32 `0x781EE3F3`，`app-v1.0.0-b1.ota` 为 111080 字节；已完成软件
+验证和 OTA header 回读，尚未形成新的目标板 confirmed 结论。

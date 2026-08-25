@@ -29,7 +29,7 @@
 | LCD 四页状态显示 | `HARDWARE PASS` | 0.12.0 build1；四页切换、文字、Logo 和电量显示已由用户确认正常 |
 | LCD UI 0.13.0 | `NOT VERIFIED` | 已随 0.13.0 OTA 上板并由串口确认 `lcd=DRAWING`；页眉页码指示、分组标签、内容区层次和配色仍待人工目视确认 |
 | LCD UI 0.14.0 | `HARDWARE PASS` | UART OTA confirmed；LCD 驱动 `READY`，暗色工业仪表四页、颜色、文字和切页已由用户人工确认正常 |
-| LCD/UI 分层 0.15.0 | `NOT VERIFIED` | Debug/Release、主机测试和同源 C 预览通过；尚未烧录目标板 |
+| LCD/UI 分层 0.15.0 | `HARDWARE PASS` | build12 已上板启动并报告 LCD READY；同源 C 预览、Debug/Release 和主机测试通过 |
 | KEY 消抖 | `HARDWARE PASS` | 历史按键消抖已验证；PB8 四页循环已人工确认正常，PD3/PD4 尚未接线 |
 | ADC 电压 | `HARDWARE PASS` | 11.96 V 电池，PA2 约 1.086 V |
 | ICM45686 SPI/FIFO | `HARDWARE PASS` | 0.11.1；WHO_AM_I=0xE9，普通复位后 224 帧零解析/时间戳错误，100 Hz 周期 10 ms |
@@ -40,7 +40,8 @@
 | 目标加减速限制 | `NOT VERIFIED` | 0.10.0 已实现每 10 ms 最多 5 counts/tick；尚未完成带负载阶跃验收 |
 | 编码器异常保护 | `NOT VERIFIED` | 0.10.0 已实现异常增量 critical fault 急停；尚未注入异常脉冲 |
 | 欠压保护 | `NOT VERIFIED` | 0.10.0 已实现低于 9000 mV 锁存并急停；尚未做可控欠压注入 |
-| 急停 | `HARDWARE PASS` | PD2 触发故障并清零 PWM |
+| 急停触发与零输出 | `HARDWARE PASS` | build12 前序实测 PD2 按下进入 `EMERGENCY_STOP/fault=0x2` 且 PWM 为零 |
+| 急停松开保持锁存 | `NOT VERIFIED` | build12 已实现反跳保护；持续按住后松开的最终目标板验收因测试提前结束未执行 |
 | IWDG 受控复位 | `HARDWARE PASS` | 复位后报告测试通过 |
 | 外部 CAN FD | `HARDWARE PASS` | Jetson 与 STM32 三步握手双向通过 |
 | 低速 PID 闭环 | `NOT VERIFIED` | 参数持久化和 6500 开环启动已验证；低速闭环、停车和稳定性重新纳入当前验收 |
@@ -53,6 +54,73 @@
 | OTA 回滚、断电恢复与 CAN FD 传输 | `NOT VERIFIED` | 尚未完成故障注入、回滚和真实 CAN FD OTA 验收 |
 
 ## 构建基线
+
+### 1.0.0 build1 软件候选验证（2026-08-25）
+
+版本切换后执行 `python3 tools/test/run_all.py`。首次配置矩阵发现 `ICM45686=OFF` 时，ELF 门禁仍
+无条件要求 IMU 专用 `HAL_SPI_TxRxCpltCallback`；门禁随后按 Kconfig 选择实际必需的 callback：
+默认配置要求 LCD TX、SPI error 和 IMU TX/RX，IMU 关闭配置只要求 LCD TX 和 SPI error。
+修复后完整结果为：
+
+- 18 项 Application C host tests。
+- 3 项 Kconfig、3 项 DTS、5 项架构和 5 项 CAN schema tests。
+- 18 项 OTA/Python tests。
+- Debug default、Release default、Release IMU off、Release self-test off 四场景配置矩阵。
+- LCD 同源 C renderer 五张预览。
+
+随后分别清理 `build/arm-debug` 和 `build/arm-release`，重新配置并完整构建：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 126152 | 96 | 55464 | `BUILD PASS` |
+| Release | 110912 | 96 | 55456 | `BUILD PASS` |
+
+```text
+application.bin=111016 bytes
+payload_crc32=0x781EE3F3
+application.bin sha256=3b3dbf56354be0b9a4821836a2216328bcf787f3fb5351e1b5da2e8d2aedd181
+app-v1.0.0-b1.ota=111080 bytes
+ota sha256=de9a88dd1c4036a0f441b9c4bab0ae0b7aede7ea7b102db857956c8b525031d8
+```
+
+OTA header 已回读确认 format 1、payload 111016、version `1.0.0`、build 1、rollback counter 0，
+payload CRC 与 BIN 一致。本节只有软件和产物证据；`1.0.0 build1` 尚未烧录，目标板结果为
+`NOT VERIFIED`。
+
+### 0.15.0 build12 confirmed 与 1.0.0 候选基线（2026-08-25）
+
+build3 至 build12 依次用于排查和修复 STM32 平台适配问题。最终确认的根因和修复为：
+
+- 静态库中的 SPI HAL callback adapter 未被链接器提取；增加显式链接引用和 ELF 强符号门禁。
+- power sample 的 `int/-errno` 成功返回值被直接映射为 bool；改为以 `== 0` 判定成功。
+- DTS GPIO 使用 pin 编号，STM32 HAL 使用 bit mask；adapter 统一执行 `1U << pin`，并增加
+  `pin 2 -> 0x0004` 主机测试。
+- PD2 保持内部上拉、低有效和下降沿触发；按下接通 GND，不按时断开。
+- 急停 ISR 立即清零电机输出，任务上下文执行 50 ms 确认；短毛刺恢复后保持 STOPPED，已锁存后
+  后续机械反跳不能进入自动清除路径。
+
+build12 已通过 UART OTA 完成：
+
+```text
+STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED -> CONFIRMED
+```
+
+普通复位后的稳定状态为 `fw=0.15.0 build12`、`control=STOPPED`、`fault=0`、四任务 RUNNING，
+左右 target/speed/PWM 全零，ADC valid，IMU、LCD、QSPI 和 GPIO 正常启动。此前按下 PD2 已实测
+进入 `EMERGENCY_STOP/fault=0x2` 且 PWM 为零；build12 的“持续按住后松开仍保持锁存”最终场景
+因测试提前结束未执行，结果为 `NOT VERIFIED`。
+
+```text
+application.bin=111016 bytes
+payload_crc32=0x46CA92E2
+application.bin sha256=2a1a02065b5279d36f058c130f71ff370ac4e390c871c9625b465b565d646462
+app-v0.15.0-b12.ota=111080 bytes
+ota sha256=6455209e83579eb8213ec1a06e2b3daa0d699fb421dde592292359f00e4355c6
+```
+
+`0.15.0 build12` 是最后一个 pre-1.0 confirmed 镜像。后续源码从 `1.0.0 build1` 开始，表示
+架构、Device/Init、Kconfig/DTS、CAN FD V1 和平台适配边界进入首个正式稳定候选；本次版本提升
+本身不构成新的目标板 `PASS`。
 
 ### 0.15.0 build1 UART OTA 与 build2 回归修复（2026-08-25）
 

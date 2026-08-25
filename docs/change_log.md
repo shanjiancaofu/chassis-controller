@@ -1,5 +1,32 @@
 # 变更记录
 
+## 2026-08-25：建立 Application 1.0.0 正式候选基线
+
+- 将当前候选源码从 `0.15.0 build12` 提升为 `1.0.0 build1`；`0.15.0 build12` 保留为最后一个
+  pre-1.0 confirmed 镜像，不重命名历史产物。
+- 1.0.0 表示 STM32 HAL + FreeRTOS 原生平台架构、Device/Init、Kconfig/DTS、模块化 CMake、
+  Application 边界、CAN FD V1 和 STM32 GPIO/callback adapter 已形成首个正式稳定候选。
+- 本次只改变产品版本基线，不改变 CAN FD、UART、OTA、参数记录或 Bootloader 线协议。
+- 修正 ELF callback 强符号门禁的配置语义：`CONFIG_ICM45686=n` 时不再要求被链接器裁剪的 IMU
+  TX/RX callback，默认配置仍完整要求三个 SPI callback。
+- 全量 host/schema/config matrix/LCD preview 通过，Debug/Release clean build 通过；Release
+  payload 为 111016 字节、CRC32 `0x781EE3F3`，`app-v1.0.0-b1.ota` 为 111080 字节。
+- build12 的 UART OTA、普通复位、四任务、静态零 PWM、ADC、IMU、LCD、QSPI 和 GPIO 启动证据
+  已收敛到权威验证文档；最终“急停持续按住后松开仍保持锁存”仍为 `NOT VERIFIED`。
+
+## 2026-08-25：0.15.0 build12 GPIO 与急停安全修复上板
+
+- 修复 DTS pin 编号被直接作为 STM32 HAL GPIO mask 使用的问题；`PD2` 现在正确转换为
+  `GPIO_PIN_2/0x0004`，并以主机测试固定该映射。
+- 保留 PD2 内部上拉、低有效、下降沿触发配置；实物接线为 PD2 到 COM、GND 到 NO，按下接通、
+  不按断开。
+- 急停 ISR 立即清零 PWM，任务上下文进行 50 ms 确认；短毛刺不恢复旧运动，锁存后的机械反跳
+  不能自动解锁。
+- build12 已完成 UART OTA `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED ->
+  CONFIRMED` 和普通复位回归。稳定状态为 STOPPED、fault=0、四任务 RUNNING、PWM/target/speed
+  全零，ADC、IMU、LCD、QSPI 和 GPIO 正常。
+- build12 最终持续按住/松开锁存测试因用户结束测试而未执行，保持 `NOT VERIFIED`。
+
 ## 2026-08-25：0.15.0 build1 上板与 SPI callback 修复
 
 - build1 已完成 UART OTA、Bootloader 安装、Trial 和 CONFIRMED；普通复位后仍启动 0.15.0。
@@ -732,18 +759,19 @@
 | 历史工作树 | `0.9.0 build1` | PID 参数持久化和电机启动复核 |
 | 历史工作树 | `0.9.1 build1` | 可调开环占空比和启动下限复核 |
 | 历史工作树 | `0.10.0 build1` | 控制安全收尾和低速 PID 响应 |
-| 当前板上 | `0.11.1 build1` | ICM45686/FIFO/静止 Kalman 上板，UART OTA confirmed |
-| 当前板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
-| 当前板上 | `0.13.0 build1` | LCD UI 信息层级与布局优化，UART OTA confirmed；视觉验收待完成 |
-| 当前板上 | `0.14.0 build1` | 暗色工业仪表 UI 已 UART OTA confirmed；视觉人工确认正常 |
-| 当前工作树 | `0.15.0 build1` | LCD/状态/RTOS/轮控边界收敛；软件验证通过，尚未烧录 |
+| 历史板上 | `0.11.1 build1` | ICM45686/FIFO/静止 Kalman 上板，UART OTA confirmed |
+| 历史板上 | `0.12.0 build1` | 统一采样时间戳与差速轮式里程计，UART OTA confirmed；动态几何验证待完成 |
+| 历史板上 | `0.13.0 build1` | LCD UI 信息层级与布局优化，UART OTA confirmed；视觉验收待完成 |
+| 历史板上 | `0.14.0 build1` | 暗色工业仪表 UI 已 UART OTA confirmed；视觉人工确认正常 |
+| 当前板上 | `0.15.0 build12` | 平台边界和 STM32 adapter 修复，UART OTA confirmed，普通复位与静态安全状态通过 |
+| 当前候选 | `1.0.0 build1` | 首个正式稳定候选；不改变现有线协议 |
 
 ## 后置工作
 
 以下项目没有在本批记录为完成或硬件通过：
 
 - `0.13.0 build1` 的页眉指示、标签层级、配色、文本排版和四页切换人工目视确认仍保留为历史待办。
-- `0.14.0 build1` 的普通复位回归。
+- `1.0.0 build1` 的目标板发布验收，以及 build12 最终急停松开保持锁存场景。
 - ICM45686 正负轴向动作、动态姿态、静止回归和长期漂移；模块固定安装前保持 `DEFERRED`。
 - `0.12.0 build1` 的编码器/ADC/IMU 本地时间字段、轮式里程计方向和 LCD/UART 动态输出上板复核，
   以及落地直线距离、原地旋转角度和轮径/轮距校准。
