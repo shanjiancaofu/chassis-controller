@@ -55,6 +55,46 @@
 
 ## 构建基线
 
+### 1.0.1 build1 PB8 修复与 target regression（2026-08-25）
+
+1.0.0 上板后发现 PB8 无法换页。根因是 STM32 HAL 的 `HAL_GPIO_EXTI_Callback()` 参数为 one-hot
+GPIO mask（PB8 为 `GPIO_PIN_8/0x0100`），而 Button device 保存的是 DTS pin 编号 `8`；中断
+adapter 直接传 mask，导致按钮驱动的 pin 比较永远失败。1.0.1 在 STM32 adapter 中把合法的
+one-hot mask 转回 pin 编号，PB8 和 PD3/PD4 共用该边界；PD2 急停和 IMU 中断语义不变。
+
+主机回归增加 `GPIO_PIN_2 -> 2`、`GPIO_PIN_8 -> 8`、零 mask 和多 bit mask 拒绝断言。执行
+`python3 tools/test/run_all.py` 后，18 项 C host、Kconfig/DTS/架构/schema、18 项 OTA/Python、
+四场景配置矩阵和 LCD 同源预览全部通过。Debug/Release clean build 结果：
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 126196 | 96 | 55464 | `BUILD PASS` |
+| Release | 110936 | 96 | 55456 | `BUILD PASS` |
+
+```text
+application.bin=111040 bytes
+payload_crc32=0x02FDA59F
+application.bin sha256=9e2a3c2ccfaa4d465f04ab5c6a556d3ec8f42edf92c8183bd5d7f8de2bf4d68f
+app-v1.0.1-b1.ota=111104 bytes
+ota sha256=f1c67c0d97a6d2641ea44858027acec1ddfa47cfb85248fd7e5e1d0eec5f486e
+```
+
+1.0.1 已通过真实 UART OTA 的 INSTALL VERIFIED、TRIAL COMMITTED、TRIAL VERIFIED 和 CONFIRMED。
+新增轻量回归入口：
+
+```text
+PYTHONDONTWRITEBYTECODE=1 python3 tools/target/run_target_regression.py \
+  --serial-port /dev/ttyUSB0 \
+  --expected-version 1.0.1 --expected-build 1 --reset
+```
+
+工具在普通 ST-Link reset 后自动验证 Bootloader/Application 启动、四分区 UART status、版本、
+`STOPPED/fault=0`、四任务 RUNNING、左右 target/speed/PWM 全零、ADC、IMU、QSPI、LCD 和
+`ota_confirmation=NOT_REQUIRED`，全部 `PASS`；JSON 报告生成成功。当前主机没有 `can0/vcan0`，
+CAN FD smoke 明确记为 `SKIP`，没有伪造硬件结果。
+
+用户随后短按 PB8，LCD 实际切换到下一页，PB8 换页记为 `HARDWARE PASS`。本轮没有驱动电机。
+
 ### 1.0.0 build1 软件候选验证（2026-08-25）
 
 版本切换后执行 `python3 tools/test/run_all.py`。首次配置矩阵发现 `ICM45686=OFF` 时，ELF 门禁仍

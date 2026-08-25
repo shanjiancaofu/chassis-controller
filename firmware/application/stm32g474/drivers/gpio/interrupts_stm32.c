@@ -10,7 +10,8 @@ int InterruptsStm32_Link(void) { return 0; }
 
 void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin) {
   if (gpio_pin == BUTTON_1_Pin || gpio_pin == BUTTON_2_Pin) {
-    button_on_interrupt(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)), gpio_pin);
+    button_on_interrupt(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)),
+                        InterruptsStm32_PinNumber(gpio_pin));
   }
 #if CONFIG_ICM45686
   else if (gpio_pin == IMU_INT1_Pin) {
@@ -18,7 +19,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t gpio_pin) {
   }
 #endif
   else if (gpio_pin == KEY_Pin) {
-    button_on_interrupt(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)), gpio_pin);
+    button_on_interrupt(DEVICE_DT_GET(DT_CHOSEN(chassis_buttons)),
+                        InterruptsStm32_PinNumber(gpio_pin));
   } else if (gpio_pin == E_STOP_Pin) {
     emergency_stop_on_interrupt(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)));
   }

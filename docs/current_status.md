@@ -24,7 +24,7 @@
   `chassis_app.c` 从 935 行缩为 57 行，五类运行时位于 `app/runtime/`。
 - `0.15.0 build12` 已完成 UART OTA、普通复位和启动静态状态回归：四任务 RUNNING，ADC、QSPI、
   IMU、LCD 和 GPIO 正常，控制为 STOPPED、fault 为 0，四路 PWM/target/speed 为零。
-- Application 当前源码和板上 confirmed 镜像：`1.0.0 build1`。
+- Application 当前源码和板上 confirmed 镜像：`1.0.1 build1`。
 - Bootloader：`0.1.0 build22`。
 - `0.15.0 build12` 是最后一个 pre-1.0 confirmed 基线；`1.0.0 build1` 是架构、Device/Init、
   配置系统、CAN FD V1 和 STM32 GPIO/callback 修复收口后的首个正式候选。版本提升不改 CAN、
@@ -33,6 +33,12 @@
   OTA 打包和真实 UART OTA。普通 ST-Link 复位后仍启动 1.0.0，稳定状态为 STOPPED、fault=0、
   四任务 RUNNING、PWM/target/speed 全零，ADC、IMU、LCD、QSPI、GPIO 和 SR501 READY；Release
   payload 为 `111016` 字节、CRC32 `0x781EE3F3`，OTA 包为 `111080` 字节。
+- `1.0.1 build1` 修复 PB8 EXTI HAL mask 与 DTS pin 编号不一致导致的换页失效；已通过全量软件
+  回归、UART OTA、普通复位、自动 target serial smoke 和 PB8 实际换页。Release payload 为
+  `111040` 字节、CRC32 `0x02FDA59F`，OTA 包为 `111104` 字节。
+- `tools/target/run_target_regression.py` 已作为轻量目标板回归入口：自动检查启动日志、版本、UART
+  四分区 status、fault/STOPPED、四任务、零 PWM、ADC、IMU、QSPI、LCD 和 OTA 状态，并输出
+  PASS/FAIL/JSON。可选 CAN FD smoke 只发送零速度 0x101 和 STOP；当前主机无 `can0`，该项为 SKIP。
 - b12/build22 的 factory 文件继续作为冻结恢复产物保留，不改写历史文件。`0.10.0`、`0.11.0`
   的既有验证记录继续保留；`0.11.1`、`0.12.0`、`0.13.0` 和 `0.14.0` 的历史证据不被新版本覆盖。
 - 最新 Release `build/arm-release/app-v0.12.0-b1.ota` 的 payload 为 `98088` 字节、CRC32 为

@@ -1,5 +1,19 @@
 # 变更记录
 
+## 2026-08-25：1.0.1 PB8 换页修复与目标板自动回归
+
+- 修复 HAL EXTI one-hot GPIO mask 被直接传给 DTS pin-number consumer 的问题；PB8 的
+  `GPIO_PIN_8/0x0100` 现在在 STM32 adapter 边界转换为 pin `8`，Button device 可正常进入消抖和
+  LCD 换页流程。
+- host test 固定 PD2/PB8 mask 转 pin 语义，并拒绝零 mask 和多 bit mask；不改变急停、IMU、
+  控制算法或线协议。
+- 新增 `tools/target/{run_target_regression,serial_smoke,canfd_smoke,report}.py`。串口 smoke 自动
+  复位并检查启动、版本、四分区 status、安全状态、四任务、零 PWM、主要外设和 OTA 状态；CAN
+  smoke 只发送零速度 0x101/STOP，并覆盖 heartbeat、status、control timeout、fault 和可选
+  外部 bus-off 观察。
+- 1.0.1 已通过全量软件回归、Debug/Release clean build、UART OTA confirmed 和自动串口 target
+  regression；当前主机无 `can0`，CAN smoke 为 SKIP。用户实际短按 PB8 后 LCD 成功换页。
+
 ## 2026-08-25：建立 Application 1.0.0 正式候选基线
 
 - 将当前候选源码从 `0.15.0 build12` 提升为 `1.0.0 build1`；`0.15.0 build12` 保留为最后一个
@@ -769,7 +783,8 @@
 | 历史板上 | `0.13.0 build1` | LCD UI 信息层级与布局优化，UART OTA confirmed；视觉验收待完成 |
 | 历史板上 | `0.14.0 build1` | 暗色工业仪表 UI 已 UART OTA confirmed；视觉人工确认正常 |
 | 当前板上 | `0.15.0 build12` | 平台边界和 STM32 adapter 修复，UART OTA confirmed，普通复位与静态安全状态通过 |
-| 当前板上 | `1.0.0 build1` | 首个正式稳定基线；UART OTA、普通复位、静态零输出、主要外设和急停锁存已通过 |
+| 上一板上 | `1.0.0 build1` | 首个正式稳定基线；UART OTA、普通复位、静态零输出、主要外设和急停锁存已通过 |
+| 当前板上 | `1.0.1 build1` | PB8 换页修复；UART OTA、自动串口回归和实际换页已通过 |
 
 ## 后置工作
 

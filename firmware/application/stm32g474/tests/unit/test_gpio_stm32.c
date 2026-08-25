@@ -4,6 +4,7 @@
 #include <errno.h>
 
 #include "drivers/gpio.h"
+#include "drivers/gpio/interrupts_stm32_private.h"
 
 static uint16_t last_pin;
 static GPIO_PinState raw_state;
@@ -56,6 +57,10 @@ int main(void)
   assert(raw_state == GPIO_PIN_SET);
   assert(gpio_set(&(GpioSpec){.port = &device, .pin = 16U}, true) ==
          -EINVAL);
+  assert(InterruptsStm32_PinNumber(1U << 2U) == 2U);
+  assert(InterruptsStm32_PinNumber(1U << 8U) == 8U);
+  assert(InterruptsStm32_PinNumber(0U) == UINT16_MAX);
+  assert(InterruptsStm32_PinNumber((1U << 3U) | (1U << 4U)) == UINT16_MAX);
   return 0;
 }
 
