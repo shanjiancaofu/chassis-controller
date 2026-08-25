@@ -13,13 +13,15 @@ power/button/SR501/display 运行态均已落地。第二批又完成 UART/QSPI/
 工程也已集中到 `cubemx/`；Application 手写顶层目录已收敛，linker script 位于
 `boards/chassis_g474/application.ld`。Application 内部反向依赖和正式代码依赖 tests 已清零，
 五类 runtime 拆分完成，目录结构进入冻结状态。Chassis CAN FD V1、正式 0x101、双向 heartbeat、
-四类状态上报、host/vcan 整链测试和轻量配置矩阵已完成；剩余为产品/目标板收尾：
+四类状态上报、host/vcan 整链测试和轻量配置矩阵已完成。1.0.1 的 UART OTA、静态安全、主要
+外设、急停、PB8 和自动串口 target regression 已通过；当前收尾为：
 
-1. 用户确认后的 UART OTA、静态状态、LCD/IMU/GPIO 和电机安全目标板回归。
+1. `1.0.1` 发布文档提交、`main` fast-forward 和 annotated tag。
 2. cockpit-system 的独立 `ChassisCanCodec` 和 `can-simulator --protocol chassis` 已完成正式
-   无握手及可选开发握手 `vcan0` 闭环；下一步把状态 DTO 接入 Navigator，再切真实 `can0`。
+   无握手及可选开发握手 `vcan0` 闭环；下一步把状态 DTO 接入 Navigator，并切真实 `can0`。
+3. 真实 CAN FD sequence、timeout、bus-off 和 CAN OTA，以及断电/回滚故障注入。
 
-上述代码批次完成后进入目标板回归；`NOT VERIFIED` 不阻塞代码迁移，但不能据此记录硬件通过。
+剩余 `NOT VERIFIED` 不阻塞 1.0.1 基线发布，但不能据此记录对应硬件通过。
 
 既有 FreeRTOS/底盘基础代码已完成：
 

@@ -6,35 +6,38 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前处于 OTA V1 持续开发和 Application 原生平台化阶段。独立 Bootloader、Application 重定位、
-UART/CAN FD 接收、QSPI 暂存、安装、试运行确认和回滚链路已完成代码与构建。2026-08-13
-已写入并读回匹配的 b12/build22 factory 与 QSPI confirmed 基线。2026-08-17 已通过 UART OTA
-将 b13 安装、TRIAL 验证并提交为 confirmed；b13 在未连接 ICM45686 时正常启动，普通复位后
-保持稳定。此前冻结范围已解除；断电启动、零 PWM、安装/回滚故障注入、CAN FD OTA、PID、
-里程计和传感器动态验收均可与软件开发并行推进，未实测内容继续标记为 `NOT VERIFIED`。
-最新摘要见
-[`docs/current_status.md`](docs/current_status.md)，完整证据见 `docs/verification.md`。
-OTA recovery、CAN FD OTA、PID、轮组标定、加减速、里程计、安全保护、诊断和正式 CAN FD
-底盘协议都保持在活动路线中，按实现批次和硬件条件分别验证，不以某一项硬件验收阻塞其他开发。
+当前 Application 基线为 `1.0.1 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
+原生平台架构、Device/Init、Kconfig/DTS、模块化 CMake、Application 运行边界和 Chassis CAN FD V1
+已经收敛。1.0.1 已通过 Debug/Release、host/config matrix、UART OTA、普通复位、启动静态零 PWM、
+主要外设、急停锁存和 PB8 换页目标板回归。
+
+`tools/target/run_target_regression.py` 提供轻量目标板自动回归，能够检查启动日志、版本、UART
+status、任务、fault、零 PWM、主要外设和 OTA 状态；真实 CAN 接口就绪后可增加零速度 CAN FD
+smoke。CAN FD OTA、断电/回滚故障注入、带负载 PID、轮式里程计几何校准和 IMU 动态安装轴向仍
+按硬件条件分别验证，未实测内容保持 `NOT VERIFIED`。
+
+最新摘要见 [`docs/current_status.md`](docs/current_status.md)，完整证据见
+[`docs/verification.md`](docs/verification.md)。
 
 ## 目录
 
 ```text
 firmware/
-├─ application/stm32g474/   # 正式 Application CubeMX/CubeIDE 工程
+├─ application/stm32g474/   # Application：cubemx/ + 项目自维护代码
 ├─ bootloader/stm32g474/    # 裸机 Bootloader CubeMX/CubeIDE 工程
 └─ shared/                  # Bootloader、Application、打包器共用固定 ABI
 docs/                       # 架构、路线、硬件、验证和 OTA 设计
 protocol/                   # CAN FD 线协议
-tools/ota/                  # 打包、首次组合镜像和 UART/CAN FD 发送工具
-example/                    # 本地参考例程，不提交
+tools/ota/                  # 打包、factory 镜像和 UART/CAN FD OTA 工具
+tools/test/                 # host/config matrix 统一测试入口
+tools/target/               # 真实目标板轻量自动回归
 ```
 
 Application 自有代码位于：
 
 ```text
-app/  boards/  drivers/  components/  communication/
-subsys/  modules/  kernel/  rtos/  tests/  config/
+app/  boards/  drivers/  lib/  subsys/communication/
+kernel/  tests/  config/  dts/  cubemx/
 ```
 
 ## 文档
@@ -75,9 +78,11 @@ firmware/bootloader/stm32g474
 日常流程：
 
 1. 使用 CMake preset 构建 Debug 或 Release。
-2. VS Code F5 通过 Cortex-Debug/OpenOCD 自动构建、烧写并停在 `main`。
-3. 修改 `.ioc` 后由 CubeMX 重新生成，再检查 diff 和 CMake 显式源文件列表。
-4. CH340 使用 `115200 8N1` 查看启动、自检、命令和遥测。
+2. 使用 `python3 tools/test/run_all.py` 运行 host、配置矩阵、协议和预览回归。
+3. VS Code F5 通过 Cortex-Debug/OpenOCD 自动构建、烧写并停在 `main`。
+4. 修改 `.ioc` 后由 CubeMX 重新生成，再检查 diff、DTS 一致性和 CMake 显式源文件列表。
+5. CH340 使用 `115200 8N1` 查看启动、自检、命令和遥测。
+6. 上板后使用 `tools/target/run_target_regression.py` 自动生成 PASS/FAIL 和 JSON 报告。
 
 CubeMX 生成代码时使用 `STM32CubeIDE` 并勾选 `Generate Under Root`。
 生成文件只在 `USER CODE BEGIN/END` 区域内手工修改。

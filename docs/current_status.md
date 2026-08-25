@@ -298,8 +298,8 @@
 - confirmed `0.12.0 build1` 真实断电重上电和四路 PWM 电气零输出：`NOT VERIFIED`；此前完成普通
   复位和 UART OTA 确认，未执行断电测试。
 - `0.14.0 build1` LCD 新布局已上板且驱动报告 `READY`；状态颜色、文字排版和四页切换已人工目视确认正常。
-- `1.0.0 build1` 已完成 UART OTA、普通复位、四任务、静态零 PWM、外设启动和急停松开保持锁存
-  复核；LCD 动态页面目视细节、真实 CAN FD V1 和电机闭环仍按各自条目验证。
+- `1.0.1 build1` 已完成 UART OTA、普通复位、四任务、静态零 PWM、外设启动、急停松开保持锁存
+  和 PB8 实际换页复核；真实 CAN FD V1 和电机闭环仍按各自条目验证。
 - `0.12.0 build1` 的里程计方向、直线距离、原地旋转角度、时间对齐误差和 LCD 里程计动态显示
   尚未验证；当前只确认固件启动快照中的静态零位输出。
 - CAN FD OTA：`NOT VERIFIED`，纳入当前 UART/CAN OTA 同批验收。
@@ -312,17 +312,21 @@ confirmation 持续失败、QSPI terminal cleanup 和其他 recovery 边角也�
 
 ## 下一步
 
-1. 在用户明确确认后执行 UART OTA。
-2. 复核四任务、fault、零 PWM、UART、QSPI、LCD、IMU、GPIO consumer 和重启 confirmed。
-3. 根据真实上板结果关闭剩余 `NOT VERIFIED`，不从主机测试推断硬件通过。
+1. 将 `1.0.1 build1` 发布提交 fast-forward 合并到 `main`，创建 annotated `v1.0.1` tag。
+2. 在 Jetson 配置真实 CAN FD `can0`（500 kbit/s nominal、2 Mbit/s data、BRS），运行
+   `tools/target/run_target_regression.py --can-interface can0` 的零速度安全回归。
+3. 单独执行 sequence、200 ms control timeout、300 ms heartbeat timeout 和外部 bus-off 故障注入；
+   未准备真实故障条件时保持 `SKIP/NOT VERIFIED`。
+4. 再按硬件条件推进 CAN FD OTA、断电/回滚恢复、带负载 PID、里程计校准和 IMU 动态轴向。
 
 当前路线：
 
 ```text
-架构检查 -> UART/QSPI/watchdog/RTC/time device boundary
--> OTA/CAN/断电/回滚验收 -> FreeRTOS 快照 -> 四任务调度
--> 正式 UART 消息 -> LCD 四页 -> ICM45686/Kalman -> SR501 UI/动态实物验证 -> 完整 OTA/保护故障注入
--> 里程计/安全保护实测 -> 目标加减速实测 -> 正式 CAN FD 协议
+1.0.1 main/tag
+-> 真实 can0 零速度 target regression
+-> sequence/timeout/bus-off
+-> CAN FD OTA 与断电/回滚故障注入
+-> 带负载 PID、里程计几何校准和 IMU 动态轴向
 ```
 
 ## 对话交接要求
