@@ -217,6 +217,8 @@ void SystemStatusCollector_Update(uint32_t now_ms)
   status.lcd_state = MapLcdState(LcdUi_GetStatus());
   status.supply_valid = power_sample_read_millivolts(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &status.supply_mv);
   status.fault_flags = FaultManager_GetFlags();
+  status.latched_fault_flags = FaultManager_GetLatchedFlags();
+  status.fault_sequence = FaultManager_GetSequence();
   status.qspi_test_state = (uint32_t)QspiSelfTest_GetStatus();
   status.ota_confirmation_state = (uint32_t)OtaConfirmation_GetStatus();
   status.ota_source = (uint32_t)OtaSession_GetSource();

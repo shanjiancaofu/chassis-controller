@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 CAN_FD_LENGTHS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64}
+SIGNED_TYPES = {"i8", "i16", "i32", "i64"}
 
 
 def validate(schema: dict) -> None:
@@ -49,6 +50,32 @@ def validate(schema: dict) -> None:
             if any(occupied[start:end]):
                 raise ValueError(f"{name}.{field_name}: overlaps another field")
             occupied[start:end] = [True] * field_size
+            type_name = field["type"]
+            if type_name != "bytes":
+                bit_count = field_size * 8
+                minimum = -(1 << (bit_count - 1)) if type_name in SIGNED_TYPES else 0
+                maximum = ((1 << (bit_count - 1)) - 1
+                           if type_name in SIGNED_TYPES else (1 << bit_count) - 1)
+                lower = field.get("min", minimum)
+                upper = field.get("max", maximum)
+                if not isinstance(lower, int) or not isinstance(upper, int) or lower > upper:
+                    raise ValueError(f"{name}.{field_name}: invalid range")
+                if lower < minimum or upper > maximum:
+                    raise ValueError(f"{name}.{field_name}: range exceeds type")
+                if "const" in field and not lower <= field["const"] <= upper:
+                    raise ValueError(f"{name}.{field_name}: const outside range")
+                bits = field.get("bits", {})
+                bit_numbers = [int(bit) for bit in bits]
+                if len(bit_numbers) != len(set(bit_numbers)) or any(
+                    bit < 0 or bit >= bit_count for bit in bit_numbers
+                ):
+                    raise ValueError(f"{name}.{field_name}: invalid flag bit")
+                values = field.get("values", {})
+                enum_values = [int(value) for value in values]
+                if len(enum_values) != len(set(enum_values)) or any(
+                    value < minimum or value > maximum for value in enum_values
+                ):
+                    raise ValueError(f"{name}.{field_name}: invalid enum value")
         if not all(occupied):
             raise ValueError(f"{name}: payload contains undefined bytes")
         if message["crc"] == "crc16_ccitt_false":

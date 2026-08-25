@@ -18,6 +18,8 @@ void FaultManager_Init(void);
 void FaultManager_Raise(uint32_t faults);
 void FaultManager_ClearRecoverable(uint32_t faults);
 uint32_t FaultManager_GetFlags(void);
+uint32_t FaultManager_GetLatchedFlags(void);
+uint16_t FaultManager_GetSequence(void);
 bool FaultManager_HasAny(uint32_t faults);
 bool FaultManager_HasCritical(void);
 

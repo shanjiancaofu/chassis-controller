@@ -1,5 +1,6 @@
 #include "subsys/communication/can/chassis_protocol.h"
 
+#include <errno.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -11,11 +12,15 @@
 
 static ChassisProtocolPort protocol_port;
 static ChassisProtocolLinkStatus link_status;
-static ChassisProtocolWheelRawCommand pending_wheel_command;
-static bool wheel_command_pending;
+static ChassisProtocolControlCommand pending_control_command;
+static bool control_command_pending;
 static bool session_invalidated;
 static bool control_sequence_valid;
 static uint8_t last_control_sequence;
+static uint8_t motion_tx_sequence;
+static uint8_t odometry_tx_sequence;
+static uint8_t heartbeat_tx_sequence;
+static uint8_t fault_tx_sequence;
 static bool response_pending;
 static uint32_t response_retry_due_ms;
 static uint8_t response_attempts;
@@ -29,11 +34,27 @@ static void PutI16Le(uint8_t *data, int16_t value) {
   data[1] = (uint8_t)((uint16_t)value >> 8U);
 }
 
+static void PutU16Le(uint8_t *data, uint16_t value) {
+  data[0] = (uint8_t)(value & 0xFFU);
+  data[1] = (uint8_t)(value >> 8U);
+}
+
+static void PutU32Le(uint8_t *data, uint32_t value) {
+  data[0] = (uint8_t)(value & 0xFFU);
+  data[1] = (uint8_t)((value >> 8U) & 0xFFU);
+  data[2] = (uint8_t)((value >> 16U) & 0xFFU);
+  data[3] = (uint8_t)(value >> 24U);
+}
+
+static void PutI32Le(uint8_t *data, int32_t value) {
+  PutU32Le(data, (uint32_t)value);
+}
+
 static void ResetControlSession(void) {
-  wheel_command_pending = false;
+  control_command_pending = false;
   control_sequence_valid = false;
   last_control_sequence = 0U;
-  pending_wheel_command = (ChassisProtocolWheelRawCommand){0};
+  pending_control_command = (ChassisProtocolControlCommand){0};
 }
 
 bool ChassisProtocol_Init(const ChassisProtocolPort *port) {
@@ -46,6 +67,10 @@ bool ChassisProtocol_Init(const ChassisProtocolPort *port) {
   response_pending = false;
   response_retry_due_ms = 0U;
   response_attempts = 0U;
+  motion_tx_sequence = 0U;
+  odometry_tx_sequence = 0U;
+  heartbeat_tx_sequence = 0U;
+  fault_tx_sequence = 0U;
   ResetControlSession();
   return true;
 }
@@ -93,6 +118,9 @@ void ChassisProtocol_ProcessFrame(const struct can_frame *frame) {
   static const uint8_t confirmation[HANDSHAKE_SIZE] = {'P', 'A', 'S', 'S',
                                                        1U,  0U,  0U,  0U};
   ChassisProtocolWheelRawCommand command;
+  ChassisProtocolVelocityCommand velocity;
+  ChassisProtocolControlCommand normalized;
+  ChassisProtocolDecodeResult decode_result;
 
   if (frame == NULL) {
     return;
@@ -102,6 +130,8 @@ void ChassisProtocol_ProcessFrame(const struct can_frame *frame) {
       ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_FAILED);
     } else if (memcmp(frame->data, request, sizeof(request)) == 0) {
       ChassisProtocol_InvalidateLink(CHASSIS_PROTOCOL_LINK_READY);
+      response_attempts = 0U;
+      response_retry_due_ms = 0U;
       response_pending = true;
     } else if (memcmp(frame->data, confirmation, sizeof(confirmation)) == 0) {
       link_status = CHASSIS_PROTOCOL_LINK_PASSED;
@@ -113,20 +143,46 @@ void ChassisProtocol_ProcessFrame(const struct can_frame *frame) {
     }
     return;
   }
-  if (frame->id != CHASSIS_CAN_ID_CMD_WHEEL_RAW ||
-      link_status != CHASSIS_PROTOCOL_LINK_PASSED ||
-      ChassisProtocol_DecodeWheelRaw(frame, &command) !=
-          CHASSIS_PROTOCOL_DECODE_OK) {
+  if (link_status != CHASSIS_PROTOCOL_LINK_PASSED) {
+    return;
+  }
+  if (frame->id == CHASSIS_CAN_ID_CMD_WHEEL_RAW) {
+    decode_result = ChassisProtocol_DecodeWheelRaw(frame, &command);
+    if (decode_result == CHASSIS_PROTOCOL_DECODE_OK) {
+      normalized = (ChassisProtocolControlCommand){
+          .mode = CHASSIS_PROTOCOL_CONTROL_WHEEL_RAW,
+          .enabled = command.enabled,
+          .sequence = command.sequence,
+          .target.wheel_raw = {.left_target = command.left_target,
+                               .right_target = command.right_target},
+      };
+    }
+  } else if (frame->id == CHASSIS_CAN_ID_CMD_VELOCITY) {
+    decode_result = ChassisProtocol_DecodeVelocity(frame, &velocity);
+    if (decode_result == CHASSIS_PROTOCOL_DECODE_OK) {
+      normalized = (ChassisProtocolControlCommand){
+          .mode = CHASSIS_PROTOCOL_CONTROL_VELOCITY,
+          .enabled = velocity.enabled,
+          .sequence = velocity.sequence,
+          .target.velocity = {
+              .linear_velocity_mm_s = velocity.linear_velocity_mm_s,
+              .angular_velocity_mrad_s = velocity.angular_velocity_mrad_s},
+      };
+    }
+  } else {
+    return;
+  }
+  if (decode_result != CHASSIS_PROTOCOL_DECODE_OK) {
     return;
   }
   if (control_sequence_valid &&
-      command.sequence != (uint8_t)(last_control_sequence + 1U)) {
+      normalized.sequence != (uint8_t)(last_control_sequence + 1U)) {
     return;
   }
-  last_control_sequence = command.sequence;
+  last_control_sequence = normalized.sequence;
   control_sequence_valid = true;
-  pending_wheel_command = command;
-  wheel_command_pending = true;
+  pending_control_command = normalized;
+  control_command_pending = true;
 }
 
 void ChassisProtocol_Run(uint32_t now_ms) {
@@ -163,6 +219,9 @@ void ChassisProtocol_InvalidateLink(ChassisProtocolLinkStatus status) {
 
 void ChassisProtocol_ResetLink(ChassisProtocolLinkStatus status) {
   link_status = status;
+  response_pending = false;
+  response_attempts = 0U;
+  response_retry_due_ms = 0U;
   ResetControlSession();
 }
 
@@ -182,13 +241,13 @@ bool ChassisProtocol_TakeSessionInvalidated(void) {
   return invalidated;
 }
 
-bool ChassisProtocol_TakeWheelRawCommand(
-    ChassisProtocolWheelRawCommand *command) {
-  if (command == NULL || !wheel_command_pending) {
+bool ChassisProtocol_TakeControlCommand(
+    ChassisProtocolControlCommand *command) {
+  if (command == NULL || !control_command_pending) {
     return false;
   }
-  *command = pending_wheel_command;
-  wheel_command_pending = false;
+  *command = pending_control_command;
+  control_command_pending = false;
   return true;
 }
 
@@ -241,7 +300,14 @@ ChassisProtocol_DecodeVelocity(const struct can_frame *frame,
     return CHASSIS_PROTOCOL_DECODE_CRC;
   }
   linear = GetI16Le(&frame->data[4]);
-  if (linear < -2000 || linear > 2000) {
+  if (linear < -CHASSIS_PROTOCOL_LINEAR_VELOCITY_LIMIT_MM_S ||
+      linear > CHASSIS_PROTOCOL_LINEAR_VELOCITY_LIMIT_MM_S ||
+      GetI16Le(&frame->data[6]) <
+          -CHASSIS_PROTOCOL_ANGULAR_VELOCITY_LIMIT_MRAD_S ||
+      GetI16Le(&frame->data[6]) >
+          CHASSIS_PROTOCOL_ANGULAR_VELOCITY_LIMIT_MRAD_S ||
+      ((frame->data[1] & 1U) == 0U &&
+       (linear != 0 || GetI16Le(&frame->data[6]) != 0))) {
     return CHASSIS_PROTOCOL_DECODE_RANGE;
   }
   *command = (ChassisProtocolVelocityCommand){
@@ -257,8 +323,16 @@ bool ChassisProtocol_EncodeVelocity(
     const ChassisProtocolVelocityCommand *command, struct can_frame *frame) {
   uint16_t crc;
   if (command == NULL || frame == NULL ||
-      command->linear_velocity_mm_s < -2000 ||
-      command->linear_velocity_mm_s > 2000) {
+      command->linear_velocity_mm_s <
+          -CHASSIS_PROTOCOL_LINEAR_VELOCITY_LIMIT_MM_S ||
+      command->linear_velocity_mm_s >
+          CHASSIS_PROTOCOL_LINEAR_VELOCITY_LIMIT_MM_S ||
+      command->angular_velocity_mrad_s <
+          -CHASSIS_PROTOCOL_ANGULAR_VELOCITY_LIMIT_MRAD_S ||
+      command->angular_velocity_mrad_s >
+          CHASSIS_PROTOCOL_ANGULAR_VELOCITY_LIMIT_MRAD_S ||
+      (!command->enabled && (command->linear_velocity_mm_s != 0 ||
+                             command->angular_velocity_mrad_s != 0))) {
     return false;
   }
   *frame = (struct can_frame){
@@ -275,4 +349,179 @@ bool ChassisProtocol_EncodeVelocity(
   frame->data[10] = (uint8_t)(crc & 0xFFU);
   frame->data[11] = (uint8_t)(crc >> 8U);
   return true;
+}
+
+bool ChassisProtocol_EncodeMotion(
+    const ChassisProtocolMotionStatus *status, struct can_frame *frame) {
+  if (status == NULL || frame == NULL || status->left_output_permille < -1000 ||
+      status->left_output_permille > 1000 ||
+      status->right_output_permille < -1000 ||
+      status->right_output_permille > 1000 || status->control_state > 5U) {
+    return false;
+  }
+  *frame = (struct can_frame){
+      .id = CHASSIS_CAN_ID_STATUS_MOTION,
+      .dlc = CHASSIS_PROTOCOL_MOTION_SIZE,
+      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
+  };
+  frame->data[0] = CHASSIS_PROTOCOL_SCHEMA_VERSION;
+  frame->data[1] =
+      (status->valid ? CHASSIS_PROTOCOL_MOTION_FLAG_VALID : 0U) |
+      (status->running ? CHASSIS_PROTOCOL_MOTION_FLAG_RUNNING : 0U);
+  frame->data[2] = status->sequence;
+  frame->data[3] = status->control_state;
+  PutI16Le(&frame->data[4], status->left_velocity_mm_s);
+  PutI16Le(&frame->data[6], status->right_velocity_mm_s);
+  PutI16Le(&frame->data[8], status->linear_velocity_mm_s);
+  PutI16Le(&frame->data[10], status->angular_velocity_mrad_s);
+  PutI16Le(&frame->data[12], status->left_output_permille);
+  PutI16Le(&frame->data[14], status->right_output_permille);
+  return true;
+}
+
+bool ChassisProtocol_EncodeOdometry(
+    const ChassisProtocolOdometryReport *report, struct can_frame *frame) {
+  if (report == NULL || frame == NULL) {
+    return false;
+  }
+  *frame = (struct can_frame){
+      .id = CHASSIS_CAN_ID_REPORT_ODOMETRY,
+      .dlc = CHASSIS_PROTOCOL_ODOMETRY_SIZE,
+      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
+  };
+  frame->data[0] = CHASSIS_PROTOCOL_SCHEMA_VERSION;
+  frame->data[1] =
+      report->valid ? CHASSIS_PROTOCOL_ODOMETRY_FLAG_VALID : 0U;
+  frame->data[2] = report->sequence;
+  PutU32Le(&frame->data[4], report->timestamp_ms);
+  PutI32Le(&frame->data[8], report->x_mm);
+  PutI32Le(&frame->data[12], report->y_mm);
+  PutI32Le(&frame->data[16], report->heading_mrad);
+  PutI16Le(&frame->data[20], report->linear_velocity_mm_s);
+  PutI16Le(&frame->data[22], report->angular_velocity_mrad_s);
+  return true;
+}
+
+bool ChassisProtocol_EncodeHeartbeat(
+    const ChassisProtocolHeartbeat *heartbeat, struct can_frame *frame) {
+  uint16_t crc;
+
+  if (heartbeat == NULL || frame == NULL ||
+      heartbeat->node_state > CHASSIS_PROTOCOL_NODE_MAINTENANCE ||
+      (heartbeat->flags & ~CHASSIS_PROTOCOL_HEARTBEAT_FLAG_LINK_PASSED) !=
+          0U) {
+    return false;
+  }
+  *frame = (struct can_frame){
+      .id = CHASSIS_CAN_ID_HEARTBEAT,
+      .dlc = CHASSIS_PROTOCOL_HEARTBEAT_SIZE,
+      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
+  };
+  frame->data[0] = CHASSIS_PROTOCOL_SCHEMA_VERSION;
+  frame->data[1] = (uint8_t)heartbeat->node_state;
+  frame->data[2] = heartbeat->sequence;
+  frame->data[3] = heartbeat->flags;
+  PutU32Le(&frame->data[4], heartbeat->uptime_ms);
+  PutU16Le(&frame->data[8], heartbeat->fault_summary);
+  crc = ChassisProtocol_Crc16(frame->id, frame->data, 10U);
+  PutU16Le(&frame->data[10], crc);
+  return true;
+}
+
+bool ChassisProtocol_EncodeFault(
+    const ChassisProtocolFaultStatus *status, struct can_frame *frame) {
+  uint16_t crc;
+
+  if (status == NULL || frame == NULL ||
+      status->severity > CHASSIS_PROTOCOL_FAULT_CRITICAL ||
+      (status->flags & ~(CHASSIS_PROTOCOL_FAULT_FLAG_ACTIVE |
+                         CHASSIS_PROTOCOL_FAULT_FLAG_CRITICAL)) != 0U) {
+    return false;
+  }
+  *frame = (struct can_frame){
+      .id = CHASSIS_CAN_ID_FAULT_STATUS,
+      .dlc = CHASSIS_PROTOCOL_FAULT_SIZE,
+      .flags = CAN_FRAME_FDF | CAN_FRAME_BRS,
+  };
+  frame->data[0] = CHASSIS_PROTOCOL_SCHEMA_VERSION;
+  frame->data[1] = (uint8_t)status->severity;
+  frame->data[2] = status->sequence;
+  frame->data[3] = status->flags;
+  PutU32Le(&frame->data[4], status->active_faults);
+  PutU32Le(&frame->data[8], status->latched_faults);
+  PutU16Le(&frame->data[12], status->fault_sequence);
+  crc = ChassisProtocol_Crc16(frame->id, frame->data, 14U);
+  PutU16Le(&frame->data[14], crc);
+  return true;
+}
+
+static int SendEncoded(bool encoded, struct can_frame *frame,
+                       uint8_t *sequence) {
+  int result;
+
+  if (!encoded) {
+    return -EINVAL;
+  }
+  if (protocol_port.send == NULL) {
+    return -ENODEV;
+  }
+  result = protocol_port.send(frame);
+  if (result == 0) {
+    ++(*sequence);
+  }
+  return result;
+}
+
+int ChassisProtocol_SendMotion(const ChassisProtocolMotionStatus *status) {
+  ChassisProtocolMotionStatus message;
+  struct can_frame frame;
+
+  if (status == NULL) {
+    return -EINVAL;
+  }
+  message = *status;
+  message.sequence = motion_tx_sequence;
+  return SendEncoded(ChassisProtocol_EncodeMotion(&message, &frame), &frame,
+                     &motion_tx_sequence);
+}
+
+int ChassisProtocol_SendOdometry(
+    const ChassisProtocolOdometryReport *report) {
+  ChassisProtocolOdometryReport message;
+  struct can_frame frame;
+
+  if (report == NULL) {
+    return -EINVAL;
+  }
+  message = *report;
+  message.sequence = odometry_tx_sequence;
+  return SendEncoded(ChassisProtocol_EncodeOdometry(&message, &frame), &frame,
+                     &odometry_tx_sequence);
+}
+
+int ChassisProtocol_SendHeartbeat(
+    const ChassisProtocolHeartbeat *heartbeat) {
+  ChassisProtocolHeartbeat message;
+  struct can_frame frame;
+
+  if (heartbeat == NULL) {
+    return -EINVAL;
+  }
+  message = *heartbeat;
+  message.sequence = heartbeat_tx_sequence;
+  return SendEncoded(ChassisProtocol_EncodeHeartbeat(&message, &frame), &frame,
+                     &heartbeat_tx_sequence);
+}
+
+int ChassisProtocol_SendFault(const ChassisProtocolFaultStatus *status) {
+  ChassisProtocolFaultStatus message;
+  struct can_frame frame;
+
+  if (status == NULL) {
+    return -EINVAL;
+  }
+  message = *status;
+  message.sequence = fault_tx_sequence;
+  return SendEncoded(ChassisProtocol_EncodeFault(&message, &frame), &frame,
+                     &fault_tx_sequence);
 }

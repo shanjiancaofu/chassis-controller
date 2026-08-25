@@ -5,8 +5,9 @@
 [`../docs/verification.md`](../docs/verification.md)。
 
 协议唯一机器可读定义为 [`chassis_canfd.yaml`](chassis_canfd.yaml)。本文解释语义，字段 ID、
-偏移、长度、单位、版本和 CRC 规则必须与 schema 一致。当前 `0x100` 和开发握手已接入运行链路；
-`0x101/0x180/0x181/0x200/0x240` 已冻结 schema 并完成 host codec/schema 测试，但尚未全部接入产品运行时。
+偏移、长度、单位、版本和 CRC 规则必须与 schema 一致。当前 `0x100/0x101`、开发握手以及
+`0x180/0x181/0x200/0x240` 均已接入 Application 运行链路；目标板和 Jetson 联调状态只记录在
+验证文档中。
 
 ## 总线参数
 
@@ -29,10 +30,10 @@
 | ID 范围 | 方向 | 用途 | 当前状态 |
 | --- | --- | --- | --- |
 | `0x100` | Jetson -> STM32 | 双电机速度控制 | 已实现，待实车整定 |
-| `0x101` | Jetson -> STM32 | 物理速度控制 | Schema/codec 已实现，未接入控制 |
-| `0x180`-`0x1FF` | STM32 -> Jetson | 状态反馈 | Motion/Odometry schema 已冻结，未发送 |
-| `0x200`-`0x23F` | 双向 | 心跳和运行状态 | Heartbeat schema 已冻结，未发送 |
-| `0x240`-`0x27F` | STM32 -> Jetson | 故障和诊断 | Fault schema 已冻结，未发送 |
+| `0x101` | Jetson -> STM32 | 物理速度控制 | 已接入差速转换和安全控制链 |
+| `0x180`-`0x1FF` | STM32 -> Jetson | 状态反馈 | Motion/Odometry 已实现 |
+| `0x200`-`0x23F` | 双向 | 心跳和运行状态 | STM32 Heartbeat 已实现 |
+| `0x240`-`0x27F` | STM32 -> Jetson | 故障和诊断 | Fault Status 已实现 |
 | `0x280`-`0x2FF` | 双向 | 参数和管理 | ID 区间保留，消息尚未冻结 |
 | `0x700`-`0x77F` | 双向 | 开发联调 | 仅开发阶段使用 |
 
@@ -61,14 +62,51 @@ OTA V1 使用 `0x730/0x731` 的固定 64 字节 CAN FD+BRS 帧，详细格式见
 ## 物理速度控制
 
 `0x101 CHASSIS_CMD_VELOCITY` 为 12 byte：schema version、ENABLE flags、sequence、保留字节、
-`linear_velocity i16 mm/s`、`angular_velocity i16 mrad/s`、保留字和 CRC16。当前 codec 与 golden
-vector 已通过 host 测试，但尚未接入 `DifferentialDrive`，因此目标板不会据此驱动电机。
+`linear_velocity i16 mm/s`、`angular_velocity i16 mrad/s`、保留字和 CRC16。线速度范围为
+`-2000..2000 mm/s`，角速度范围为 `-10000..10000 mrad/s`；ENABLE 为零时两个目标必须为零。
+Application 根据当前 `1320 counts/rev`、`65 mm` 轮径、`220 mm` 轮距和 `10 ms` 控制周期换算
+左右轮目标，任一轮超过 `100 counts/tick` 时拒绝该命令，不刷新控制超时。
 
 正式 Jetson 接口最终使用 `0x101`；`0x100` 作为已验证的 wheel raw 兼容报文保留。
+两种控制报文共用一条 rolling sequence；切换 ID 时 sequence 仍必须连续，第一帧允许任意起始值。
+这能防止通过交替发送 `0x100/0x101` 绕过重复和乱序保护。
+
+## STM32 状态上报
+
+状态发送仅在现有开发握手进入 `PASSED` 后启用，避免总线上没有其他节点 ACK 时周期发送造成
+错误累积。发送失败不推进 rolling sequence，并在后续 service 周期重试。OTA、QSPI 自检或
+电机自检持有维护资源时暂停 Motion/Odometry，只保留 Fault 和低频 Heartbeat，避免与维护传输争用。
+
+- `0x180 CHASSIS_STATUS_MOTION`：20 ms 周期，报告左右轮速度、底盘线/角速度、控制状态以及
+  左右输出 permille。flags bit0 表示数据有效，bit1 表示闭环运行。
+- `0x181 CHASSIS_REPORT_ODOMETRY`：20 ms 周期并与 Motion 错峰 5 ms，报告 monotonic
+  timestamp、`x/y mm`、`heading mrad` 和线/角速度。flags bit0 表示里程计有效。
+- `0x200 CHASSIS_HEARTBEAT`：100 ms 周期，报告节点状态、uptime 和低 16 位当前故障摘要；
+  flags bit0 表示开发链路握手已通过。节点状态为 STARTING、READY、RUNNING、DEGRADED、FAULT
+  或 MAINTENANCE。
+- `0x240 CHASSIS_FAULT_STATUS`：故障集合变化时立即发送，并以 100 ms 周期保活。active faults
+  表示当前未清除故障，latched faults 表示本次启动以来曾出现的故障，fault sequence 在 active
+  集合发生变化时递增。severity 为 NONE、WARNING 或 CRITICAL。
+
+Motion/Odometry 使用 CAN FD 链路 CRC；Heartbeat/Fault 使用本文定义的项目级 CRC16。Heartbeat
+只用于节点观测，绝不调用 CommandManager，也不刷新 200 ms 运动命令超时。
+
+Fault 位定义：
+
+| Bit | 名称 | 当前分类 |
+| ---: | --- | --- |
+| 0 | `COMMAND_TIMEOUT` | WARNING / 可恢复 |
+| 1 | `EMERGENCY_STOP` | CRITICAL / 显式解除后恢复 |
+| 2 | `CONTROL_OVERRUN` | CRITICAL |
+| 3 | `INTERNAL` | CRITICAL |
+| 4 | `ENCODER` | CRITICAL |
+| 5 | `UNDERVOLTAGE` | CRITICAL |
+
+未定义位必须发送为零；新增 fault bit 属于协议 minor 兼容扩展，既有位不得改义。
 
 ## 通用规则
 
-- 周期控制报文必须携带递增计数器，STM32 检测重复、乱序和长时间中断。
+- `0x100/0x101` 共用递增计数器，STM32 检测重复、乱序和长时间中断。
 - 控制报文超时后必须进入安全状态，不能继续保持最后一次运动命令。
 - 心跳只能说明节点运行，不能代替执行器状态反馈。
 - 故障报文需要区分当前故障和历史故障。
@@ -108,7 +146,6 @@ vector 已通过 host 测试，但尚未接入 `DifferentialDrive`，因此目�
 
 以下内容必须在电机、转向、制动和传感器接口确认后再定义：
 
-- 目标速度到物理速度的换算、转角和制动命令。
-- 实际速度、转角、电流、电压和温度反馈。
+- 转角、独立制动命令以及电流和温度反馈。
 - 物理速度控制允许误差。
-- 故障码、降级状态和故障恢复条件。
+- 新硬件故障来源、降级控制策略和关键故障恢复条件。

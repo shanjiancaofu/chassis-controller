@@ -1,5 +1,19 @@
 # 变更记录
 
+## 2026-08-25：Chassis CAN FD 运行时接入
+
+- `0x101 CHASSIS_CMD_VELOCITY` 已进入统一 rolling sequence、差速运动学换算、CommandManager
+  所有权和 SafetyManager 控制链；`0x100/0x101` 切换不能绕过重复/乱序保护。
+- 实现 `0x180 Motion`、`0x181 Odometry`、`0x200 Heartbeat` 和 `0x240 Fault` 编码与错峰发送；
+  未握手不周期发送，维护期间暂停 Motion/Odometry，Heartbeat 不刷新运动命令超时。
+- FaultManager 新增本次启动累计 latched flags 和变化 sequence，协议不再伪造 active/latched。
+- schema 增加 flags/enum/fault bit 语义和范围验证；新增 fault manager、物理速度换算及
+  CAN→protocol→command/safety 整链主机测试。
+- Debug/Release、16 项 C 主机测试、4 项 schema、18 项 OTA/Python、四场景配置矩阵、架构检查和
+  LCD 预览通过。最新 payload `109672` 字节、CRC32 `0x86A92EC7`。cockpit-system 新增独立
+  `ChassisCanCodec` 和 `can-simulator --protocol chassis`，隔离 `vcan0` 已完成握手、0x101、停止
+  和四类上报解析；未烧录、未新增硬件结论。
+
 ## 2026-08-25：通信目录按职责收口
 
 - 仓库顶层 `protocol/` 明确为 STM32、Jetson 和工具共用的线协议契约，并新增职责入口。

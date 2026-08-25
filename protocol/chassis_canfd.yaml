@@ -45,11 +45,11 @@
       "crc": "crc16_ccitt_false",
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
-        {"name": "flags", "type": "flags8", "offset": 1},
+        {"name": "flags", "type": "flags8", "offset": 1, "bits": {"0": "enable"}},
         {"name": "sequence", "type": "u8", "offset": 2},
         {"name": "reserved0", "type": "u8", "offset": 3, "const": 0},
         {"name": "linear_velocity", "type": "i16", "offset": 4, "unit": "mm/s", "min": -2000, "max": 2000},
-        {"name": "angular_velocity", "type": "i16", "offset": 6, "unit": "mrad/s"},
+        {"name": "angular_velocity", "type": "i16", "offset": 6, "unit": "mrad/s", "min": -10000, "max": 10000},
         {"name": "reserved1", "type": "u16", "offset": 8, "const": 0},
         {"name": "crc16", "type": "u16", "offset": 10}
       ]
@@ -60,9 +60,9 @@
       "schema_version": 1, "crc": "can_fd",
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
-        {"name": "flags", "type": "flags8", "offset": 1},
+        {"name": "flags", "type": "flags8", "offset": 1, "bits": {"0": "valid", "1": "running"}},
         {"name": "sequence", "type": "u8", "offset": 2},
-        {"name": "control_state", "type": "enum8", "offset": 3},
+        {"name": "control_state", "type": "enum8", "offset": 3, "values": {"0": "stopped", "1": "running", "2": "command_timeout", "3": "emergency_stop", "4": "internal_fault", "5": "open_loop_test"}},
         {"name": "left_velocity", "type": "i16", "offset": 4, "unit": "mm/s"},
         {"name": "right_velocity", "type": "i16", "offset": 6, "unit": "mm/s"},
         {"name": "linear_velocity", "type": "i16", "offset": 8, "unit": "mm/s"},
@@ -77,7 +77,7 @@
       "schema_version": 1, "crc": "can_fd",
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
-        {"name": "flags", "type": "flags8", "offset": 1},
+        {"name": "flags", "type": "flags8", "offset": 1, "bits": {"0": "valid"}},
         {"name": "sequence", "type": "u8", "offset": 2},
         {"name": "reserved0", "type": "u8", "offset": 3, "const": 0},
         {"name": "timestamp_ms", "type": "u32", "offset": 4, "unit": "ms"},
@@ -94,9 +94,9 @@
       "schema_version": 1, "crc": "crc16_ccitt_false",
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
-        {"name": "node_state", "type": "enum8", "offset": 1},
+        {"name": "node_state", "type": "enum8", "offset": 1, "values": {"0": "starting", "1": "ready", "2": "running", "3": "degraded", "4": "fault", "5": "maintenance"}},
         {"name": "sequence", "type": "u8", "offset": 2},
-        {"name": "flags", "type": "flags8", "offset": 3},
+        {"name": "flags", "type": "flags8", "offset": 3, "bits": {"0": "link_passed"}},
         {"name": "uptime_ms", "type": "u32", "offset": 4, "unit": "ms"},
         {"name": "fault_summary", "type": "flags16", "offset": 8},
         {"name": "crc16", "type": "u16", "offset": 10}
@@ -104,15 +104,15 @@
     },
     {
       "id": 576, "name": "CHASSIS_FAULT_STATUS", "channel": "fault",
-      "direction": "stm32_to_jetson", "payload_size": 16,
+      "direction": "stm32_to_jetson", "payload_size": 16, "period_ms": 100,
       "schema_version": 1, "crc": "crc16_ccitt_false",
       "fields": [
         {"name": "schema_version", "type": "u8", "offset": 0, "const": 1},
-        {"name": "severity", "type": "enum8", "offset": 1},
+        {"name": "severity", "type": "enum8", "offset": 1, "values": {"0": "none", "1": "warning", "2": "critical"}},
         {"name": "sequence", "type": "u8", "offset": 2},
-        {"name": "flags", "type": "flags8", "offset": 3},
-        {"name": "active_faults", "type": "flags32", "offset": 4},
-        {"name": "latched_faults", "type": "flags32", "offset": 8},
+        {"name": "flags", "type": "flags8", "offset": 3, "bits": {"0": "active", "1": "critical"}},
+        {"name": "active_faults", "type": "flags32", "offset": 4, "bits": {"0": "command_timeout", "1": "emergency_stop", "2": "control_overrun", "3": "internal", "4": "encoder", "5": "undervoltage"}},
+        {"name": "latched_faults", "type": "flags32", "offset": 8, "bits": {"0": "command_timeout", "1": "emergency_stop", "2": "control_overrun", "3": "internal", "4": "encoder", "5": "undervoltage"}},
         {"name": "fault_sequence", "type": "u16", "offset": 12},
         {"name": "crc16", "type": "u16", "offset": 14}
       ]

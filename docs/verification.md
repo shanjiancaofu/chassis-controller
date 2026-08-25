@@ -54,6 +54,45 @@
 
 ## 构建基线
 
+### Chassis CAN FD 运行时接入（2026-08-25）
+
+`0x101` 已接入差速换算、CommandManager 和 SafetyManager；`0x180/0x181/0x200/0x240` 已接入
+握手后的错峰发送。主机整链测试覆盖速度命令、左右轮目标换算、重复 sequence、200 ms 超时、
+停止命令和欠压关键故障阻断。FaultManager 测试覆盖 active、latched 和变化 sequence。
+
+`python3 tools/test/run_all.py` 通过 16 项 C host、3 项 Kconfig、3 项 DTS、5 项架构、4 项 schema、
+18 项 OTA/Python、四场景配置矩阵和 LCD 同源预览。
+
+| 配置 | text | data | bss | 结果 |
+| --- | ---: | ---: | ---: | --- |
+| Debug | 124492 | 96 | 55424 | `BUILD PASS` |
+| Release | 109568 | 96 | 55400 | `BUILD PASS` |
+
+```text
+application.bin=109672 bytes
+payload_crc32=0x86A92EC7
+application.bin sha256=f66a8a5453f7651db40462abb1727159be57cd1bd289ac948a5bbe4ae736990c
+app-v0.15.0-b1.ota=109736 bytes
+ota sha256=f4466238aeecb30a0e2d692ec64b4fcd0336b52d6b9d983358eacf1c4cc17268
+```
+
+本批未执行真实 `can0`、UART OTA 或目标板电机测试，不构成硬件 `PASS`。
+
+复用 `/home/ffz/code/github/cockpit-system/tools/can-simulator` 完成主机侧接入，没有在本仓库复制
+第二套 vcan CLI。新增 C++ `ChassisCanCodec` 后，codec 和 stdout CLI 两项 CTest 通过；随后在
+无特权隔离网络 namespace 的真实 `vcan0` 上完成：
+
+```text
+0x720 PING -> 0x721 CHASSIS -> 0x720 PASS
+0x101 ENABLE seq=1 linear=500 angular=-250
+0x101 ENABLE seq=2 linear=500 angular=-250
+0x101 STOP   seq=3 linear=0   angular=0
+0x180 Motion / 0x181 Odometry / 0x200 Heartbeat / 0x240 Fault decode
+```
+
+这属于 `HOST VCAN` 软件证据；未覆盖 Navigator 产品数据服务、USB-CAN 适配器、真实 Jetson `can0`
+或 STM32 目标板。
+
 ### Chassis protocol 与轻量配置矩阵（2026-08-25）
 
 `protocol/chassis_canfd.yaml` 当前定义 8 个 CAN FD 消息，schema 校验 3 项通过。运行时已将

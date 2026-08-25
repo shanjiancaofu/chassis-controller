@@ -77,6 +77,7 @@ static bool InitializeCommunication(const struct device *can_device,
   static const struct can_filter accepted_filters[] = {
       {.id = CHASSIS_CAN_ID_DEV_HANDSHAKE_REQUEST, .mask = 0x7FFU},
       {.id = CHASSIS_CAN_ID_CMD_WHEEL_RAW, .mask = 0x7FFU},
+      {.id = CHASSIS_CAN_ID_CMD_VELOCITY, .mask = 0x7FFU},
       {.id = OTA_CAN_REQUEST_ID, .mask = 0x7FFU},
   };
   if (!device_is_ready(DEVICE_DT_GET(DT_CHOSEN(chassis_uart)))) {

@@ -197,7 +197,7 @@ SPI DMA、片选和背光，不持有页面、字体或产品状态 DTO。
 ### `subsys/communication`
 
 保存固件内可复用的通信实现，并按通信职责分为三个稳定边界：`can/` 保存 CAN 帧收发、
-错误恢复和 chassis 报文编解码；`uart/` 保存 `[RSP]`、`[LOG]`、`[TEL]` 消息输出；
+错误恢复、chassis 控制报文编解码及状态发送；`uart/` 保存 `[RSP]`、`[LOG]`、`[TEL]` 消息输出；
 `ota/` 保存跨 CAN/UART 的 OTA 适配、统一会话、QSPI 分块写入、元数据提交和 Application
 试运行确认状态机。communication 公共接口不暴露 HAL 类型，CAN 解码只在任务上下文执行。
 线协议以仓库顶层 `protocol/` 中的 schema 和协议文档为准。

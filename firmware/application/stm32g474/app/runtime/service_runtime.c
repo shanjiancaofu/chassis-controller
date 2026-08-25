@@ -1,8 +1,11 @@
 #include "app/runtime/service_runtime.h"
 
+#include <limits.h>
+#include <math.h>
 #include <stdio.h>
 
 #include "app/chassis/command_manager.h"
+#include "app/chassis/differential_drive.h"
 #include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
 #include "app/console/commands.h"
@@ -22,6 +25,7 @@
 #include "config/control_config.h"
 #include "devicetree.h"
 #include "drivers/adc/power_sample.h"
+#include "drivers/motor/motor.h"
 #include "drivers/reset/reset.h"
 #include "drivers/time.h"
 #include "drivers/uart.h"
@@ -34,6 +38,204 @@
 #include "subsys/communication/ota/ota_session.h"
 #include "subsys/communication/ota/ota_uart.h"
 #include "subsys/communication/uart/uart_messages.h"
+
+static uint32_t motion_tx_due_ms;
+static uint32_t odometry_tx_due_ms;
+static uint32_t heartbeat_tx_due_ms;
+static uint32_t fault_tx_due_ms;
+static uint16_t last_fault_sequence_sent;
+static bool fault_sequence_sent;
+
+static bool IsDue(uint32_t now_ms, uint32_t due_ms) {
+  return (int32_t)(now_ms - due_ms) >= 0;
+}
+
+static int16_t RoundToI16(float value) {
+  if (!isfinite(value)) {
+    return 0;
+  }
+  if (value >= 32766.5f) {
+    return INT16_MAX;
+  }
+  if (value <= -32767.5f) {
+    return INT16_MIN;
+  }
+  return (int16_t)(value >= 0.0f ? value + 0.5f : value - 0.5f);
+}
+
+static int32_t RoundToI32(float value) {
+  if (!isfinite(value)) {
+    return 0;
+  }
+  if (value >= 2147483520.0f) {
+    return INT32_MAX;
+  }
+  if (value <= -2147483648.0f) {
+    return INT32_MIN;
+  }
+  return (int32_t)(value >= 0.0f ? value + 0.5f : value - 0.5f);
+}
+
+static int16_t WheelDeltaToMillimetersPerSecond(int32_t delta,
+                                                uint32_t period_ms) {
+  if (period_ms == 0U) {
+    return 0;
+  }
+  return RoundToI16((float)delta * CHASSIS_WHEEL_DIAMETER_M *
+                    3.14159265358979323846f * 1000000.0f /
+                    ((float)MOTOR_ENCODER_COUNTS_PER_REVOLUTION * period_ms));
+}
+
+static int16_t DutyToPermille(int16_t duty) {
+  return RoundToI16((float)duty * 1000.0f / MOTOR_COMPARE_MAX);
+}
+
+static uint8_t ProtocolControlState(ChassisControlState state) {
+  switch (state) {
+  case CHASSIS_CONTROL_RUNNING:
+    return 1U;
+  case CHASSIS_CONTROL_COMMAND_TIMEOUT:
+    return 2U;
+  case CHASSIS_CONTROL_EMERGENCY_STOP:
+    return 3U;
+  case CHASSIS_CONTROL_INTERNAL_FAULT:
+    return 4U;
+  case CHASSIS_CONTROL_OPEN_LOOP_TEST:
+    return 5U;
+  default:
+    return 0U;
+  }
+}
+
+static ChassisProtocolNodeState ProtocolNodeState(
+    const SystemStatusSnapshot *status, uint32_t active_faults,
+    bool protocol_critical_fault) {
+  if (OtaSession_IsActive() || status->motor_test.running ||
+      QspiSelfTest_GetStatus() == QSPI_SELF_TEST_RUNNING) {
+    return CHASSIS_PROTOCOL_NODE_MAINTENANCE;
+  }
+  if (protocol_critical_fault) {
+    return CHASSIS_PROTOCOL_NODE_FAULT;
+  }
+  if (active_faults != 0U || !status->runtime.critical_tasks_healthy ||
+      !CanTransport_IsOperational()) {
+    return CHASSIS_PROTOCOL_NODE_DEGRADED;
+  }
+  if (status->control_state == CHASSIS_CONTROL_RUNNING) {
+    return CHASSIS_PROTOCOL_NODE_RUNNING;
+  }
+  return CHASSIS_PROTOCOL_NODE_READY;
+}
+
+static void PublishChassisStatus(uint32_t now_ms) {
+  SystemStatusSnapshot status;
+  WheelControllerSnapshot wheels;
+  MotorSelfTestSnapshot motor_test;
+  OdometrySnapshot odometry;
+  const uint32_t active_faults = FaultManager_GetFlags();
+  const uint32_t latched_faults = FaultManager_GetLatchedFlags();
+  const uint16_t fault_sequence = FaultManager_GetSequence();
+  const bool protocol_critical_fault =
+      FaultManager_HasCritical() ||
+      (active_faults & CHASSIS_FAULT_EMERGENCY_STOP) != 0U;
+  bool maintenance_active;
+
+  if (ChassisProtocol_GetLinkStatus() != CHASSIS_PROTOCOL_LINK_PASSED) {
+    motion_tx_due_ms = now_ms + CHASSIS_PROTOCOL_MOTION_PERIOD_MS;
+    odometry_tx_due_ms = now_ms + CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS + 5U;
+    heartbeat_tx_due_ms = now_ms + CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS + 10U;
+    fault_tx_due_ms = now_ms + CHASSIS_PROTOCOL_FAULT_PERIOD_MS + 15U;
+    fault_sequence_sent = false;
+    return;
+  }
+
+  SystemStatus_GetSnapshot(&status);
+  kernel_critical_enter();
+  WheelController_GetSnapshot(&wheels);
+  MotorSelfTest_GetSnapshot(&motor_test);
+  Odometry_GetSnapshot(now_ms, &odometry);
+  status.control_state = SafetyManager_GetState();
+  kernel_critical_exit();
+  status.motor_test.running = motor_test.running;
+  maintenance_active = OtaSession_IsActive() || motor_test.running ||
+                       QspiSelfTest_GetStatus() == QSPI_SELF_TEST_RUNNING;
+
+  if (!fault_sequence_sent || fault_sequence != last_fault_sequence_sent ||
+      IsDue(now_ms, fault_tx_due_ms)) {
+    const ChassisProtocolFaultStatus fault = {
+        .severity = protocol_critical_fault
+                        ? CHASSIS_PROTOCOL_FAULT_CRITICAL
+                        : active_faults != 0U
+                              ? CHASSIS_PROTOCOL_FAULT_WARNING
+                              : CHASSIS_PROTOCOL_FAULT_NONE,
+        .flags = (active_faults != 0U
+                      ? CHASSIS_PROTOCOL_FAULT_FLAG_ACTIVE
+                      : 0U) |
+                 (protocol_critical_fault
+                      ? CHASSIS_PROTOCOL_FAULT_FLAG_CRITICAL
+                      : 0U),
+        .active_faults = active_faults,
+        .latched_faults = latched_faults,
+        .fault_sequence = fault_sequence,
+    };
+
+    if (ChassisProtocol_SendFault(&fault) == 0) {
+      last_fault_sequence_sent = fault_sequence;
+      fault_sequence_sent = true;
+      fault_tx_due_ms = now_ms + CHASSIS_PROTOCOL_FAULT_PERIOD_MS;
+    }
+  } else if (!maintenance_active && IsDue(now_ms, motion_tx_due_ms)) {
+    const ChassisProtocolMotionStatus motion = {
+        .valid = odometry.valid,
+        .running = status.control_state == CHASSIS_CONTROL_RUNNING,
+        .control_state = ProtocolControlState(status.control_state),
+        .left_velocity_mm_s = WheelDeltaToMillimetersPerSecond(
+            wheels.left_measurement, MOTOR_CONTROL_PERIOD_MS),
+        .right_velocity_mm_s = WheelDeltaToMillimetersPerSecond(
+            wheels.right_measurement, MOTOR_CONTROL_PERIOD_MS),
+        .linear_velocity_mm_s =
+            RoundToI16(odometry.linear_velocity_mps * 1000.0f),
+        .angular_velocity_mrad_s =
+            RoundToI16(odometry.angular_velocity_rad_s * 1000.0f),
+        .left_output_permille = DutyToPermille(
+            motor_test.running ? motor_test.left_duty : wheels.left_output),
+        .right_output_permille = DutyToPermille(
+            motor_test.running ? motor_test.right_duty : wheels.right_output),
+    };
+
+    if (ChassisProtocol_SendMotion(&motion) == 0) {
+      motion_tx_due_ms = now_ms + CHASSIS_PROTOCOL_MOTION_PERIOD_MS;
+    }
+  } else if (!maintenance_active && IsDue(now_ms, odometry_tx_due_ms)) {
+    const ChassisProtocolOdometryReport report = {
+        .valid = odometry.valid,
+        .timestamp_ms = odometry.sample_timestamp_ms,
+        .x_mm = RoundToI32(odometry.x_m * 1000.0f),
+        .y_mm = RoundToI32(odometry.y_m * 1000.0f),
+        .heading_mrad = RoundToI32(odometry.heading_rad * 1000.0f),
+        .linear_velocity_mm_s =
+            RoundToI16(odometry.linear_velocity_mps * 1000.0f),
+        .angular_velocity_mrad_s =
+            RoundToI16(odometry.angular_velocity_rad_s * 1000.0f),
+    };
+
+    if (ChassisProtocol_SendOdometry(&report) == 0) {
+      odometry_tx_due_ms = now_ms + CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS;
+    }
+  } else if (IsDue(now_ms, heartbeat_tx_due_ms)) {
+    const ChassisProtocolHeartbeat heartbeat = {
+        .node_state = ProtocolNodeState(&status, active_faults,
+                                        protocol_critical_fault),
+        .flags = CHASSIS_PROTOCOL_HEARTBEAT_FLAG_LINK_PASSED,
+        .uptime_ms = now_ms,
+        .fault_summary = (uint16_t)active_faults,
+    };
+
+    if (ChassisProtocol_SendHeartbeat(&heartbeat) == 0) {
+      heartbeat_tx_due_ms = now_ms + CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS;
+    }
+  }
+}
 
 #if CONFIG_MOTOR_DEMO
 static uint8_t demo_stage;
@@ -106,9 +308,17 @@ static void RunMotorDemo(uint32_t now_ms) {
 #endif
 
 bool ServiceRuntime_Init(void) {
+  const uint32_t now_ms = time_uptime_ms();
+
+  motion_tx_due_ms = now_ms + CHASSIS_PROTOCOL_MOTION_PERIOD_MS;
+  odometry_tx_due_ms = now_ms + CHASSIS_PROTOCOL_ODOMETRY_PERIOD_MS + 5U;
+  heartbeat_tx_due_ms = now_ms + CHASSIS_PROTOCOL_HEARTBEAT_PERIOD_MS + 10U;
+  fault_tx_due_ms = now_ms + CHASSIS_PROTOCOL_FAULT_PERIOD_MS + 15U;
+  last_fault_sequence_sent = 0U;
+  fault_sequence_sent = false;
 #if CONFIG_MOTOR_DEMO
   demo_stage = 0U;
-  demo_stage_started_ms = time_uptime_ms();
+  demo_stage_started_ms = now_ms;
   if (ControlRuntime_SubmitMotionCommand(0, 0, COMMAND_SOURCE_SELF_TEST,
                                          demo_stage_started_ms, false,
                                          0U) != COMMAND_SUBMIT_ACCEPTED ||
@@ -121,7 +331,7 @@ bool ServiceRuntime_Init(void) {
 
 void ServiceRuntime_Run(void) {
   ConsoleCommand console_command;
-  ChassisProtocolWheelRawCommand control_command;
+  ChassisProtocolControlCommand control_command;
   struct can_frame frame;
   const uint32_t now_ms = time_uptime_ms();
 
@@ -168,13 +378,29 @@ void ServiceRuntime_Run(void) {
     }
   }
   ChassisProtocol_Run(now_ms);
+  PublishChassisStatus(now_ms);
   ChassisMaintenance_Run(now_ms);
-  if (ChassisProtocol_TakeWheelRawCommand(&control_command)) {
+  if (ChassisProtocol_TakeControlCommand(&control_command)) {
     if (control_command.enabled) {
-      if (ControlRuntime_SubmitMotionCommand(
-              control_command.left_target, control_command.right_target,
-              COMMAND_SOURCE_CAN_REMOTE, now_ms, true,
-              control_command.sequence) == COMMAND_SUBMIT_ACCEPTED) {
+      int32_t left_target;
+      int32_t right_target;
+      bool target_valid = true;
+
+      if (control_command.mode == CHASSIS_PROTOCOL_CONTROL_VELOCITY) {
+        target_valid = DifferentialDrive_VelocityToWheelTargets(
+            control_command.target.velocity.linear_velocity_mm_s,
+            control_command.target.velocity.angular_velocity_mrad_s,
+            MOTOR_ENCODER_COUNTS_PER_REVOLUTION, CHASSIS_WHEEL_DIAMETER_M,
+            CHASSIS_TRACK_WIDTH_M, MOTOR_CONTROL_PERIOD_MS,
+            MOTOR_CONTROL_TARGET_LIMIT, &left_target, &right_target);
+      } else {
+        left_target = control_command.target.wheel_raw.left_target;
+        right_target = control_command.target.wheel_raw.right_target;
+      }
+      if (target_valid &&
+          ControlRuntime_SubmitMotionCommand(
+              left_target, right_target, COMMAND_SOURCE_CAN_REMOTE, now_ms,
+              true, control_command.sequence) == COMMAND_SUBMIT_ACCEPTED) {
         (void)ControlRuntime_Start();
       }
     } else if (CommandManager_GetOwner() == COMMAND_SOURCE_CAN_REMOTE) {

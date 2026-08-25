@@ -154,6 +154,8 @@ typedef struct {
   uint32_t supply_mv;
   SystemStatusPowerSampleSnapshot power_sample;
   uint32_t fault_flags;
+  uint32_t latched_fault_flags;
+  uint16_t fault_sequence;
   uint32_t qspi_test_state;
   uint32_t ota_confirmation_state;
   uint32_t ota_source;

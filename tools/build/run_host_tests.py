@@ -27,9 +27,22 @@ TESTS = {
         ["tests/unit/test_chassis_protocol.c",
          "subsys/communication/can/chassis_protocol.c"],
     ),
+    "chassis_control_flow": (
+        "CHASSIS_CONTROL_FLOW_HOST_TEST",
+        ["tests/unit/test_chassis_control_flow.c",
+         "subsys/communication/can/chassis_protocol.c",
+         "app/chassis/command_manager.c",
+         "app/chassis/differential_drive.c",
+         "app/safety/fault_manager.c",
+         "app/safety/safety_manager.c"],
+    ),
     "command_manager": (
         "COMMAND_MANAGER_HOST_TEST",
         ["tests/unit/test_command_manager.c", "app/chassis/command_manager.c"],
+    ),
+    "fault_manager": (
+        "FAULT_MANAGER_HOST_TEST",
+        ["tests/unit/test_fault_manager.c", "app/safety/fault_manager.c"],
     ),
     "icm45686": (
         "ICM45686_HOST_TEST",

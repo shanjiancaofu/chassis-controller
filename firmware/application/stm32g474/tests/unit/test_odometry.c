@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "app/chassis/differential_drive.h"
 #include "app/chassis/odometry.h"
 
 #define PI_F 3.14159265358979323846f
@@ -23,6 +24,20 @@ int main(void)
   };
   const float circumference_m = PI_F * config.wheel_diameter_m;
   OdometrySnapshot snapshot;
+  int32_t left_target;
+  int32_t right_target;
+
+  assert(DifferentialDrive_VelocityToWheelTargets(
+      500, 0, 1320U, 0.065f, 0.220f, 10U, 100, &left_target,
+      &right_target));
+  assert(left_target == 32 && right_target == 32);
+  assert(DifferentialDrive_VelocityToWheelTargets(
+      0, 1000, 1320U, 0.065f, 0.220f, 10U, 100, &left_target,
+      &right_target));
+  assert(left_target == -7 && right_target == 7);
+  assert(!DifferentialDrive_VelocityToWheelTargets(
+      2000, 0, 1320U, 0.065f, 0.220f, 10U, 100, &left_target,
+      &right_target));
 
   assert(!Odometry_Init(NULL));
   assert(!Odometry_Init(&(OdometryConfig){0}));

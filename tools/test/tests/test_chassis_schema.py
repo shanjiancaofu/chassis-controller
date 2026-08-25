@@ -32,6 +32,12 @@ class ChassisSchemaTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "payload size"):
             validate(broken)
 
+    def test_invalid_flag_bit_is_rejected(self) -> None:
+        broken = copy.deepcopy(self.schema)
+        broken["messages"][1]["fields"][1]["bits"] = {"8": "invalid"}
+        with self.assertRaisesRegex(ValueError, "invalid flag bit"):
+            validate(broken)
+
 
 if __name__ == "__main__":
     unittest.main()
