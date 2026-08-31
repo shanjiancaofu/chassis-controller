@@ -2064,3 +2064,58 @@ Jetson ↔ STM32 physical CAN FD link: NOT VERIFIED / NO ACK
 下一步先断电检查两个物理端点各自的 CAN FD 收发器、5 V/VIO/STBY、共地、CANH/CANL 同名连线和
 CANH-CANL 约 60 Ω。修复前不再发送帧；修复后首次启用 `one-shot on`，先被动看到 0x200/0x240，
 再执行零速度 target regression。
+
+Jetson 端可先运行以下只读/恢复入口（需要 sudo；不发送 CAN 数据帧）：
+
+```bash
+tools/target/jetson_can_preflight.sh
+```
+
+脚本会 mask/停止 brltty、确保 `ch341` 绑定、设置 `can0` 为 500 kbit/s nominal、2 Mbit/s data、FD/BRS、
+默认 data sample point 80%、`one-shot on`，并执行 5 秒 `candump`；可用 `CAN_DATA_SAMPLE_POINT=0.84`
+做显式 A/B。只有看到 STM32 0x200/0x240 后，才继续 `run_target_regression.py`。
+
+本轮 84% 实际结果：`can0` 为 `ERROR-PASSIVE`，内核持续报告 `Bit0 Error Detected`，RX errors
+持续增长，5 秒 `candump` 为 0 有效帧；STM32 `can_status` 为 `tec=135 rec=1 passive=1`。该结果说明
+总线上有波形但 84% data timing 未通过。下一轮默认回到历史 80%，仍使用 one-shot，不发送 0x101；
+只有 80% 下出现 0x200/0x240 才继续正式协议。
+
+## 2026-08-31 修线后 CAN FD 双向与零速度回归
+
+修复 CAN 线束后，Jetson 使用 500 kbit/s nominal、2 Mbit/s data、FD+BRS、data sample point 80%、
+`one-shot on`。5 秒被动抓包稳定收到 STM32 周期帧：
+
+```text
+0x240 CHASSIS_FAULT_STATUS：约 100 ms
+0x200 CHASSIS_HEARTBEAT：约 100 ms
+```
+
+随后完成开发握手：
+
+```text
+Jetson 0x720 PING -> STM32 0x721 CHASSIS
+Jetson 0x720 PASS -> STM32 接受确认
+```
+
+STM32 UART `can_status` 在链路稳定后为：
+
+```text
+tec=0 rec=0 passive=0 warning=0 busoff=0 rxfill=0 txfree=3
+```
+
+执行正式零速度 target regression：
+
+```text
+UART status sections                 PASS
+firmware 1.0.1 build1               PASS
+safe STOPPED/fault=0                PASS
+STM32 heartbeat                     PASS
+0x101 zero-velocity path            PASS
+0x180/0x181/0x200/0x240 channels    PASS
+200 ms command timeout              PASS (control_state=2)
+```
+
+本轮没有发送非零速度，没有接入 Nav2，没有接通电机主电源。CAN FD 基础双向链路记为
+`HARDWARE PASS`；bus-off 专门故障注入、CAN unplug、非零 wheels-up 和电机闭环保持
+`NOT VERIFIED`。回归工具停止后，STM32 自动回到 `COMMAND_TIMEOUT/fault=0x1`，符合无有效
+控制帧时的安全停车合同。

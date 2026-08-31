@@ -51,7 +51,12 @@ def send_frame(sock: socket.socket, identifier: int, payload: bytes) -> None:
     sock.send(FRAME.pack(identifier, len(payload), CANFD_BRS, 0, 0, payload.ljust(64, b"\0")))
 
 
-def receive_until(sock: socket.socket, deadline: float, wanted: set[int]) -> dict[int, bytes]:
+def receive_until(
+    sock: socket.socket,
+    deadline: float,
+    wanted: set[int],
+    predicates: dict[int, object] | None = None,
+) -> dict[int, bytes]:
     received: dict[int, bytes] = {}
     while time.monotonic() < deadline and not wanted.issubset(received):
         try:
@@ -62,7 +67,9 @@ def receive_until(sock: socket.socket, deadline: float, wanted: set[int]) -> dic
         identifier = can_id & CAN_EFF_MASK
         if can_id & CAN_ERR_FLAG and identifier & CAN_ERR_BUSOFF:
             received[CAN_ERR_BUSOFF] = data[:length]
-        elif identifier in wanted:
+        elif identifier in wanted and (
+            predicates is None or identifier not in predicates or predicates[identifier](data[:length])
+        ):
             received[identifier] = data[:length]
     return received
 
@@ -95,7 +102,12 @@ def run_canfd_smoke(interface: str, timeout: float, expect_bus_off: bool) -> lis
                 send_frame(sock, 0x200, heartbeat(sequence, int((time.monotonic() - start) * 1000)))
                 sequence = (sequence + 1) & 0xFF
                 time.sleep(0.08)
-            timed_out = receive_until(sock, time.monotonic() + timeout, {0x180})
+            timed_out = receive_until(
+                sock,
+                time.monotonic() + timeout,
+                {0x180},
+                {0x180: lambda data: len(data) == 16 and data[3] == 2},
+            )
             motion = timed_out.get(0x180, b"")
             report.add(
                 "200 ms control timeout",

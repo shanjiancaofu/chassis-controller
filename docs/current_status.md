@@ -11,12 +11,30 @@ ST-Link `0483:3748`、CH340 `1a86:7523` 和 PCM2902。WCH `ch341.ko` 已针对�
 RUNNING、`control=STOPPED`、`fault=0`、左右 target/speed/PWM 全零，IMU/QSPI/LCD 正常；ADC 为
 0 mV，电机主电源保持断开，UART Gate 为 PASS。
 
-Jetson `can0` 已配置 500 kbit/s nominal、2 Mbit/s data、FD+BRS；被动监听未收到 STM32 0x200/0x240。
+Jetson `can0` 已配置 500 kbit/s nominal、2 Mbit/s data、FD+BRS；修复线束后被动监听已稳定收到 STM32 0x200/0x240。
 一次不涉及运动的 0x720 PING 无 ACK，在自动重发模式下真实进入 ERROR-PASSIVE，产生 1 次 bus-off、
-1 次自动 restart 和累计 427218 个 bus error；随后恢复 ERROR-ACTIVE、TEC/REC=0 且计数稳定。该事件
-不构成 bus-off recovery 验收通过，只证明物理总线上没有可 ACK 的第二节点。CAN 双向链路继续为
-NOT VERIFIED；检查 Jetson 侧独立 CAN FD 收发器、两端 5 V/VIO/STBY、共地、CANH/CANL 和约 60 Ω
-终端后，先用 `one-shot on` 被动确认 0x200/0x240，再继续零速度 target regression。
+1 次自动 restart 和累计 427218 个 bus error；该历史故障不再增长。修复线束并恢复历史 80% data
+sample point 后，0x200/0x240 周期帧、0x720/0x721 握手和零速度 0x101 双向均已通过，Jetson 新增
+错误为 0、STM32 `tec=0/passive=0`。CAN FD 基础双向链路记为 `HARDWARE PASS`；bus-off 专门故障
+注入、电机主电源、非零速度和 wheels-up 仍为 `NOT VERIFIED`。
+
+为减少下一轮手工步骤，新增 `tools/target/jetson_can_preflight.sh`：它以 root 停止 brltty、加载/绑定
+CH341、配置 `can0` 为 500 kbit/s + 2 Mbit/s FD/BRS（默认 data sample point 80%、one-shot on），然后只
+被动监听 5 秒；脚本不发送 0x720/0x101，也不启动电机或 Nav2。
+
+2026-08-31 修线后执行 `tools/target/run_target_regression.py --can-interface can0`：UART status、
+STM32 heartbeat、0x101 零速度、0x180/0x181/0x200/0x240 和 200 ms command timeout 全部 PASS。
+工具结束后停止发送控制帧，目标板按合同回到 `COMMAND_TIMEOUT/fault=0x1` 的安全状态；这不是回归失败，
+下一轮开始前需重新提供有效控制命令或复位。
+
+后续日志确认 tty 短暂生成后会被 brltty 重新抢占：`usbfs: interface 0 claimed by usb_ch341 while
+'brltty' sets config #1`，随后 USB disconnect/re-enumerate，导致 `/dev/ttyCH341USB0` 消失。preflight
+脚本现已改为 mask/停止 brltty 并 kill 残留进程，再执行 CH341 bind；需重新运行脚本后确认 tty 稳定。
+
+本脚本已实际执行：Jetson 84% data sample point 下出现持续 `Bit0 Error` 和 RX error，5 秒仍为 0
+有效帧；STM32 `can_status` 为 `tec=135 rec=1 passive=1`。因此 84% A/B 未通过，默认恢复历史曾
+成功的 80%（可用 `CAN_DATA_SAMPLE_POINT=0.84` 显式复测）；STM32→Jetson 物理接收链继续
+`NOT VERIFIED`。
 
 ## 代码基线
 
