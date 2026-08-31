@@ -3,6 +3,21 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-08-31 CAN 联调 preflight
+
+Jetson 端已连接 ST-Link/V2、CH340、USB-C 和 USB 声卡，C1 LiDAR 未连接。USB 枚举已看到
+ST-Link `0483:3748`、CH340 `1a86:7523` 和 PCM2902。WCH `ch341.ko` 已针对当前 kernel 编译、加载
+并绑定，`/dev/ttyCH341USB0` 可读写。115200 target serial smoke 确认 `fw=1.0.1 build=1`、四任务
+RUNNING、`control=STOPPED`、`fault=0`、左右 target/speed/PWM 全零，IMU/QSPI/LCD 正常；ADC 为
+0 mV，电机主电源保持断开，UART Gate 为 PASS。
+
+Jetson `can0` 已配置 500 kbit/s nominal、2 Mbit/s data、FD+BRS；被动监听未收到 STM32 0x200/0x240。
+一次不涉及运动的 0x720 PING 无 ACK，在自动重发模式下真实进入 ERROR-PASSIVE，产生 1 次 bus-off、
+1 次自动 restart 和累计 427218 个 bus error；随后恢复 ERROR-ACTIVE、TEC/REC=0 且计数稳定。该事件
+不构成 bus-off recovery 验收通过，只证明物理总线上没有可 ACK 的第二节点。CAN 双向链路继续为
+NOT VERIFIED；检查 Jetson 侧独立 CAN FD 收发器、两端 5 V/VIO/STBY、共地、CANH/CANL 和约 60 Ω
+终端后，先用 `one-shot on` 被动确认 0x200/0x240，再继续零速度 target regression。
+
 ## 代码基线
 
 ### 原生平台化迁移完成度

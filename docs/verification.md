@@ -2010,3 +2010,57 @@ odom_valid=1 odom_x_mm=0 odom_y_mm=0 odom_heading_mrad=0
 `lcd=DRAWING` 是在线读取时的逐行 DMA 刷新状态，证明显示任务在运行，不证明画面布局正确。
 本轮没有发送电机命令，控制保持停止且左右 PWM 软件状态为零；四页切换、文字、Logo、电量条
 和新配色仍为 `NOT VERIFIED`，等待人工目视确认。
+
+## 2026-08-31 Jetson UART PASS 与 CAN FD 物理层未连通证据
+
+环境为 Jetson Orin Nano、Linux `5.15.199-tegra`。WCH CH340 `1a86:7523` 使用针对当前内核编译的
+`ch341.ko`，停止 brltty 冲突后绑定为 `/dev/ttyCH341USB0`。执行：
+
+```text
+python3 tools/target/serial_smoke.py \
+  --port /dev/ttyCH341USB0 --baud 115200 \
+  --expected-version 1.0.1 --expected-build 1
+```
+
+目标板返回：
+
+```text
+fw=1.0.1 build=1
+service/control/diagnostics/display_task=RUNNING
+control=STOPPED fault=0x00000000
+left/right target=0 speed=0 pwm=0
+can=READY can_drops=0
+imu=READY qspi_jedec=EF4017 lcd=READY/DRAWING
+ota_confirmation=NOT_REQUIRED
+```
+
+ADC 报告 valid 但 `0 mV`，本轮保持电机主电源断开。UART target smoke 为 `HARDWARE PASS`；未执行
+复位启动日志捕获，不新增烧录或 OTA 结论。
+
+Jetson `can0` 配置为 nominal 500 kbit/s、data 2 Mbit/s、FD+BRS，初始为 ERROR-ACTIVE、TEC/REC=0。
+被动监听 3 秒没有收到协议要求 STM32 独立周期发送的 0x200 heartbeat 或 0x240 fault。为确认 ACK
+路径，仅发送一次开发用 0x720 PING；没有发送 0x101。该帧没有收到 ACK，且当时配置为
+`one-shot off`，controller 持续自动重发并出现：
+
+```text
+ERROR-PASSIVE
+berr-counter tx=128 rx=0
+bus-off=1
+re-started=1
+bus-errors=427218
+```
+
+停止该重发并由 `restart-ms=1000` 恢复后，can0 回到 ERROR-ACTIVE、TEC/REC=0；随后 2 秒纯监听中
+历史计数保持不变，但仍无 STM32 帧。该证据只证明 Jetson CAN controller 的错误上报和自动 restart
+发生过，不证明 CAN FD bus-off recovery Gate 通过，也不证明 STM32 收发器链路可用。当前结论：
+
+```text
+UART target regression: HARDWARE PASS
+Jetson CAN controller configuration: PASS
+Jetson ↔ STM32 physical CAN FD link: NOT VERIFIED / NO ACK
+0x180/0x181/0x200/0x240/0x101 protocol bench: NOT RUN
+```
+
+下一步先断电检查两个物理端点各自的 CAN FD 收发器、5 V/VIO/STBY、共地、CANH/CANL 同名连线和
+CANH-CANL 约 60 Ω。修复前不再发送帧；修复后首次启用 `one-shot on`，先被动看到 0x200/0x240，
+再执行零速度 target regression。
