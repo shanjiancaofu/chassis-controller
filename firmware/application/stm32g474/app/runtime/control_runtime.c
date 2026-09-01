@@ -139,7 +139,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
   int32_t right_measurement;
   int left_encoder_result;
   int right_encoder_result;
-  uint32_t latest_supply_mv;
+  PowerSampleSnapshot power_sample = {0};
   int64_t max_encoder_delta;
   int64_t left_abs_delta;
   int64_t right_abs_delta;
@@ -179,9 +179,11 @@ void ControlRuntime_Run(uint32_t notification_count) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER);
     return;
   }
-  if (power_sample_get_latest_millivolts(
-          DEVICE_DT_GET(DT_CHOSEN(chassis_power)), &latest_supply_mv) &&
-      latest_supply_mv < MOTOR_CONTROL_MIN_SUPPLY_MV) {
+  power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), now_ms,
+                            &power_sample);
+  if (!power_sample.valid ||
+      power_sample.sample_age_ms > MOTOR_CONTROL_MAX_SUPPLY_SAMPLE_AGE_MS ||
+      power_sample.millivolts < MOTOR_CONTROL_MIN_SUPPLY_MV) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
     return;
   }

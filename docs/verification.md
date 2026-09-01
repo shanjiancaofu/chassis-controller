@@ -14,6 +14,23 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## Cortex-M crash context（2026-09-01）
+
+HardFault、MemManage、BusFault、UsageFault 改为 naked wrapper，从 MSP/PSP 取得 Cortex-M 异常栈，
+先调用既有 `ChassisApp_PanicStopFromException()`，再写入 `.noinit` 的持久记录。记录包含
+R0–R3/R12/LR/PC/xPSR、EXC_RETURN、CFSR、HFSR、MMFAR 和 BFAR；下次 Application 启动在 UART 初始化
+后输出一次 `crash/PREVIOUS_EXCEPTION` 并清除 magic。
+
+本轮仅完成交叉编译、链接和源级安全门禁；没有主动制造 HardFault，故障后重启打印和 `addr2line`
+映射仍为 `NOT VERIFIED`。
+
+### Power sample validity
+
+`ControlRuntime_Run()` 现在使用 `PowerSampleSnapshot` 的 `valid`、`millivolts` 和 `sample_age_ms`：
+未采样、年龄超过 `MOTOR_CONTROL_MAX_SUPPLY_SAMPLE_AGE_MS=250` ms 或低于
+`MOTOR_CONTROL_MIN_SUPPLY_MV=9000` mV，都会走既有 `CHASSIS_FAULT_UNDERVOLTAGE` fail-close 路径。
+主机源级门禁和 Release 构建通过；真实 ADC I/O error、断线和超时注入保持 `NOT VERIFIED`。
+
 ## 1.0.3 build1 编码器反馈 fail-close（2026-09-01）
 
 旧逻辑在任一 `encoder_read_delta()` 失败后把左右 delta 都设置为零，随后继续 odometry 和 PID；非零

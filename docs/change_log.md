@@ -1,5 +1,20 @@
 # 变更记录
 
+## 2026-09-01：Cortex-M 异常现场持久化
+
+- HardFault、MemManage、BusFault、UsageFault 仍先调用 `ChassisApp_PanicStopFromException()`，随后
+  从异常栈保存 R0–R3、R12、LR、PC、xPSR、EXC_RETURN，并记录 CFSR/HFSR/MMFAR/BFAR。
+- 现场写入 RAM `.noinit` 段，下一次 Application 启动在 UART `boot` 前输出一次
+  `crash/PREVIOUS_EXCEPTION` 并清除记录；未改变 CAN、OTA 或控制协议。
+- 新增架构/源级安全门禁，Release 链接验证 `.noinit` 和异常 handler；真实 fault injection 尚未执行，
+  不能将 PC/LR 恢复打印标为 `HARDWARE PASS`。
+
+## 2026-09-01：电源采样 freshness fail-close
+
+- 控制周期现在检查 `PowerSampleSnapshot.valid`、`sample_age_ms` 和欠压阈值；从未采到样本、超过
+  250 ms 未更新或低于 9 V 时统一锁存 `CHASSIS_FAULT_UNDERVOLTAGE` 并急停。
+- 新增源级安全门禁并通过 Release 构建；真实 ADC 断线/超时注入仍未执行。
+
 ## 2026-09-01：1.0.3 编码器反馈失效 fail-close
 
 - `ControlRuntime_Run()` 分别读取左右编码器结果；任一读取失败立即调用

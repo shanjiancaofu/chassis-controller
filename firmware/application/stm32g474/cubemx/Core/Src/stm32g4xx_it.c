@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app/chassis_app.h"
+#include "drivers/crash/crash_context.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -93,61 +94,52 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void)
+__attribute__((used, noinline)) void CrashFaultHandler(const uint32_t *stack,
+                                                       uint32_t exc_return,
+                                                       uint32_t fault_id)
 {
-  /* USER CODE BEGIN HardFault_IRQn 0 */
   ChassisApp_PanicStopFromException();
-  /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
+  CrashContext_CaptureFromException(stack, exc_return, fault_id);
+  while (1) {
   }
+}
+
+__attribute__((naked)) void HardFault_Handler(void)
+{
+  __asm volatile("tst lr, #4\n"
+                 "ite eq\n"
+                 "mrseq r0, msp\n"
+                 "mrsne r0, psp\n"
+                 "mov r1, lr\n"
+                 "movs r2, #3\n"
+                 "b CrashFaultHandler\n");
 }
 
 /**
   * @brief This function handles Memory management fault.
   */
-void MemManage_Handler(void)
+__attribute__((naked)) void MemManage_Handler(void)
 {
-  /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-  ChassisApp_PanicStopFromException();
-  /* USER CODE END MemoryManagement_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
-    /* USER CODE END W1_MemoryManagement_IRQn 0 */
-  }
+  __asm volatile("tst lr, #4\n ite eq\n mrseq r0, msp\n mrsne r0, psp\n"
+                 "mov r1, lr\n movs r2, #1\n b CrashFaultHandler\n");
 }
 
 /**
   * @brief This function handles Prefetch fault, memory access fault.
   */
-void BusFault_Handler(void)
+__attribute__((naked)) void BusFault_Handler(void)
 {
-  /* USER CODE BEGIN BusFault_IRQn 0 */
-  ChassisApp_PanicStopFromException();
-  /* USER CODE END BusFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_BusFault_IRQn 0 */
-    /* USER CODE END W1_BusFault_IRQn 0 */
-  }
+  __asm volatile("tst lr, #4\n ite eq\n mrseq r0, msp\n mrsne r0, psp\n"
+                 "mov r1, lr\n movs r2, #2\n b CrashFaultHandler\n");
 }
 
 /**
   * @brief This function handles Undefined instruction or illegal state.
   */
-void UsageFault_Handler(void)
+__attribute__((naked)) void UsageFault_Handler(void)
 {
-  /* USER CODE BEGIN UsageFault_IRQn 0 */
-  ChassisApp_PanicStopFromException();
-  /* USER CODE END UsageFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
-    /* USER CODE END W1_UsageFault_IRQn 0 */
-  }
+  __asm volatile("tst lr, #4\n ite eq\n mrseq r0, msp\n mrsne r0, psp\n"
+                 "mov r1, lr\n movs r2, #4\n b CrashFaultHandler\n");
 }
 
 /**

@@ -3,6 +3,15 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：Cortex-M crash context 已实现
+
+四类 Cortex-M fault handler 现在保留“先急停”语义，并把异常栈寄存器及 SCB fault status 保存到
+`.noinit`；下次正常启动会通过 UART 输出一次 `crash/PREVIOUS_EXCEPTION`。代码和链接通过，真实
+fault injection、复位后现场打印和 `addr2line` 对照仍为 `NOT VERIFIED`。
+
+电源采样控制边界已补齐 freshness：未初始化、超过 250 ms 的旧样本或低于 9 V 均进入 latched
+`CHASSIS_FAULT_UNDERVOLTAGE`，不再把“无采样”当作“无需检查”。真实 ADC 断线/超时注入仍待硬件 Gate。
+
 ## 2026-09-01：1.0.3 编码器反馈 fail-close
 
 板上 confirmed Application 已更新为 `1.0.3 build1`。左右编码器任一 `read_delta` 失败时，控制周期

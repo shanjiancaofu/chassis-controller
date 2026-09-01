@@ -8,6 +8,7 @@
 #include "app/console/commands.h"
 #include "app/console/console.h"
 #include "app/diagnostics/board_health.h"
+#include "drivers/crash/crash_context.h"
 #include "app/diagnostics/diagnostic_report.h"
 #include "app/diagnostics/system_status.h"
 #include "app/diagnostics/telemetry.h"
@@ -85,6 +86,21 @@ static bool InitializeCommunication(const struct device *can_device,
     return false;
   }
   UartMessages_Init();
+  {
+    CrashContext crash;
+    if (CrashContext_Take(&crash)) {
+      char fields[192];
+      (void)snprintf(fields, sizeof(fields),
+                     "fault=%lu pc=0x%08lX lr=0x%08lX cfsr=0x%08lX hfsr=0x%08lX",
+                     (unsigned long)crash.fault_id,
+                     (unsigned long)crash.pc,
+                     (unsigned long)crash.lr,
+                     (unsigned long)crash.cfsr,
+                     (unsigned long)crash.hfsr);
+      (void)UartMessages_SendLog(now_ms, UART_MESSAGES_LOG_ERROR,
+                                 "crash", "PREVIOUS_EXCEPTION", fields);
+    }
+  }
   Console_Init();
   Telemetry_Init();
   (void)UartMessages_SendLog(now_ms, UART_MESSAGES_LOG_INFO, "boot", "STARTED",
