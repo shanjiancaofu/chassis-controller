@@ -14,6 +14,13 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## Wheels-up low-speed gate（2026-09-01）
+
+在主电源约 12.05 V、车轮架空、未移动线束条件下发送约 `+100 mm/s` 速度命令 1.2 秒，观测到
+RUNNING 0x180 和左右约 370–410 permille 输出；右编码器累计约 73 counts，左编码器保持 0。
+动作结束发零速后回到 `STOPPED/fault=0/PWM=0`。该结果仅证明低速命令路径和右侧反馈有响应；因左侧
+编码器无计数，双轮方向、PID、/odom 和后续旋转验收全部暂停，wheels-up 保持 `NOT VERIFIED`。
+
 ## 1.0.4 build1 PowerReady hardware gate（2026-09-01）
 
 真实 UART OTA 完成 `INSTALL VERIFIED → TRIAL COMMITTED → TRIAL VERIFIED → CONFIRMED`，普通启动

@@ -3,6 +3,15 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：wheels-up 低速 Gate 暂停
+
+主电源接通、车轮架空后，约 `+100 mm/s` 前进 1.2 秒产生 RUNNING 0x180 和约 370–410 permille
+PWM；右编码器累计约 73 counts，左编码器为 0。动作结束已发零速，当前 STOPPED/fault=0/PWM=0。
+由于单侧反馈异常，未继续后退/旋转；wheels-up 双轮闭环保持 `NOT VERIFIED`。
+
+后续分级测试显示 `100 mm/s` 时左右 PWM 仅约 218/266 permille，左轮不可靠起转；`200 mm/s` 起
+两侧均出现反馈，`300/500 mm/s` 稳定。当前优先级转为定义有界 startup boost，不直接改正式 PID。
+
 ## 2026-09-01：1.0.4 PowerReady 真实验证
 
 板上 confirmed Application 已更新为 `1.0.4 build1`。电机主电源为 0mV 时，`pid target 0 0` 返回
