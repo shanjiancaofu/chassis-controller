@@ -72,11 +72,10 @@ motor supply around 12.0V, normal `+50/+100/-50/-100` commands produced bilatera
 returned to STOPPED/PWM=0 after `pid stop`.
 
 Software encoder injection behavior passed for all four cases (`+100/-100 × left/right`): each returned
-`ARMED`, latched `CHASSIS_FAULT_ENCODER (0x10)`, entered `INTERNAL_FAULT`, and drove both PWM values to zero.
-The forward-left case was observed at 289.1ms from injection to fault telemetry and met the 510ms bound. The
-remaining cases have correct fail-close behavior; one right-forward capture was not timestamp-correlated
-because the board reset while the script was collecting status, so exact per-case latency remains
-`INCONCLUSIVE`, not PASS. No physical encoder/CAN/camera unplug was performed.
+`ARMED`, latched `CHASSIS_FAULT_ENCODER (0x10)`, entered `INTERNAL_FAULT`, and drove both PWM values to zero
+in the same telemetry sequence. Device-timestamp latency was `396ms` (forward-left), `84ms` (forward-right),
+`84ms` (reverse-left), and `84ms` (reverse-right), all within the `510ms` bound. No physical encoder/CAN/
+camera unplug was performed.
 
 ## 1.0.7 crash-frame 修复候选（2026-09-01）
 
