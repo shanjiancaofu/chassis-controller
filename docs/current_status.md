@@ -3,6 +3,29 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：V1 Final RC 范围收敛
+
+V1 不做物理 encoder、CAN 或 camera 拔线/热插拔。chassis 仅验证正常 wheels-up、PowerReady、
+HardFault、软件 encoder failure injection、CAN timeout/software fault、DWT/odom；cockpit 仅验证
+正常 Argus/GStreamer/Software ISP 链路与性能稳定性。Camera recovery 继续保留软件 fake 行为 PASS，
+physical hotplug 明确为 V1 scope 外。
+
+`chassis-controller` 新增 GitHub Actions：repository-quality、host-unit-tests、ARM Debug、ARM
+Release/artifact-validation。`tools/release/make-manifest.sh` 自动绑定 firmware、source commit、
+toolchain、ELF/BIN/OTA SHA256 与尺寸；hardware validation 字段必须由真机 session 后填写。
+
+## 2026-09-01：1.0.7 crash-frame 修复候选
+
+`1.0.6 build1` 已真实 OTA CONFIRMED，并通过 PIN reset、0mV PowerReady 和 DWT baseline；受控 HardFault
+成功急停、IWDG reset 和输出 `PREVIOUS_EXCEPTION`，但错误把 FP extended frame 的 core-register base
+增加18 words，得到 `pc=0xA5A5A5A5`，HardFault Gate FAIL。
+
+`1.0.7 build1` 修正为 basic/extended frame 都从异常 SP 的 `stack[0..7]` 读取 R0–xPSR；EXC_RETURN
+bit4 只记录 frame type。合成 extended fixture 将后续 FP words 填为 `0xA5A5A5A5`，仍验证 PC/LR 正确。
+20项 C host、完整软件 Gate、Debug/Release 和四组 config matrix PASS；目标板已 OTA CONFIRMED。
+HardFault/IWDG/`PREVIOUS_EXCEPTION`/`addr2line` 真机 Gate PASS，正常 wheels-up `±50/±100` 已验证；
+物理拔线不在 V1 scope。Release ELF 保留 DWARF 供同一候选地址执行 `addr2line`，不增加 BIN/OTA payload。
+
 ## 2026-09-01：1.0.6 V1 Closure Pack 软件候选
 
 `1.0.5 build1` 已有独立 OTA/CONFIRMED 与 wheels-up 证据，因此新增 watchdog、crash 和 DWT 行为的

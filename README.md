@@ -6,10 +6,14 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前 Application 软件候选为 `1.0.6 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
+当前 Application 软件候选为 `1.0.7 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
 原生平台架构、Device/Init、Kconfig/DTS、模块化 CMake、Application 运行边界和 Chassis CAN FD V1
 已经收敛。1.0.3 已通过 Release、host、安全门禁、UART OTA、普通复位和零速度 CAN target
 regression；编码器读取失败现立即锁存 critical encoder fault，不再以零测量继续 PID。
+
+V1 硬件验证范围只包含正常运行、PowerReady、安全闭环、软件故障注入和性能采样；物理 encoder/CAN/
+camera 拔线不属于 V1 Gate。`chassis-controller` 的 GitHub Actions 负责 quality、host tests、ARM
+Debug/Release build 和 release artifact validation；目标板结果必须使用 `tools/target/` 的实测证据记录。
 
 `tools/target/run_target_regression.py` 提供轻量目标板自动回归，能够检查启动日志、版本、UART
 status、任务、fault、零 PWM、主要外设和 OTA 状态；真实 CAN 接口就绪后可增加零速度 CAN FD

@@ -1,5 +1,17 @@
 # 变更记录
 
+## 2026-09-01：1.0.7 Cortex-M4F crash-frame 真机修复
+
+- 1.0.6 受控 HardFault 实测得到 `fault=3`、IWDG reset 和 `PREVIOUS_EXCEPTION`，但 PC 为 FreeRTOS
+  stack fill `0xA5A5A5A5`，证明 extended frame 偏移实现错误。
+- Cortex-M4F basic/extended frame 的 core registers 均从异常 SP 的前8 words解码；EXC_RETURN bit4
+  仅区分并记录 `BASIC/EXTENDED_FP`，日志新增 `exc_return` 和 frame type。
+- 新增 HAL-independent crash-frame decoder 与 synthetic basic/extended C behavior test；extended fixture
+  的 FP 区域明确填充 `0xA5A5A5A5`，防止再次错误偏移。
+- Release Application 保留 DWARF `-g3` 到 ELF，BIN/OTA 不携带 debug sections；确保真机 PC 能由
+  同一候选 Release ELF 的 `addr2line` 定位到源码行。
+- 因1.0.6已真实 CONFIRMED，本修复使用 `1.0.7 build1`；软件 Gate PASS，真机复测待执行。
+
 ## 2026-09-01：1.0.6 V1 Closure Pack
 
 - feedback-loss watchdog 改为独立、可测试的状态机，正反向均比较安全的 `int32_t` output magnitude；

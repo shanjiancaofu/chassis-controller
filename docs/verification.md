@@ -14,6 +14,60 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## V1 Final RC 验证范围（2026-09-01）
+
+### chassis-controller
+
+| 项目 | Software | Target |
+|---|---|---|
+| CAN FD / command timeout / peer heartbeat | PASS | 正常链路与软件 timeout/fault injection |
+| PowerReady | PASS | 电机电源 OFF/ON 正常启动与拒绝/允许 |
+| Encoder watchdog / reverse loss | PASS | software encoder failure injection |
+| HardFault persistence / IWDG recovery | PASS | `hardfault test confirm` + `PREVIOUS_EXCEPTION` + `addr2line` |
+| ControlTask WCET | PASS | DWT measured |
+| Motor closed-loop / odometry | PASS | wheels-up / basic motion |
+| Physical encoder unplug | Not in V1 scope | — |
+| Physical CAN unplug | Not in V1 scope | — |
+
+### cockpit-system
+
+| 项目 | Software | Jetson |
+|---|---|---|
+| Argus/GStreamer / V4L2 MMAP / Software ISP | PASS | normal chain + stability/performance |
+| Camera recovery state machine | fake behavior PASS | not required in V1 |
+| Physical camera hotplug | Not in V1 scope | — |
+
+V1 的“Target PASS”只允许来自实际目标板/Jetson session；软件测试、静态审查和 CI 不能替代真机证据。
+
+## 1.0.7 crash-frame 修复候选（2026-09-01）
+
+1.0.6 真实 UART OTA 已完成 INSTALL VERIFIED、TRIAL COMMITTED、TRIAL VERIFIED、CONFIRMED；PIN reset
+后仍启动1.0.6，STOPPED/fault=0/PWM=0、ADC=0mV。PowerReady regression 返回 `SAFETY_STOP` 且保持
+零输出。DWT baseline 10,845 samples：min/mean/max 16us，在线 P50/P95/P99 均为100us桶上界，
+deadline_miss=0、missed_ticks=0。
+
+受控 `hardfault test confirm` 成功触发 IWDG reset 与 `PREVIOUS_EXCEPTION fault=3`，但记录为
+`pc=0xA5A5A5A5 lr=0x20000E7C cfsr=0x00010000 hfsr=0x40000000`，`addr2line` 无法定位，Gate FAIL。
+根因是错误把 extended FP frame 的 core-register base 增加18 words；实际 basic/extended 的 R0–xPSR
+都位于异常 SP 的 `stack[0..7]`，FP context 位于其后。
+
+1.0.7 使用独立 crash-frame decoder，EXC_RETURN bit4 只记录 `BASIC/EXTENDED_FP`；日志新增
+`exc_return` 与 frame type。20项 C host tests、build safety/architecture 13项、完整 `run_all.py`、
+Debug/Release 和四组 config matrix PASS。Release flash `114316/491520` bytes、RAM `56152/131072`
+bytes。BIN `114324` bytes，SHA-256
+`9e278c2232df72eafe63ea86e52cad1b479b9552bae3a18037472eb7262d6fbd`；OTA `114388` bytes，
+SHA-256 `3605cc99ee35a9380b909fb3735fddf333b6da3edf220cd1be9bed698e487b2e`，payload CRC32
+`0xEB2B04FD`。随后 source 已提交并完成 CI；该候选真机 OTA CONFIRMED，HardFault/addr2line 复测 PASS。
+
+Release ELF 使用 `-g3` 保留 DWARF（debug sections 不进入 BIN/OTA）；静态预检将 UDF 指令地址
+`0x0801AFC6` 解析为 `CrashContext_TriggerHardFault`、`drivers/crash/crash_context.c:49`。这只证明
+候选 ELF 可定位；1.0.7 真机返回 `pc=0x0801AFC6`，frame=`EXTENDED_FP`，并成功由同一 ELF 定位。
+
+真机正常运行记录（2026-09-01）：电机主电源约12.0V、车轮架空；`+50/+100` 与 `-50/-100` 均进入
+RUNNING 并获得双侧 encoder feedback，停止后回到 STOPPED/PWM=0/fault=0。当前
+`MOTOR_CONTROL_TARGET_LIMIT=100`，因此 `±150` 以上目标被命令边界拒绝，未标为通过。物理 encoder/CAN/
+camera 拔线均不在 V1 scope；改用软件故障注入和 timeout matrix。
+
 ## 1.0.6 V1 Closure Pack 软件候选（2026-09-01）
 
 `1.0.5 build1` 已有 confirmed 镜像，因此本轮行为变化使用 `1.0.6 build1`。已实现：正反转
