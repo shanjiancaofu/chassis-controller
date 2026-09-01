@@ -94,6 +94,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial-port", required=True)
     parser.add_argument("--baud", type=int, default=115200)
+    parser.add_argument("--target", type=int, choices=(100, -100), required=True)
+    parser.add_argument("--side", choices=("left", "right"), required=True)
     parser.add_argument("--json", type=pathlib.Path)
     args = parser.parse_args()
 
@@ -103,11 +105,22 @@ def main() -> int:
         port.write(b"telemetry off\r\npid stop\r\n")
         port.flush()
         time.sleep(0.3)
-        results = [
-            run_case(port, target, side)
-            for target in (100, -100)
-            for side in ("left", "right")
-        ]
+        port.write(b"status\r\n")
+        port.flush()
+        initial_lines = read_lines(port, 0.4)
+        _initial_motor, initial_system = snapshot(initial_lines)
+        if initial_system.get("fault", "0x00000000") != "0x00000000":
+            result = {
+                "target": args.target,
+                "side": args.side.upper(),
+                "passed": False,
+                "precondition": "fault must be cleared by reset before each case",
+                "fault": initial_system.get("fault", "missing"),
+            }
+            report = {"passed": False, "results": [result]}
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+            return 1
+        results = [run_case(port, args.target, args.side)]
     report = {"passed": all(result["passed"] for result in results), "results": results}
     print(json.dumps(report, indent=2, ensure_ascii=False))
     if args.json:
