@@ -3,6 +3,13 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：1.0.4 PowerReady 真实验证
+
+板上 confirmed Application 已更新为 `1.0.4 build1`。电机主电源为 0mV 时，`pid target 0 0` 返回
+`SAFETY_STOP`，状态保持 `STOPPED/fault=0/PWM=0`；PowerReady 已在真实固件生效。IMU 30 秒静态
+Gate 为 100.362 Hz、3058/3058 FIFO 连续、FIFO/timestamp errors=0。由于电源仍断开，正式 CAN
+RUNNING regression 本轮不执行；待电机电源接通后复跑。
+
 ## 2026-09-01：RC motion power readiness
 
 STOPPED + 电机电源 OFF 不锁存 undervoltage；正常运动与 motor self-test 需要 fresh、valid、≥9V，

@@ -14,6 +14,20 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## 1.0.4 build1 PowerReady hardware gate（2026-09-01）
+
+真实 UART OTA 完成 `INSTALL VERIFIED → TRIAL COMMITTED → TRIAL VERIFIED → CONFIRMED`，普通启动
+报告 `fw=1.0.4 build=1`。在电机主电源断开、ADC `0mV` 时发送零目标 `pid target 0 0`，返回：
+
+```text
+[RSP] result=ERROR command=pid_target code=SAFETY_STOP
+control=STOPPED fault=0x00000000 left_pwm=0 right_pwm=0
+```
+
+说明 STOPPED 不误报 undervoltage，运动 Start 被 PowerReady 拒绝。IMU 静态30秒：100.362 Hz、
+3058 samples/3058 FIFO frames、FIFO errors=0、timestamp errors=0、Kalman PASS。CAN RUNNING
+回归因电源断开未执行，待后续打开电机电源并保持架空零速时复跑。
+
 ## RC motion power readiness（2026-09-01）
 
 `PowerReady()` 用 valid、≤250ms、≥9V 判定运动准备状态。`ControlRuntime_Start()` 和 motor self-test

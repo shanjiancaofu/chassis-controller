@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-09-01：1.0.4 PowerReady 真实 Gate
+
+- `1.0.4 build1` 已完成 UART OTA `INSTALL VERIFIED → TRIAL COMMITTED → TRIAL VERIFIED → CONFIRMED`。
+- 电机主电源 0mV 时发送零目标 `pid target 0 0`，返回 `code=SAFETY_STOP`，状态保持
+  `STOPPED/fault=0/PWM=0`；PowerReady 已在真实固件生效。
+- 普通 UART status 与 IMU 静态 30 秒通过：100.362 Hz、3058/3058 FIFO frame、FIFO/timestamp errors=0。
+- CAN RUNNING regression 因本轮电机主电源断开未执行，属于预期安全前置条件。
+
 ## 2026-09-01：运动电源 readiness 与运行时欠压分离
 
 - STOPPED 下电机主电源 OFF/0mV 不再自动锁存 undervoltage；正常 Start 和 motor self-test 必须先满足
