@@ -1,5 +1,23 @@
 # 变更记录
 
+## 2026-09-01：1.0.2 IMU 100 Hz 修复与 CAN 安全回归强化
+
+- 目标板静态采样门禁发现 ICM45686 虽为 `READY`，实际仅约 39.6 Hz。新增
+  `tools/target/imu_static_smoke.py`，以两个有界 UART status 快照检查 100±5 Hz、FIFO 帧连续、
+  FIFO/timestamp 错误不增长和 Kalman 状态。
+- 修正 ICM45686 `FIFO_CONFIG0` 位定义：mode 位于 `[1:0]`，STREAM 为 `0x01`，depth 位于
+  `[7:2]`；单测固定 MAX depth + STREAM 的寄存器值 `0x79`。
+- IMU FIFO 状态机依赖 40 ms 以内轮询；diagnostics task 从 100 ms 调整为 10 ms。该 int 配置为
+  隐藏 Kconfig 项，权威默认值和 `prj.conf` 同步为 10，并增加 Kconfig 断言，避免输入与生成产物
+  不一致。
+- 强化 CAN target smoke：0x180 必须是 RUNNING、零线速度/角速度且输出接近零；停止 Jetson
+  heartbeat 后必须在 300 ms 内停止 0x180/0x181，同时 0x200/0x240 继续发送。UART ready Gate
+  同步等待 OTA `CONFIRMED/NOT_REQUIRED`。
+- Jetson preflight 默认只临时停止 brltty，并按 `1a86:7523` 动态发现 CH340；只有显式
+  `--fix-brltty` 才执行持久 mask，不再依赖固定 USB 拓扑路径。
+- 1.0.2 build1 已通过 GCC 14.3.1 Release build、18 项 C host、UART OTA 的 INSTALL/TRIAL/
+  CONFIRMED、普通复位、100.506 Hz IMU 静态 Gate和完整零速度 CAN target regression。
+
 ## 2026-08-25：1.0.1 PB8 换页修复与目标板自动回归
 
 - 修复 HAL EXTI one-hot GPIO mask 被直接传给 DTS pin-number consumer 的问题；PB8 的

@@ -181,7 +181,7 @@ int main(void)
   assert(fake.registers[REG_INT1_CONFIG1] == 0U);
   assert((fake.registers[REG_INT1_CONFIG2] & 0x07U) == 0x01U);
   assert((fake.registers[REG_PWR_MGMT0] & 0x0FU) == 0x0FU);
-  assert(fake.registers[REG_FIFO_CONFIG0] == 0x5EU);
+  assert(fake.registers[REG_FIFO_CONFIG0] == 0x79U);
   assert(fake.registers[REG_FIFO_CONFIG1_0] == 4U);
   assert(fake.registers[REG_FIFO_CONFIG1_1] == 0U);
   assert((fake.registers[REG_FIFO_CONFIG2] & 0x08U) == 0x08U);

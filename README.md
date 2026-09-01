@@ -6,7 +6,7 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前 Application 基线为 `1.0.1 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
+当前 Application 基线为 `1.0.2 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
 原生平台架构、Device/Init、Kconfig/DTS、模块化 CMake、Application 运行边界和 Chassis CAN FD V1
 已经收敛。1.0.1 已通过 Debug/Release、host/config matrix、UART OTA、普通复位、启动静态零 PWM、
 主要外设、急停锁存和 PB8 换页目标板回归。

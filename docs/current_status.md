@@ -3,6 +3,24 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：1.0.2 IMU 100 Hz 与 CAN Gate 收口
+
+板上 confirmed Application 已更新为 `1.0.2 build1`。根因是 ICM45686 FIFO mode/depth 位定义
+错误，同时承载 FIFO 状态机的 diagnostics task 周期为 100 ms，超过驱动 40 ms 轮询要求；已修正
+`FIFO_CONFIG0` 为 MAX depth + STREAM `0x79`，并把 diagnostics 权威 Kconfig 默认周期调整为
+10 ms。普通 ST-Link 复位后仍启动 1.0.2，证明 OTA confirmed 持久化完成。
+
+30 秒静态 IMU Gate 实测 `100.506 Hz`，3062 个 sample 与 3062 个 FIFO frame 一致，FIFO error、
+timestamp error 均为 0，Kalman 正常。随后完整 target regression 通过 UART、四任务、零 PWM、
+0x200/0x240 heartbeat/fault、严格零速度 0x101→0x180、0x181，以及 200 ms command timeout 和
+300 ms peer heartbeat timeout。电机主电源保持断开，未发送非零速度；动态 IMU、wheels-up、
+非零运动和 bus-off/拔线故障注入仍为 `NOT VERIFIED`。
+
+Release Application flash 为 `111028` 字节、RAM 为 `55552` 字节；BIN 为 `111036` 字节，
+SHA-256 `483ba111f56bb360b46ba4ecbfc584547993f9d7e3ce47d13dbea3273fdcf139`；OTA 为
+`111100` 字节，SHA-256 `30d8f0922e74093e8974712c175a226dc905327ea580b3918b2e5f99f3fe7c6a`，
+payload CRC32 `0xFBAD0A63`。
+
 ## 2026-08-31 CAN 联调 preflight
 
 Jetson 端已连接 ST-Link/V2、CH340、USB-C 和 USB 声卡，C1 LiDAR 未连接。USB 枚举已看到
@@ -18,7 +36,8 @@ sample point 后，0x200/0x240 周期帧、0x720/0x721 握手和零速度 0x101 
 错误为 0、STM32 `tec=0/passive=0`。CAN FD 基础双向链路记为 `HARDWARE PASS`；bus-off 专门故障
 注入、电机主电源、非零速度和 wheels-up 仍为 `NOT VERIFIED`。
 
-为减少下一轮手工步骤，新增 `tools/target/jetson_can_preflight.sh`：它以 root 停止 brltty、加载/绑定
+为减少下一轮手工步骤，新增 `tools/target/jetson_can_preflight.sh`：默认临时停止 brltty，按
+`1a86:7523` 动态发现 CH340 并加载/绑定；仅显式 `--fix-brltty` 才持久 mask 服务。脚本以 root 配置
 CH341、配置 `can0` 为 500 kbit/s + 2 Mbit/s FD/BRS（默认 data sample point 80%、one-shot on），然后只
 被动监听 5 秒；脚本不发送 0x720/0x101，也不启动电机或 Nav2。
 
@@ -27,14 +46,15 @@ STM32 heartbeat、0x101 零速度、0x180/0x181/0x200/0x240 和 200 ms command t
 工具结束后停止发送控制帧，目标板按合同回到 `COMMAND_TIMEOUT/fault=0x1` 的安全状态；这不是回归失败，
 下一轮开始前需重新提供有效控制命令或复位。
 
-后续日志确认 tty 短暂生成后会被 brltty 重新抢占：`usbfs: interface 0 claimed by usb_ch341 while
+后续日志曾确认 tty 短暂生成后会被 brltty 重新抢占：`usbfs: interface 0 claimed by usb_ch341 while
 'brltty' sets config #1`，随后 USB disconnect/re-enumerate，导致 `/dev/ttyCH341USB0` 消失。preflight
-脚本现已改为 mask/停止 brltty 并 kill 残留进程，再执行 CH341 bind；需重新运行脚本后确认 tty 稳定。
+现默认只在本次运行中停止服务并清理残留进程，再执行 CH341 bind；需要持久禁用时必须显式传入
+`--fix-brltty`。CH340 接口由 `1a86:7523` 动态发现，不再绑定固定 USB 拓扑路径。
 
 本脚本已实际执行：Jetson 84% data sample point 下出现持续 `Bit0 Error` 和 RX error，5 秒仍为 0
 有效帧；STM32 `can_status` 为 `tec=135 rec=1 passive=1`。因此 84% A/B 未通过，默认恢复历史曾
-成功的 80%（可用 `CAN_DATA_SAMPLE_POINT=0.84` 显式复测）；STM32→Jetson 物理接收链继续
-`NOT VERIFIED`。
+成功的 80%（可用 `CAN_DATA_SAMPLE_POINT=0.84` 显式复测）。该 84% 记录属于历史失败实验；当前
+80% 下 CAN FD 基础双向链路和零速度 regression 均为 `HARDWARE PASS`。
 
 ## 代码基线
 
@@ -57,7 +77,7 @@ STM32 heartbeat、0x101 零速度、0x180/0x181/0x200/0x240 和 200 ms command t
   `chassis_app.c` 从 935 行缩为 57 行，五类运行时位于 `app/runtime/`。
 - `0.15.0 build12` 已完成 UART OTA、普通复位和启动静态状态回归：四任务 RUNNING，ADC、QSPI、
   IMU、LCD 和 GPIO 正常，控制为 STOPPED、fault 为 0，四路 PWM/target/speed 为零。
-- Application 当前源码和板上 confirmed 镜像：`1.0.1 build1`。
+- Application 当前源码和板上 confirmed 镜像：`1.0.2 build1`。
 - Bootloader：`0.1.0 build22`。
 - `0.15.0 build12` 是最后一个 pre-1.0 confirmed 基线；`1.0.0 build1` 是架构、Device/Init、
   配置系统、CAN FD V1 和 STM32 GPIO/callback 修复收口后的首个正式候选。版本提升不改 CAN、

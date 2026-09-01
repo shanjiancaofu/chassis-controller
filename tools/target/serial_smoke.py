@@ -106,6 +106,8 @@ def run_serial_smoke(
                     and sections.get("communication", {}).get("qspi_id") == "1"
                     and sections.get("communication", {}).get("lcd")
                     in {"READY", "DRAWING"}
+                    and sections.get("communication", {}).get("ota_confirmation")
+                    in {"CONFIRMED", "NOT_REQUIRED"}
                 ):
                     break
                 time.sleep(0.5)

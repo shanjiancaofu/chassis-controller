@@ -16,6 +16,7 @@ class KconfigTest(unittest.TestCase):
         )
         self.assertEqual(values["CAN"], "y")
         self.assertEqual(values["CAN_RX_QUEUE_SIZE"], "8")
+        self.assertEqual(values["DIAGNOSTICS_TASK_PERIOD_MS"], "10")
         self.assertEqual(values["SELF_TEST"], "y")
         self.assertEqual(values["MOTOR_DEMO"], "n")
         self.assertEqual(kinds["CAN"], "bool")

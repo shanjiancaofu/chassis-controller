@@ -80,7 +80,7 @@ config CONTROL_TASK_PERIOD_MS
 
 config DIAGNOSTICS_TASK_PERIOD_MS
     int
-    default 100
+    default 10
     range 1 10000
 
 config DISPLAY_TASK_PERIOD_MS

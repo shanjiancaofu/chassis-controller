@@ -9,6 +9,7 @@ import socket
 import struct
 import sys
 import time
+from collections.abc import Callable
 
 from report import CheckResult, RegressionReport
 
@@ -55,7 +56,7 @@ def receive_until(
     sock: socket.socket,
     deadline: float,
     wanted: set[int],
-    predicates: dict[int, object] | None = None,
+    predicates: dict[int, Callable[[bytes], bool]] | None = None,
 ) -> dict[int, bytes]:
     received: dict[int, bytes] = {}
     while time.monotonic() < deadline and not wanted.issubset(received):
@@ -72,6 +73,29 @@ def receive_until(
         ):
             received[identifier] = data[:length]
     return received
+
+
+def is_running_zero_motion(data: bytes) -> bool:
+    if len(data) != 16 or data[0] != 1 or data[1] & 1 == 0 or data[3] != 1:
+        return False
+    _left_velocity, _right_velocity, linear, angular, left_output, right_output = (
+        struct.unpack_from("<hhhhhh", data, 4)
+    )
+    return linear == 0 and angular == 0 and abs(left_output) <= 5 and abs(right_output) <= 5
+
+
+def receive_identifiers(sock: socket.socket, duration: float) -> set[int]:
+    identifiers: set[int] = set()
+    deadline = time.monotonic() + duration
+    while time.monotonic() < deadline:
+        try:
+            frame = sock.recv(FRAME.size)
+        except TimeoutError:
+            continue
+        can_id, _length, _flags, _r0, _r1, _data = FRAME.unpack(frame)
+        if can_id & CAN_ERR_FLAG == 0:
+            identifiers.add(can_id & CAN_EFF_MASK)
+    return identifiers
 
 
 def run_canfd_smoke(interface: str, timeout: float, expect_bus_off: bool) -> list[CheckResult]:
@@ -93,8 +117,17 @@ def run_canfd_smoke(interface: str, timeout: float, expect_bus_off: bool) -> lis
                 send_frame(sock, 0x101, velocity(sequence, True))
                 sequence = (sequence + 1) & 0xFF
                 time.sleep(0.05)
-            active = receive_until(sock, time.monotonic() + timeout, {0x180, 0x181, 0x200, 0x240})
-            report.add("0x101 zero-velocity path", 0x180 in active, "no non-zero target sent")
+            active = receive_until(
+                sock,
+                time.monotonic() + timeout,
+                {0x180, 0x181, 0x200, 0x240},
+                {0x180: is_running_zero_motion},
+            )
+            report.add(
+                "0x101 zero-velocity path",
+                0x180 in active,
+                "RUNNING with zero velocity and near-zero output required",
+            )
             report.add("status channels", {0x180, 0x181, 0x200, 0x240}.issubset(active), ",".join(hex(item) for item in sorted(active)))
 
             timeout_deadline = time.monotonic() + 0.45
@@ -113,6 +146,15 @@ def run_canfd_smoke(interface: str, timeout: float, expect_bus_off: bool) -> lis
                 "200 ms control timeout",
                 len(motion) == 16 and motion[3] == 2,
                 f"control_state={motion[3] if len(motion) == 16 else 'missing'}",
+            )
+            receive_identifiers(sock, 0.4)
+            peer_timed_out = receive_identifiers(sock, 0.25)
+            report.add(
+                "300 ms peer heartbeat timeout",
+                0x180 not in peer_timed_out
+                and 0x181 not in peer_timed_out
+                and {0x200, 0x240}.issubset(peer_timed_out),
+                ",".join(hex(item) for item in sorted(peer_timed_out)),
             )
             send_frame(sock, 0x101, velocity(sequence, False))
 

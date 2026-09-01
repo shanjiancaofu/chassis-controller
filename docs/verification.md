@@ -14,6 +14,51 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## 1.0.2 build1 IMU 100 Hz 与 CAN 强化回归（2026-09-01）
+
+新增 `tools/target/imu_static_smoke.py` 后，confirmed 1.0.1 首次 30 秒实测只有约 39.6 Hz，虽然
+IMU 为 READY、sample/FIFO frame 数一致且错误为 0。对照 TDK ICM45686 官方寄存器驱动后修正
+`FIFO_CONFIG0`：FIFO mode mask 为 `0x03`、STREAM 为 `0x01`，MAX depth 字段左移 2 位，最终
+配置值由错误的 `0x5E` 改为 `0x79`。同时 diagnostics task 从 100 ms 调整到 10 ms，以满足驱动
+40 ms FIFO poll 周期。由于该 int 是无 prompt 的隐藏 Kconfig 项，必须同步修改 Kconfig 默认值；
+新增单测断言生成值为 10。
+
+GNU Arm Toolchain 14.3.Rel1 clean Release build：
+
+```text
+text=110932 data=96 bss=55456
+flash=111028/491520
+ram=55552/131072
+```
+
+正式产物：
+
+```text
+app-v1.0.2-b1.bin  111036 bytes
+sha256 483ba111f56bb360b46ba4ecbfc584547993f9d7e3ce47d13dbea3273fdcf139
+app-v1.0.2-b1.ota  111100 bytes
+sha256 30d8f0922e74093e8974712c175a226dc905327ea580b3918b2e5f99f3fe7c6a
+payload crc32 0xFBAD0A63
+```
+
+真实 UART OTA 完成 `STAGED -> INSTALL VERIFIED -> TRIAL COMMITTED -> TRIAL VERIFIED ->
+CONFIRMED`。普通 ST-Link reset 后 UART 仍报告 `fw=1.0.2 build=1`、diagnostics actual/expected
+均为 10 ms。confirmed 镜像的 30 秒静态 Gate：
+
+```text
+IMU READY                         PASS
+sample rate 100.506 Hz            PASS (3062 samples / 30.466 s)
+FIFO continuity 3062/3062         PASS
+FIFO errors unchanged at 0        PASS
+timestamp errors unchanged at 0   PASS
+Kalman                            PASS
+```
+
+同一普通复位后的完整 target regression：UART/status/版本/四任务/零 PWM/QSPI/LCD PASS；
+0x101 必须得到 RUNNING、零 velocity/angular、近零 output 的 0x180；0x180/0x181/0x200/0x240
+全部 PASS；200 ms command timeout 和停止 Jetson heartbeat 后 300 ms 内停止 0x180/0x181、保留
+0x200/0x240 均 PASS。未发送非零速度，bus-off 专门注入仍为 SKIP。
+
 ## 已有基线
 
 以下结果来自 2026-07 的开发板联调，后续修改相关驱动、安全逻辑或链接布局后需要回归。
@@ -2037,7 +2082,8 @@ ota_confirmation=NOT_REQUIRED
 ADC 报告 valid 但 `0 mV`，本轮保持电机主电源断开。UART target smoke 为 `HARDWARE PASS`；未执行
 复位启动日志捕获，不新增烧录或 OTA 结论。
 
-Jetson `can0` 配置为 nominal 500 kbit/s、data 2 Mbit/s、FD+BRS，初始为 ERROR-ACTIVE、TEC/REC=0。
+以下为修线前的历史故障记录，已由后文“修线后 CAN FD 双向与零速度回归”取代，不代表当前链路状态。
+当时 Jetson `can0` 配置为 nominal 500 kbit/s、data 2 Mbit/s、FD+BRS，初始为 ERROR-ACTIVE、TEC/REC=0。
 被动监听 3 秒没有收到协议要求 STM32 独立周期发送的 0x200 heartbeat 或 0x240 fault。为确认 ACK
 路径，仅发送一次开发用 0x720 PING；没有发送 0x101。该帧没有收到 ACK，且当时配置为
 `one-shot off`，controller 持续自动重发并出现：
@@ -2052,7 +2098,7 @@ bus-errors=427218
 
 停止该重发并由 `restart-ms=1000` 恢复后，can0 回到 ERROR-ACTIVE、TEC/REC=0；随后 2 秒纯监听中
 历史计数保持不变，但仍无 STM32 帧。该证据只证明 Jetson CAN controller 的错误上报和自动 restart
-发生过，不证明 CAN FD bus-off recovery Gate 通过，也不证明 STM32 收发器链路可用。当前结论：
+发生过，不证明 CAN FD bus-off recovery Gate 通过，也不证明 STM32 收发器链路可用。当时结论：
 
 ```text
 UART target regression: HARDWARE PASS
@@ -2061,7 +2107,7 @@ Jetson ↔ STM32 physical CAN FD link: NOT VERIFIED / NO ACK
 0x180/0x181/0x200/0x240/0x101 protocol bench: NOT RUN
 ```
 
-下一步先断电检查两个物理端点各自的 CAN FD 收发器、5 V/VIO/STBY、共地、CANH/CANL 同名连线和
+当时的下一步是先断电检查两个物理端点各自的 CAN FD 收发器、5 V/VIO/STBY、共地、CANH/CANL 同名连线和
 CANH-CANL 约 60 Ω。修复前不再发送帧；修复后首次启用 `one-shot on`，先被动看到 0x200/0x240，
 再执行零速度 target regression。
 
@@ -2071,14 +2117,15 @@ Jetson 端可先运行以下只读/恢复入口（需要 sudo；不发送 CAN �
 tools/target/jetson_can_preflight.sh
 ```
 
-脚本会 mask/停止 brltty、确保 `ch341` 绑定、设置 `can0` 为 500 kbit/s nominal、2 Mbit/s data、FD/BRS、
+脚本默认临时停止 brltty，按 USB VID:PID `1a86:7523` 动态定位 CH340 并确保 `ch341` 绑定；只有
+`--fix-brltty` 才持久 mask 服务。随后设置 `can0` 为 500 kbit/s nominal、2 Mbit/s data、FD/BRS、
 默认 data sample point 80%、`one-shot on`，并执行 5 秒 `candump`；可用 `CAN_DATA_SAMPLE_POINT=0.84`
 做显式 A/B。只有看到 STM32 0x200/0x240 后，才继续 `run_target_regression.py`。
 
-本轮 84% 实际结果：`can0` 为 `ERROR-PASSIVE`，内核持续报告 `Bit0 Error Detected`，RX errors
+历史 84% A/B 实际结果：`can0` 为 `ERROR-PASSIVE`，内核持续报告 `Bit0 Error Detected`，RX errors
 持续增长，5 秒 `candump` 为 0 有效帧；STM32 `can_status` 为 `tec=135 rec=1 passive=1`。该结果说明
-总线上有波形但 84% data timing 未通过。下一轮默认回到历史 80%，仍使用 one-shot，不发送 0x101；
-只有 80% 下出现 0x200/0x240 才继续正式协议。
+总线上有波形但 84% data timing 未通过。随后已恢复 80% 并完成双向硬件回归；84% 失败记录不覆盖
+当前 80% 的 `HARDWARE PASS`。
 
 ## 2026-08-31 修线后 CAN FD 双向与零速度回归
 
