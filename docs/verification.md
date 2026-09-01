@@ -14,6 +14,29 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## 1.0.3 build1 编码器反馈 fail-close（2026-09-01）
+
+旧逻辑在任一 `encoder_read_delta()` 失败后把左右 delta 都设置为零，随后继续 odometry 和 PID；非零
+目标下可能把“反馈无效”误认为“车轮静止”。1.0.3 改为分别保存左右返回值，任一失败立即锁存
+`CHASSIS_FAULT_ENCODER` 并通过既有 `ControlRuntime_LatchInternalFault()` 清除命令、EmergencyStop、
+退出当前周期。新增安全回归拒绝恢复零值 fallback。
+
+```text
+Release text=110920 data=96 bss=55456
+flash=111016/491520 ram=55552/131072
+app-v1.0.3-b1.bin 111024 bytes
+sha256 61f6081c93ab06839984fe2878e626071a69685324d87ad53f8c85910f549bd8
+app-v1.0.3-b1.ota 111088 bytes
+sha256 3c9c0ec32ff761b22678d8d50f1ae377dabe13d44d9459dfc0c730053f6affdd
+payload crc32 0xD45B1706
+```
+
+真实 UART OTA 完成 INSTALL VERIFIED、TRIAL COMMITTED、TRIAL VERIFIED、CONFIRMED。普通复位后
+`fw=1.0.3 build=1`，UART/status/四任务/零 PWM/ADC/IMU/QSPI/LCD PASS；严格零速度 0x101、
+0x180/0x181/0x200/0x240、200 ms command timeout 和 300 ms peer heartbeat timeout PASS。
+本轮未物理断开编码器，不能从正常反馈回归推断真实 I/O failure Gate 已通过；该项保持
+`NOT VERIFIED`。
+
 ## 1.0.2 build1 IMU 100 Hz 与 CAN 强化回归（2026-09-01）
 
 新增 `tools/target/imu_static_smoke.py` 后，confirmed 1.0.1 首次 30 秒实测只有约 39.6 Hz，虽然

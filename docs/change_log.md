@@ -1,5 +1,18 @@
 # 变更记录
 
+## 2026-09-01：1.0.3 编码器反馈失效 fail-close
+
+- `ControlRuntime_Run()` 分别读取左右编码器结果；任一读取失败立即调用
+  `ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER)` 并返回，不再把无效反馈改写为零后继续
+  odometry/PID。
+- 新增源级安全回归，锁定 failure path 必须 latch encoder fault、立即 return，且不得恢复
+  `left_delta/right_delta = 0` fallback。18 项 C host和 Release build通过。
+- 1.0.3 build1 已通过真实 UART OTA 的 INSTALL/TRIAL/CONFIRMED；普通复位后的 UART、四任务、
+  零 PWM、IMU/QSPI/LCD、严格零速度 CAN、200 ms command timeout 和 300 ms peer heartbeat
+  timeout 全部 PASS。
+- 本轮没有物理断开编码器，因此“真实读取错误后一周期内 PWM=0”故障注入仍为 `NOT VERIFIED`；
+  当前硬件结果只证明正常零速反馈路径未回归。
+
 ## 2026-09-01：1.0.2 IMU 100 Hz 修复与 CAN 安全回归强化
 
 - 目标板静态采样门禁发现 ICM45686 虽为 `READY`，实际仅约 39.6 Hz。新增

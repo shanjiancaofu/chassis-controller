@@ -3,6 +3,19 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：1.0.3 编码器反馈 fail-close
+
+板上 confirmed Application 已更新为 `1.0.3 build1`。左右编码器任一 `read_delta` 失败时，控制周期
+立即锁存 critical `CHASSIS_FAULT_ENCODER`、清除命令并执行 EmergencyStop，不再把无效反馈作为
+速度零参与 PID。Release flash 为 `111016` 字节、RAM 为 `55552` 字节；BIN SHA-256
+`61f6081c93ab06839984fe2878e626071a69685324d87ad53f8c85910f549bd8`，OTA SHA-256
+`3c9c0ec32ff761b22678d8d50f1ae377dabe13d44d9459dfc0c730053f6affdd`，payload CRC32
+`0xD45B1706`。
+
+UART OTA confirmed 和普通复位后的完整零速度 target regression 均 PASS，电机主电源仍断开。
+尚未物理断开左右编码器制造真实 I/O error，因此 encoder fault injection 保持 `NOT VERIFIED`；下一
+硬件 Gate 是在架空/断电安全条件下分别注入左右读取失败，确认同一控制周期 PWM=0、fault bit4锁存。
+
 ## 2026-09-01：1.0.2 IMU 100 Hz 与 CAN Gate 收口
 
 板上 confirmed Application 已更新为 `1.0.2 build1`。根因是 ICM45686 FIFO mode/depth 位定义
@@ -77,7 +90,7 @@ STM32 heartbeat、0x101 零速度、0x180/0x181/0x200/0x240 和 200 ms command t
   `chassis_app.c` 从 935 行缩为 57 行，五类运行时位于 `app/runtime/`。
 - `0.15.0 build12` 已完成 UART OTA、普通复位和启动静态状态回归：四任务 RUNNING，ADC、QSPI、
   IMU、LCD 和 GPIO 正常，控制为 STOPPED、fault 为 0，四路 PWM/target/speed 为零。
-- Application 当前源码和板上 confirmed 镜像：`1.0.2 build1`。
+- Application 当前源码和板上 confirmed 镜像：`1.0.3 build1`。
 - Bootloader：`0.1.0 build22`。
 - `0.15.0 build12` 是最后一个 pre-1.0 confirmed 基线；`1.0.0 build1` 是架构、Device/Init、
   配置系统、CAN FD V1 和 STM32 GPIO/callback 修复收口后的首个正式候选。版本提升不改 CAN、

@@ -137,6 +137,8 @@ void ControlRuntime_Run(uint32_t notification_count) {
   int32_t left_measurement;
   int32_t right_delta;
   int32_t right_measurement;
+  int left_encoder_result;
+  int right_encoder_result;
   uint32_t latest_supply_mv;
   int64_t max_encoder_delta;
   int64_t left_abs_delta;
@@ -162,10 +164,11 @@ void ControlRuntime_Run(uint32_t notification_count) {
     consecutive_control_overruns = 0U;
   }
 
-  if (encoder_read_delta(left_encoder_device, &left_delta) < 0 ||
-      encoder_read_delta(right_encoder_device, &right_delta) < 0) {
-    left_delta = 0;
-    right_delta = 0;
+  left_encoder_result = encoder_read_delta(left_encoder_device, &left_delta);
+  right_encoder_result = encoder_read_delta(right_encoder_device, &right_delta);
+  if (left_encoder_result < 0 || right_encoder_result < 0) {
+    ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER);
+    return;
   }
   max_encoder_delta =
       (int64_t)MOTOR_ENCODER_MAX_DELTA_PER_TICK * notification_count;
