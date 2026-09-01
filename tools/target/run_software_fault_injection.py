@@ -51,10 +51,10 @@ def run_case(port, target: int, side: str) -> dict[str, object]:
     target_command = f"pid target {target} {target}\r\n".encode()
     port.reset_input_buffer()
     start = time.monotonic()
-    while time.monotonic() - start < 0.45:
+    while time.monotonic() - start < 0.60:
         port.write(target_command)
         port.flush()
-        time.sleep(0.05)
+        time.sleep(0.04)
     port.reset_input_buffer()
     injection_time = time.monotonic()
     port.write(command.encode())
