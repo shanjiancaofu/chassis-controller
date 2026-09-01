@@ -34,10 +34,14 @@ static const struct device *left_encoder_device;
 static const struct device *right_encoder_device;
 static uint32_t consecutive_control_overruns;
 static volatile bool emergency_stop_event;
+static uint32_t left_feedback_loss_ms;
+static uint32_t right_feedback_loss_ms;
 
 static void ReleaseMotionOwner(void);
 static void ApplyPendingControlParameters(void);
 static bool PowerReady(uint32_t now_ms);
+static bool UpdateFeedbackWatchdog(const WheelControllerSnapshot *wheels,
+                                   uint32_t elapsed_ms);
 
 static int16_t GetLeftMotorAppliedDuty(void) {
   return motor_get_applied_duty(drive_device, MOTOR_LEFT);
@@ -82,6 +86,8 @@ bool ControlRuntime_Init(void) {
   }
   consecutive_control_overruns = 0U;
   emergency_stop_event = false;
+  left_feedback_loss_ms = 0U;
+  right_feedback_loss_ms = 0U;
   return WheelController_Init(&wheel_controller_motor_port);
 }
 
@@ -101,6 +107,8 @@ void ControlRuntime_StopForEmergencyStopEvent(void) {
   ReleaseMotionOwner();
   WheelController_Stop();
   SafetyManager_Stop();
+  left_feedback_loss_ms = 0U;
+  right_feedback_loss_ms = 0U;
   kernel_critical_exit();
 }
 
@@ -253,7 +261,30 @@ void ControlRuntime_Run(uint32_t notification_count) {
                               left_measurement, right_measurement,
                               notification_count)) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+    return;
   }
+  {
+    WheelControllerSnapshot wheels;
+    WheelController_GetSnapshot(&wheels);
+    if (!UpdateFeedbackWatchdog(&wheels,
+                                MOTOR_CONTROL_PERIOD_MS * notification_count)) {
+      ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER);
+    }
+  }
+}
+
+static bool UpdateFeedbackWatchdog(const WheelControllerSnapshot *wheels,
+                                   uint32_t elapsed_ms) {
+  const bool left_stalled = wheels != NULL && wheels->left_target != 0 &&
+                            wheels->left_output >= MOTOR_ENCODER_STARTUP_OUTPUT_THRESHOLD &&
+                            wheels->left_measurement == 0;
+  const bool right_stalled = wheels != NULL && wheels->right_target != 0 &&
+                             wheels->right_output >= MOTOR_ENCODER_STARTUP_OUTPUT_THRESHOLD &&
+                             wheels->right_measurement == 0;
+  left_feedback_loss_ms = left_stalled ? left_feedback_loss_ms + elapsed_ms : 0U;
+  right_feedback_loss_ms = right_stalled ? right_feedback_loss_ms + elapsed_ms : 0U;
+  return left_feedback_loss_ms < MOTOR_ENCODER_FEEDBACK_LOSS_TIMEOUT_MS &&
+         right_feedback_loss_ms < MOTOR_ENCODER_FEEDBACK_LOSS_TIMEOUT_MS;
 }
 
 bool ControlRuntime_StartMotorSelfTest(MotorSelfTestAction action,

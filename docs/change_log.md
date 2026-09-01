@@ -1,5 +1,11 @@
 # 变更记录
 
+## 2026-09-01：Encoder feedback-loss/stall watchdog
+
+- 控制器新增左右独立 feedback-loss 累计：目标非零、实际输出达到 `3500 permille` 启动门槛且测量持续
+  为零超过 `500 ms` 时锁存 `CHASSIS_FAULT_ENCODER` 并急停；目标为零、低启动 PWM 或任一反馈恢复时
+  计时清零，避免把静摩擦启动阶段误报为 stall。
+- 新增源级门禁和 Release build；真实拔 encoder/机械堵转注入仍待架空轮硬件验收。
 ## 2026-09-01：架空轮启动 PWM 分级实测
 
 - 主电源约 12.05V、车轮架空、未移动线束，分别测试 `100/200/300/500 mm/s`、每级约 0.3s，

@@ -44,6 +44,15 @@ class ControlRuntimeSafetyTest(unittest.TestCase):
         self.assertIn("if (!PowerReady(now_ms) || !SafetyManager_RequestOpenLoopTest())", source)
         self.assertIn("SafetyManager_IsRunning() || SafetyManager_IsOpenLoopTestRunning()", source)
 
+    def test_feedback_watchdog_requires_output_threshold_and_timeout(self) -> None:
+        source = (
+            Path(__file__).parents[3]
+            / "firmware/application/stm32g474/app/runtime/control_runtime.c"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MOTOR_ENCODER_STARTUP_OUTPUT_THRESHOLD", source)
+        self.assertIn("MOTOR_ENCODER_FEEDBACK_LOSS_TIMEOUT_MS", source)
+        self.assertIn("UpdateFeedbackWatchdog", source)
+
 
 if __name__ == "__main__":
     unittest.main()

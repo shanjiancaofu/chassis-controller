@@ -9,6 +9,9 @@
 PWM；右编码器累计约 73 counts，左编码器为 0。动作结束已发零速，当前 STOPPED/fault=0/PWM=0。
 由于单侧反馈异常，未继续后退/旋转；wheels-up 双轮闭环保持 `NOT VERIFIED`。
 
+已加入左右独立 feedback-loss/stall watchdog：输出≥3500 permille、目标非零且测量为零持续500ms才
+锁存 encoder fault；低速启动不足不会误报。真实断线/堵转注入仍待验收。
+
 后续分级测试显示 `100 mm/s` 时左右 PWM 仅约 218/266 permille，左轮不可靠起转；`200 mm/s` 起
 两侧均出现反馈，`300/500 mm/s` 稳定。当前优先级转为定义有界 startup boost，不直接改正式 PID。
 

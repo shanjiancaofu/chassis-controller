@@ -94,6 +94,12 @@ payload crc32 0xD45B1706
 本轮未物理断开编码器，不能从正常反馈回归推断真实 I/O failure Gate 已通过；该项保持
 `NOT VERIFIED`。
 
+### Feedback-loss watchdog
+
+新增左右独立 watchdog：仅当 target 非零、applied output ≥3500 permille 且 encoder measurement=0
+连续 500ms 才锁存 `CHASSIS_FAULT_ENCODER`。该门槛高于本轮 100–300 mm/s 的启动 PWM，避免把静摩擦
+阶段误报为反馈故障；真实 encoder 断线/堵转注入未执行。
+
 ## 1.0.2 build1 IMU 100 Hz 与 CAN 强化回归（2026-09-01）
 
 新增 `tools/target/imu_static_smoke.py` 后，confirmed 1.0.1 首次 30 秒实测只有约 39.6 Hz，虽然
