@@ -21,6 +21,11 @@ toolchain、ELF/BIN/OTA SHA256 与尺寸；hardware validation 字段必须由�
 `CHASSIS_FAULT_ENCODER` → 两轮 PWM=0。由于行为变化，候选从 `1.0.7 build1` 顺延为 `1.0.8 build1`；
 板上仍是已验证的 `1.0.7`，新候选尚未烧录。
 
+`1.0.8` 已完成 OTA/CONFIRMED。software encoder injection 四个方向/侧别均已观察到 `ARMED` →
+`CHASSIS_FAULT_ENCODER` → `INTERNAL_FAULT` → PWM=0；forward-left 精确观测 289.1ms。其余 case 的
+安全闭环通过，但个别 status 与 IWDG reset 时序未形成同一批 timestamp，精确 latency 保持
+`INCONCLUSIVE`。物理插拔不在 V1 scope。
+
 ## 2026-09-01：1.0.7 crash-frame 修复候选
 
 `1.0.6 build1` 已真实 OTA CONFIRMED，并通过 PIN reset、0mV PowerReady 和 DWT baseline；受控 HardFault

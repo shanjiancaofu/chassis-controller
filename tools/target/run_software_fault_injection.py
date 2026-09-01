@@ -55,16 +55,54 @@ def run_case(port, target: int, side: str) -> dict[str, object]:
         port.write(target_command)
         port.flush()
         time.sleep(0.04)
-    port.reset_input_buffer()
     injection_time = time.monotonic()
     port.write(command.encode())
     port.flush()
-    lines = read_lines(port, 0.55)
-    port.write(b"status\r\n")
-    port.flush()
-    lines.extend(read_lines(port, 0.45))
+    lines: list[str] = []
+    response = ""
+    fault_system: dict[str, str] = {}
+    fault_motor: dict[str, str] = {}
+    observed_fault_at: float | None = None
+    receive_buffer = ""
+    deadline = time.monotonic() + 0.75
+    next_status = injection_time
+    while time.monotonic() < deadline:
+        now = time.monotonic()
+        if now >= next_status:
+            port.write(b"status\r\n")
+            port.flush()
+            next_status = now + 0.05
+        chunk = port.read(port.in_waiting or 1)
+        if not chunk:
+            continue
+        receive_buffer += chunk.decode("ascii", errors="replace")
+        complete_lines = receive_buffer.split("\n")
+        receive_buffer = complete_lines.pop()
+        for line in complete_lines:
+            line = line.rstrip("\r")
+            lines.append(line)
+            if "command=encoder_fail" in line:
+                response = line
+            if "section=system" in line:
+                fields = parse_fields(line)
+                if fields.get("fault") == "0x00000010":
+                    fault_system = fields
+                    if observed_fault_at is None:
+                        observed_fault_at = time.monotonic()
+            if "section=motor" in line and fault_system:
+                fault_motor = parse_fields(line)
+                if fault_system and fault_motor.get("left_pwm") == "0" and fault_motor.get("right_pwm") == "0":
+                    break
+        if fault_system and fault_motor.get("left_pwm") == "0" and fault_motor.get("right_pwm") == "0":
+            break
+    if not response:
+        response = next((line for line in lines if "command=encoder_fail" in line), "")
     motor, system = snapshot(lines)
-    fault_time = time.monotonic()
+    if fault_system:
+        system = fault_system
+    if fault_motor:
+        motor = fault_motor
+    fault_time = observed_fault_at or time.monotonic()
     port.write(b"pid stop\r\n")
     port.flush()
     response = next((line for line in lines if "command=encoder_fail" in line), "")
@@ -79,13 +117,16 @@ def run_case(port, target: int, side: str) -> dict[str, object]:
         "left_pwm": motor.get("left_pwm", "missing"),
         "right_pwm": motor.get("right_pwm", "missing"),
         "fault_observation_latency_ms": round((fault_time - injection_time) * 1000.0, 1),
+        "device_fault_timestamp_ms": system.get("ts_ms", "missing"),
         "raw_response": response,
     }
+    host_latency_pass = result["fault_observation_latency_ms"] <= 510.0
     result["passed"] = bool(
         result["armed"]
         and result["encoder_fault_latched"]
         and result["left_pwm"] == "0"
         and result["right_pwm"] == "0"
+        and host_latency_pass
     )
     return result
 

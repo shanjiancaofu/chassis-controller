@@ -64,6 +64,20 @@ SHA-256 `a0fb1b2b405bfda3ea3098de5decefb87f774b3cfde63c8258fc4961c01355e7`; OTA 
 SHA-256 `1aec5fbedf3218bba502072ed4da00dc14290473c6ac34dcb600f6e74e8c2ea6`; payload CRC32 `0x2F90B21F`.
 The board remains on `1.0.7 build1` until the 1.0.8 commit and GitHub Actions complete.
 
+### 1.0.8 target validation update (2026-09-01)
+
+`1.0.8 build1` was OTA-installed and reached `CONFIRMED`; UART regression passed with STOPPED/fault=0,
+four RTOS tasks, zero PWM, ADC/IMU/QSPI/LCD ready, heartbeat and software timeout checks. With wheels-up and
+motor supply around 12.0V, normal `+50/+100/-50/-100` commands produced bilateral encoder feedback and
+returned to STOPPED/PWM=0 after `pid stop`.
+
+Software encoder injection behavior passed for all four cases (`+100/-100 × left/right`): each returned
+`ARMED`, latched `CHASSIS_FAULT_ENCODER (0x10)`, entered `INTERNAL_FAULT`, and drove both PWM values to zero.
+The forward-left case was observed at 289.1ms from injection to fault telemetry and met the 510ms bound. The
+remaining cases have correct fail-close behavior; one right-forward capture was not timestamp-correlated
+because the board reset while the script was collecting status, so exact per-case latency remains
+`INCONCLUSIVE`, not PASS. No physical encoder/CAN/camera unplug was performed.
+
 ## 1.0.7 crash-frame 修复候选（2026-09-01）
 
 1.0.6 真实 UART OTA 已完成 INSTALL VERIFIED、TRIAL COMMITTED、TRIAL VERIFIED、CONFIRMED；PIN reset
