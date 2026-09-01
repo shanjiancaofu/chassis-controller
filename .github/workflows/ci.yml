@@ -1,0 +1,136 @@
+name: chassis-controller-ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chassis-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARM_TOOLCHAIN_VERSION: 14.3.rel1
+  ARM_TOOLCHAIN_ROOT: ${{ github.workspace }}/.toolchains/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi
+
+jobs:
+  repository-quality:
+    name: repository-quality
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install quality dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang-format python3 ripgrep
+      - name: Check shell and Python syntax
+        run: |
+          mapfile -t shell_files < <(find . -type f -name '*.sh' -not -path './build/*' -not -path './_output/*')
+          bash -n "${shell_files[@]}"
+          python3 -m compileall -q tools
+      - name: Run repository checks
+        run: |
+          git diff --check
+          python3 -m unittest tools.build.tests.test_architecture -v
+          python3 -m unittest discover -s tools/kconfig/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/dts/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/test/tests -p 'test_*.py' -v
+          bash -n tools/release/make-manifest.sh
+          clang-format --dry-run --Werror \
+            firmware/application/stm32g474/drivers/crash/crash_frame.c \
+            firmware/application/stm32g474/drivers/crash/crash_frame.h \
+            firmware/application/stm32g474/tests/unit/test_crash_frame.c
+
+  host-unit-tests:
+    name: host-unit-tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+      - name: Run host and safety tests
+        run: python3 tools/build/run_host_tests.py
+      - name: Run Python safety and OTA tests
+        run: |
+          python3 -m unittest discover -s tools/build/tests -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/ota -p 'test_*.py' -v
+
+  arm-debug-build:
+    name: arm-debug-build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build python3 wget xz-utils
+      - name: Install Arm GNU Toolchain
+        run: |
+          mkdir -p .toolchains
+          wget -q --show-progress \
+            "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz" \
+            -O /tmp/arm-toolchain.tar.xz
+          tar -xJf /tmp/arm-toolchain.tar.xz -C .toolchains
+      - name: Configure and build Debug
+        env:
+          ARM_GNU_TOOLCHAIN_ROOT: ${{ env.ARM_TOOLCHAIN_ROOT }}
+        run: |
+          cmake --preset arm-debug -DARM_GNU_TOOLCHAIN_ROOT="${ARM_GNU_TOOLCHAIN_ROOT}"
+          cmake --build --preset arm-debug --parallel
+      - name: Upload Debug artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chassis-debug
+          path: |
+            build/arm-debug/application.elf
+            build/arm-debug/application.bin
+            build/arm-debug/bootloader.elf
+            build/arm-debug/bootloader.bin
+            build/arm-debug/qspi_factory_provisioner.elf
+            build/arm-debug/qspi_factory_provisioner.bin
+
+  arm-release-build:
+    name: arm-release-build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build python3 wget xz-utils
+      - name: Install Arm GNU Toolchain
+        run: |
+          mkdir -p .toolchains
+          wget -q --show-progress \
+            "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz" \
+            -O /tmp/arm-toolchain.tar.xz
+          tar -xJf /tmp/arm-toolchain.tar.xz -C .toolchains
+      - name: Configure and build Release
+        env:
+          ARM_GNU_TOOLCHAIN_ROOT: ${{ env.ARM_TOOLCHAIN_ROOT }}
+        run: |
+          cmake --preset arm-release -DARM_GNU_TOOLCHAIN_ROOT="${ARM_GNU_TOOLCHAIN_ROOT}"
+          cmake --build --preset arm-release --parallel
+      - name: Package and validate release artifacts
+        env:
+          ARM_GNU_TOOLCHAIN_ROOT: ${{ env.ARM_TOOLCHAIN_ROOT }}
+          ARM_NONE_EABI_GCC: ${{ env.ARM_TOOLCHAIN_ROOT }}/bin/arm-none-eabi-gcc
+        run: |
+          version=$(sed -n 's/^#define CHASSIS_FIRMWARE_VERSION "\([^"]*\)"$/\1/p' firmware/application/stm32g474/config/build_info.h)
+          build=$(sed -n 's/^#define CHASSIS_FIRMWARE_BUILD \([0-9][0-9]*\)$/\1/p' firmware/application/stm32g474/config/build_info.h)
+          python3 tools/ota/package_firmware.py \
+            build/arm-release/application.bin \
+            "build/arm-release/app-v${version}-b${build}.ota" \
+            --version "${version}" --build "${build}"
+          BUILD_DIR=build/arm-release tools/release/make-manifest.sh build/arm-release/release-manifest.txt
+          cat build/arm-release/release-manifest.txt
+      - name: Upload Release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chassis-release
+          path: |
+            build/arm-release/application.elf
+            build/arm-release/application.bin
+            build/arm-release/bootloader.elf
+            build/arm-release/bootloader.bin
+            build/arm-release/qspi_factory_provisioner.elf
+            build/arm-release/qspi_factory_provisioner.bin
+            build/arm-release/*.ota
+            build/arm-release/release-manifest.txt
