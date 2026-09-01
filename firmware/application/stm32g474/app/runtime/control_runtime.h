@@ -35,6 +35,6 @@ bool ControlRuntime_ClearEmergencyStop(void);
 void ControlRuntime_NotifyEmergencyStopFromIsr(void);
 bool ControlRuntime_TakeEmergencyStopEvent(void);
 void ControlRuntime_StopForEmergencyStopEvent(void);
-void ControlRuntime_InjectEncoderReadFailure(bool left);
+bool ControlRuntime_ArmEncoderReadFailure(bool left);
 
 #endif

@@ -58,6 +58,15 @@ class ControlRuntimeSafetyTest(unittest.TestCase):
         self.assertIn("FeedbackWatchdog_Update", runtime_source)
         self.assertIn("CHASSIS_FAULT_ENCODER", runtime_source)
 
+    def test_encoder_injection_requires_running_output(self) -> None:
+        source = (
+            Path(__file__).parents[3]
+            / "firmware/application/stm32g474/app/runtime/control_runtime.c"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ControlRuntime_ArmEncoderReadFailure", source)
+        self.assertIn("SafetyManager_IsRunning()", source)
+        self.assertIn("MOTOR_ENCODER_STARTUP_OUTPUT_THRESHOLD", source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -196,16 +196,14 @@ void ConsoleCommands_Process(const ConsoleCommand *command,
       break;
     case CONSOLE_COMMAND_ENCODER_FAIL_LEFT:
     case CONSOLE_COMMAND_ENCODER_FAIL_RIGHT:
-      if (!command_port.acquire_self_test_lock()) {
-        (void)UartMessages_SendResponse(now_ms, "encoder_fail", false,
-                                        "code=BUSY");
-      } else {
+      {
         const bool left = command->type == CONSOLE_COMMAND_ENCODER_FAIL_LEFT;
-
-        ControlRuntime_InjectEncoderReadFailure(left);
+        const bool armed = ControlRuntime_ArmEncoderReadFailure(left);
         (void)UartMessages_SendResponse(
-            now_ms, "encoder_fail", true,
-            left ? "side=LEFT state=ARMED" : "side=RIGHT state=ARMED");
+            now_ms, "encoder_fail", armed,
+            armed ? (left ? "side=LEFT state=ARMED"
+                          : "side=RIGHT state=ARMED")
+                  : "code=REQUIRES_RUNNING_OUTPUT");
       }
       break;
     case CONSOLE_COMMAND_HARDFAULT_TEST:

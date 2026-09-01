@@ -14,6 +14,13 @@ physical hotplug 明确为 V1 scope 外。
 Release/artifact-validation。`tools/release/make-manifest.sh` 自动绑定 firmware、source commit、
 toolchain、ELF/BIN/OTA SHA256 与尺寸；hardware validation 字段必须由真机 session 后填写。
 
+## 2026-09-01：1.0.8 软件 encoder injection candidate
+
+`encoder fail left/right confirm` 现在要求系统已 RUNNING 且被测侧 PWM 达到 3500 threshold，直接 arm
+一次性 read failure，不再先获取 self-test lock/Stop；因此 target Gate 真正覆盖运动中 failure →
+`CHASSIS_FAULT_ENCODER` → 两轮 PWM=0。由于行为变化，候选从 `1.0.7 build1` 顺延为 `1.0.8 build1`；
+板上仍是已验证的 `1.0.7`，新候选尚未烧录。
+
 ## 2026-09-01：1.0.7 crash-frame 修复候选
 
 `1.0.6 build1` 已真实 OTA CONFIRMED，并通过 PIN reset、0mV PowerReady 和 DWT baseline；受控 HardFault

@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026-09-01：1.0.8 software encoder injection closure
+
+- encoder failure injection 不再调用 self-test lock 或主动 Stop；只有 RUNNING 且对应轮 output magnitude
+  达到 3500 threshold 才返回 `ARMED`，否则 fail closed 返回 `REQUIRES_RUNNING_OUTPUT`。
+- 因该入口改变 target 行为，候选由 `1.0.7 build1` 顺延为 `1.0.8 build1`；物理 encoder/CAN/camera
+  拔线仍不在 V1 scope。
+
 ## 2026-09-01：1.0.7 Cortex-M4F crash-frame 真机修复
 
 - 1.0.6 受控 HardFault 实测得到 `fault=3`、IWDG reset 和 `PREVIOUS_EXCEPTION`，但 PC 为 FreeRTOS

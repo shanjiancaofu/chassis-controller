@@ -295,12 +295,22 @@ void ControlRuntime_Run(uint32_t notification_count) {
   }
 }
 
-void ControlRuntime_InjectEncoderReadFailure(bool left) {
+bool ControlRuntime_ArmEncoderReadFailure(bool left) {
+  const int16_t output =
+      left ? motor_get_applied_duty(drive_device, MOTOR_LEFT)
+           : motor_get_applied_duty(drive_device, MOTOR_RIGHT);
+  const int32_t magnitude = output < 0 ? -(int32_t)output : (int32_t)output;
+
+  if (!SafetyManager_IsRunning() ||
+      magnitude < MOTOR_ENCODER_STARTUP_OUTPUT_THRESHOLD) {
+    return false;
+  }
   if (left) {
     __atomic_store_n(&inject_left_encoder_failure, true, __ATOMIC_RELEASE);
   } else {
     __atomic_store_n(&inject_right_encoder_failure, true, __ATOMIC_RELEASE);
   }
+  return true;
 }
 
 bool ControlRuntime_StartMotorSelfTest(MotorSelfTestAction action,

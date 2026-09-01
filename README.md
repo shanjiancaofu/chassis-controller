@@ -6,7 +6,7 @@ CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。�
 
 ## 当前状态
 
-当前 Application 软件候选为 `1.0.7 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
+当前 Application 软件候选为 `1.0.8 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
 原生平台架构、Device/Init、Kconfig/DTS、模块化 CMake、Application 运行边界和 Chassis CAN FD V1
 已经收敛。1.0.3 已通过 Release、host、安全门禁、UART OTA、普通复位和零速度 CAN target
 regression；编码器读取失败现立即锁存 critical encoder fault，不再以零测量继续 PID。
@@ -87,6 +87,7 @@ firmware/bootloader/stm32g474
 4. 修改 `.ioc` 后由 CubeMX 重新生成，再检查 diff、DTS 一致性和 CMake 显式源文件列表。
 5. CH340 使用 `115200 8N1` 查看启动、自检、命令和遥测。
 6. 上板后使用 `tools/target/run_target_regression.py` 自动生成 PASS/FAIL 和 JSON 报告。
+7. 上板软件 encoder fault Gate 使用 `tools/target/run_software_fault_injection.py`；该入口不需要、也不允许物理拔线。
 
 CubeMX 生成代码时使用 `STM32CubeIDE` 并勾选 `Generate Under Root`。
 生成文件只在 `USER CODE BEGIN/END` 区域内手工修改。
