@@ -1,5 +1,32 @@
 # 变更记录
 
+## 2026-09-01：1.0.6 V1 Closure Pack
+
+- feedback-loss watchdog 改为独立、可测试的状态机，正反向均比较安全的 `int32_t` output magnitude；
+  host 行为测试覆盖 forward、reverse、threshold、有效反馈 reset 和 3 missed ticks / 30ms 累计。
+- Cortex-M4F crash context 根据 EXC_RETURN bit4 区分 basic/FP extended frame；加入显式确认、零输出
+  self-test lock 下的 HardFault 和左右 encoder API failure 注入入口。
+- ControlTask 使用 DWT CYCCNT 维护在线 execution-time 统计；不保存逐样本数组，P50/P95/P99 来自
+  100us 分辨率固定直方图，同时记录 deadline miss 与 missed ticks。
+- 因 `1.0.5 build1` 已有 confirmed 证据，本包使用 `1.0.6 build1`，硬件集中 Gate 尚未执行。
+
+## 2026-09-01：架空轮后退与原地旋转复测
+
+- `-300 mm/s` 后退双侧反馈约 `-108/-124`，左右输出约 `-412 permille`。
+- 清除过渡样本后，左旋 `+1500 mrad/s` 稳定为左负/右正，右旋 `-1500 mrad/s` 稳定为左正/右负；
+  方向符号正确。动作结束均回到 `STOPPED/fault=0/PWM=0`。
+
+## 2026-09-01：1.0.5 startup boost 实测候选
+
+- 左右轮独立启动补偿：目标非零、编码器速度绝对值≤1时，最多150ms施加3500 permille；任一轮出现
+  有效反馈后该轮切回PID，Stop/EmergencyStop清零补偿状态。
+- 保留500ms feedback-loss watchdog；host tests通过，架空轮分级实测已确认三档双侧反馈。
+
+### 1.0.5 架空轮结果
+
+- `100/200/300 mm/s` 三档均观测到左右编码器反馈，最大速度约 `31/31`、`77/62`、`124/139`；
+  状态最大输出约412 permille（对应原始 duty约3500/8499）。每级结束发零速，最终 STOPPED/fault=0/PWM=0。
+
 ## 2026-09-01：Encoder feedback-loss/stall watchdog
 
 - 控制器新增左右独立 feedback-loss 累计：目标非零、实际输出达到 `3500 permille` 启动门槛且测量持续
@@ -14,6 +41,11 @@
   两侧均有反馈；`300/500 mm/s` 两侧稳定计数。最终 STOPPED/fault=0/PWM=0。
 - 结论修正为低目标下启动 PWM 不足导致左轮未可靠起转，不能据此判定左编码器完全失效。正式
   startup boost 尚未加入，需先定义有界补偿时间和反馈阈值。
+
+## 2026-09-01：feedback-loss watchdog 支持反向输出
+
+- 左右 watchdog 使用 `int32_t` 中间值比较 output magnitude，正转和倒车都能在输出达到3500 permille、
+  反馈持续为零500ms后锁存 `CHASSIS_FAULT_ENCODER`；避免 `-4000 >= +3500` 导致倒车漏检。
 ## 2026-09-01：架空轮低速前进 Gate 暂停
 
 - 电机主电源接通、车轮架空后执行约 `+100 mm/s`、1.2 秒低速前进；CAN 发送/接收正常，STM32

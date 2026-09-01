@@ -32,6 +32,15 @@ typedef struct {
   uint32_t control_run_count;
   uint32_t diagnostics_run_count;
   uint32_t display_run_count;
+  uint32_t control_profile_samples;
+  uint32_t control_profile_min_us;
+  uint32_t control_profile_mean_us;
+  uint32_t control_profile_p50_us;
+  uint32_t control_profile_p95_us;
+  uint32_t control_profile_p99_us;
+  uint32_t control_profile_max_us;
+  uint32_t control_profile_deadline_miss;
+  uint32_t control_profile_missed_ticks;
   uint32_t service_stack_high_water_words;
   uint32_t control_stack_high_water_words;
   uint32_t diagnostics_stack_high_water_words;

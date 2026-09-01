@@ -15,6 +15,15 @@ class CrashContextSafetyTest(unittest.TestCase):
         self.assertIn("__attribute__((naked)) void HardFault_Handler", source)
         self.assertIn("__attribute__((naked)) void BusFault_Handler", source)
 
+    def test_extended_fp_frame_is_skipped_before_core_registers(self) -> None:
+        source = (
+            Path(__file__).parents[3]
+            / "firmware/application/stm32g474/drivers/crash/crash_context.c"
+        ).read_text(encoding="utf-8")
+        self.assertIn("EXC_RETURN_BASIC_FRAME_BIT", source)
+        self.assertIn("core_frame += FP_EXTENDED_FRAME_WORDS", source)
+        self.assertIn("captured.pc = core_frame[6]", source)
+
     def test_task_creation_rolls_back_partial_static_tasks(self) -> None:
         source = (
             Path(__file__).parents[3]

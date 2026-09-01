@@ -3,11 +3,27 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：1.0.6 V1 Closure Pack 软件候选
+
+`1.0.5 build1` 已有独立 OTA/CONFIRMED 与 wheels-up 证据，因此新增 watchdog、crash 和 DWT 行为的
+镜像顺延为 `1.0.6 build1`，避免版本 collision。正反转 feedback-loss 统一按输出幅值判定，500ms
+fail-close；已加入真实 host 行为测试。Cortex-M4F crash context 支持 basic/FP extended frame，控制台
+提供显式确认的 HardFault 与左右 encoder API failure 注入。ControlTask 已加入 DWT 在线统计。
+
+本候选的软件构建与 host Gate 状态记录在 `verification.md`；尚未烧录，encoder/CAN/Camera/WCET/odom
+集中硬件 Gate 均保持 `NOT VERIFIED`。
+
+## 2026-09-01：1.0.5 startup boost 候选
+
+源码加入左右独立 `3500 permille / 150ms` 启动补偿；反馈出现后切回PID，Stop/E-stop清零状态。`1.0.5`
+已完成 OTA/CONFIRMED；架空轮 `100/200/300 mm/s` 三档均有双侧反馈，低速启动 Gate PASS。
+
 ## 2026-09-01：wheels-up 低速 Gate 暂停
 
 主电源接通、车轮架空后，约 `+100 mm/s` 前进 1.2 秒产生 RUNNING 0x180 和约 370–410 permille
 PWM；右编码器累计约 73 counts，左编码器为 0。动作结束已发零速，当前 STOPPED/fault=0/PWM=0。
-由于单侧反馈异常，未继续后退/旋转；wheels-up 双轮闭环保持 `NOT VERIFIED`。
+后退 `-300 mm/s` 双侧反馈约 `-108/-124`；严格复测原地旋转方向符号正确（左旋左负右正，右旋左正右负）。
+架空轮低速方向 Gate 已通过；带负载和动态 `/odom` 仍未验证。
 
 已加入左右独立 feedback-loss/stall watchdog：输出≥3500 permille、目标非零且测量为零持续500ms才
 锁存 encoder fault；低速启动不足不会误报。真实断线/堵转注入仍待验收。

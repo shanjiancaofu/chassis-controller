@@ -156,6 +156,12 @@ static ConsoleCommand ParseCommand(const char *line)
     command.type = CONSOLE_COMMAND_QSPI_TEST;
   } else if (strcmp(line, "iwdg reset confirm") == 0) {
     command.type = CONSOLE_COMMAND_IWDG_RESET;
+  } else if (strcmp(line, "hardfault test confirm") == 0) {
+    command.type = CONSOLE_COMMAND_HARDFAULT_TEST;
+  } else if (strcmp(line, "encoder fail left confirm") == 0) {
+    command.type = CONSOLE_COMMAND_ENCODER_FAIL_LEFT;
+  } else if (strcmp(line, "encoder fail right confirm") == 0) {
+    command.type = CONSOLE_COMMAND_ENCODER_FAIL_RIGHT;
   } else if (strncmp(line, "motor duty ", 11U) == 0) {
     unsigned int duty;
     int consumed = 0;

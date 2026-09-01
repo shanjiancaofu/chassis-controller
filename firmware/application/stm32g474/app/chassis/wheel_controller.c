@@ -1,6 +1,7 @@
 #include "app/chassis/wheel_controller.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #include "lib/pid/speed_pid.h"
 #include "config/control_config.h"
@@ -10,12 +11,14 @@ static SpeedPid right_pid;
 static WheelControllerSnapshot controller_snapshot;
 static int32_t left_ramped_target;
 static int32_t right_ramped_target;
+static uint32_t left_startup_boost_ms;
+static uint32_t right_startup_boost_ms;
 static WheelControllerMotorPort controller_motor_port;
 static bool controller_motor_port_ready;
 
 static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
                            int32_t measurement, int16_t current_duty,
-                           uint32_t elapsed_ticks);
+                           uint32_t elapsed_ticks, uint32_t *startup_boost_ms);
 static int32_t SlewTarget(int32_t current, int32_t requested,
                           uint32_t elapsed_ticks);
 
@@ -34,6 +37,8 @@ bool WheelController_Init(const WheelControllerMotorPort *motor_port)
   controller_snapshot = (WheelControllerSnapshot){0};
   left_ramped_target = 0;
   right_ramped_target = 0;
+  left_startup_boost_ms = 0U;
+  right_startup_boost_ms = 0U;
   SpeedPid_Init(&left_pid, MOTOR_LEFT_PID_KP, MOTOR_LEFT_PID_KI,
                 MOTOR_LEFT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
@@ -54,6 +59,8 @@ void WheelController_Stop(void)
   controller_snapshot.right_output = 0;
   left_ramped_target = 0;
   right_ramped_target = 0;
+  left_startup_boost_ms = 0U;
+  right_startup_boost_ms = 0U;
   WheelController_Reset();
 }
 
@@ -74,6 +81,8 @@ void WheelController_EmergencyStop(void)
   controller_snapshot.right_output = 0;
   left_ramped_target = 0;
   right_ramped_target = 0;
+  left_startup_boost_ms = 0U;
+  right_startup_boost_ms = 0U;
   WheelController_Reset();
 }
 
@@ -105,11 +114,11 @@ bool WheelController_Update(int32_t left_target, int32_t right_target,
 
   left_duty = UpdateWheel(&left_pid, effective_left_target, left_measurement,
                           controller_motor_port.get_left_applied_duty(),
-                          elapsed_ticks);
+                          elapsed_ticks, &left_startup_boost_ms);
   right_duty = UpdateWheel(&right_pid, effective_right_target,
                            right_measurement,
                            controller_motor_port.get_right_applied_duty(),
-                           elapsed_ticks);
+                           elapsed_ticks, &right_startup_boost_ms);
   controller_motor_port.set_signed_duty_both(left_duty, right_duty);
   controller_snapshot.left_target = effective_left_target;
   controller_snapshot.right_target = effective_right_target;
@@ -144,15 +153,24 @@ void WheelController_GetSnapshot(WheelControllerSnapshot *snapshot)
 
 static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
                            int32_t measurement, int16_t current_duty,
-                           uint32_t elapsed_ticks)
+                           uint32_t elapsed_ticks, uint32_t *startup_boost_ms)
 {
   int16_t duty;
   const float dt_seconds =
       (float)(MOTOR_CONTROL_PERIOD_MS * elapsed_ticks) / 1000.0f;
 
   if (target == 0) {
+    *startup_boost_ms = 0U;
     SpeedPid_Reset(pid);
     return 0;
+  }
+  if (startup_boost_ms != NULL && abs(measurement) <= 1 &&
+      *startup_boost_ms < MOTOR_STARTUP_BOOST_MAX_MS) {
+    *startup_boost_ms += MOTOR_CONTROL_PERIOD_MS * elapsed_ticks;
+    return target < 0 ? -MOTOR_STARTUP_BOOST_DUTY : MOTOR_STARTUP_BOOST_DUTY;
+  }
+  if (startup_boost_ms != NULL && abs(measurement) > 1) {
+    *startup_boost_ms = MOTOR_STARTUP_BOOST_MAX_MS;
   }
 
   duty = (int16_t)SpeedPid_Update(

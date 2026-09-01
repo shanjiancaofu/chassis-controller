@@ -113,6 +113,17 @@ static void CopyRuntimeSnapshot(SystemRuntimeSnapshot *destination,
   destination->control_run_count = source->control_run_count;
   destination->diagnostics_run_count = source->diagnostics_run_count;
   destination->display_run_count = source->display_run_count;
+  destination->control_profile_samples = source->control_profile_samples;
+  destination->control_profile_min_us = source->control_profile_min_us;
+  destination->control_profile_mean_us = source->control_profile_mean_us;
+  destination->control_profile_p50_us = source->control_profile_p50_us;
+  destination->control_profile_p95_us = source->control_profile_p95_us;
+  destination->control_profile_p99_us = source->control_profile_p99_us;
+  destination->control_profile_max_us = source->control_profile_max_us;
+  destination->control_profile_deadline_miss =
+      source->control_profile_deadline_miss;
+  destination->control_profile_missed_ticks =
+      source->control_profile_missed_ticks;
   destination->service_stack_high_water_words =
       source->service_stack_high_water_words;
   destination->control_stack_high_water_words =

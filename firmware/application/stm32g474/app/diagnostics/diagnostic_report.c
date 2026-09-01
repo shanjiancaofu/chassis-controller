@@ -158,6 +158,9 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       "right_target=%ld right_speed=%ld right_pwm=%d left_encoder=%s "
       "right_encoder=%s left_kp=%u left_ki=%u left_kd=%u right_kp=%u "
       "right_ki=%u right_kd=%u motor_test=%u overrun=%lu missed=%lu "
+      "wcet_samples=%lu wcet_min_us=%lu wcet_mean_us=%lu wcet_p50_us=%lu "
+      "wcet_p95_us=%lu wcet_p99_us=%lu wcet_max_us=%lu "
+      "wcet_deadline_miss=%lu wcet_missed_ticks=%lu "
       "odom_valid=%u odom_ts_ms=%lu odom_period_ms=%lu odom_age_ms=%lu "
       "odom_x_mm=%ld odom_y_mm=%ld odom_heading_mrad=%ld "
       "odom_linear_mm_s=%ld odom_angular_mrad_s=%ld",
@@ -179,6 +182,15 @@ static bool WriteSelfTestReport(uint32_t now_ms)
       status.motor_test.running ? 1U : 0U,
       (unsigned long)status.board_health.control_overrun_count,
       (unsigned long)status.board_health.control_missed_tick_count,
+      (unsigned long)status.runtime.control_profile_samples,
+      (unsigned long)status.runtime.control_profile_min_us,
+      (unsigned long)status.runtime.control_profile_mean_us,
+      (unsigned long)status.runtime.control_profile_p50_us,
+      (unsigned long)status.runtime.control_profile_p95_us,
+      (unsigned long)status.runtime.control_profile_p99_us,
+      (unsigned long)status.runtime.control_profile_max_us,
+      (unsigned long)status.runtime.control_profile_deadline_miss,
+      (unsigned long)status.runtime.control_profile_missed_ticks,
       status.odometry.valid ? 1U : 0U,
       (unsigned long)status.odometry.sample_timestamp_ms,
       (unsigned long)status.odometry.sample_period_ms,

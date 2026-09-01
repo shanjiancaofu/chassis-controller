@@ -4,6 +4,22 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "stm32g4xx.h"
+
+#define CONTROL_PROFILE_BUCKET_US 100U
+#define CONTROL_PROFILE_BUCKET_COUNT 101U
+
+typedef struct {
+  uint32_t samples;
+  uint32_t min_us;
+  uint32_t mean_us;
+  uint32_t p50_us;
+  uint32_t p95_us;
+  uint32_t p99_us;
+  uint32_t max_us;
+  uint32_t deadline_miss;
+  uint32_t missed_ticks;
+} ControlProfileSnapshot;
 
 static StaticTask_t control_task_buffer;
 static StackType_t control_task_stack[CONFIG_CONTROL_TASK_STACK_SIZE];
@@ -46,6 +62,10 @@ static volatile uint32_t control_run_count;
 static volatile uint32_t diagnostics_run_count;
 static volatile uint32_t display_run_count;
 static RtosAppCallbacks app_callbacks;
+static volatile uint32_t control_profile_sequence;
+static volatile ControlProfileSnapshot control_profile;
+static uint32_t control_profile_histogram[CONTROL_PROFILE_BUCKET_COUNT];
+static uint64_t control_profile_total_us;
 
 static void RtosApp_ControlTaskMain(void *argument);
 static uint32_t TicksToMilliseconds(TickType_t ticks);
@@ -56,6 +76,11 @@ static void RecordTaskActivity(volatile bool *started,
                                volatile TickType_t *last_run,
                                volatile uint32_t *run_count,
                                volatile TickType_t *period);
+static void ControlProfile_Init(void);
+static void ControlProfile_Record(uint32_t elapsed_cycles,
+                                  uint32_t notification_count);
+static uint32_t ControlProfile_Percentile(uint32_t percentile);
+static void ControlProfile_Get(ControlProfileSnapshot *snapshot);
 
 bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
 {
@@ -124,6 +149,7 @@ bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
   control_run_count = 0U;
   diagnostics_run_count = 0U;
   display_run_count = 0U;
+  ControlProfile_Init();
 
   return control_task_handle != NULL && diagnostics_task_handle != NULL &&
          display_task_handle != NULL;
@@ -248,6 +274,20 @@ void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
   snapshot->diagnostics_run_count =
       __atomic_load_n(&diagnostics_run_count, __ATOMIC_RELAXED);
   snapshot->display_run_count = __atomic_load_n(&display_run_count, __ATOMIC_RELAXED);
+  {
+    ControlProfileSnapshot profile;
+
+    ControlProfile_Get(&profile);
+    snapshot->control_profile_samples = profile.samples;
+    snapshot->control_profile_min_us = profile.min_us;
+    snapshot->control_profile_mean_us = profile.mean_us;
+    snapshot->control_profile_p50_us = profile.p50_us;
+    snapshot->control_profile_p95_us = profile.p95_us;
+    snapshot->control_profile_p99_us = profile.p99_us;
+    snapshot->control_profile_max_us = profile.max_us;
+    snapshot->control_profile_deadline_miss = profile.deadline_miss;
+    snapshot->control_profile_missed_ticks = profile.missed_ticks;
+  }
   snapshot->service_stack_high_water_words =
       service_task_handle != NULL
           ? (uint32_t)uxTaskGetStackHighWaterMark(service_task_handle)
@@ -310,16 +350,109 @@ static void RtosApp_ControlTaskMain(void *argument)
     vTaskSuspend(NULL);
   }
 
+  ControlProfile_Init();
+
   __atomic_store_n(&control_task_started, true, __ATOMIC_RELEASE);
   for (;;) {
     const uint32_t notification_count =
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    const uint32_t started_cycles = DWT->CYCCNT;
 
     RecordTaskActivity(&control_task_started, &control_task_heartbeat,
                        &last_control_run_tick, &control_run_count,
                        &control_period_ticks);
     app_callbacks.run_control_cycle(notification_count);
+    ControlProfile_Record(DWT->CYCCNT - started_cycles, notification_count);
   }
+}
+
+static void ControlProfile_Init(void)
+{
+  uint32_t index;
+
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0U;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+  __atomic_store_n(&control_profile_sequence, 0U, __ATOMIC_RELAXED);
+  control_profile = (ControlProfileSnapshot){0};
+  control_profile_total_us = 0U;
+  for (index = 0U; index < CONTROL_PROFILE_BUCKET_COUNT; ++index) {
+    control_profile_histogram[index] = 0U;
+  }
+}
+
+static void ControlProfile_Record(uint32_t elapsed_cycles,
+                                  uint32_t notification_count)
+{
+  const uint32_t elapsed_us = SystemCoreClock == 0U
+                                  ? 0U
+                                  : (uint32_t)(((uint64_t)elapsed_cycles *
+                                                1000000ULL) /
+                                               SystemCoreClock);
+  const uint32_t deadline_cycles =
+      (uint32_t)(((uint64_t)SystemCoreClock *
+                  CONFIG_CONTROL_TASK_PERIOD_MS) /
+                 1000ULL);
+  uint32_t bucket = elapsed_us / CONTROL_PROFILE_BUCKET_US;
+
+  if (bucket >= CONTROL_PROFILE_BUCKET_COUNT) {
+    bucket = CONTROL_PROFILE_BUCKET_COUNT - 1U;
+  }
+  (void)__atomic_fetch_add(&control_profile_sequence, 1U, __ATOMIC_SEQ_CST);
+  ++control_profile.samples;
+  control_profile.min_us =
+      control_profile.samples == 1U || elapsed_us < control_profile.min_us
+          ? elapsed_us
+          : control_profile.min_us;
+  control_profile.max_us = elapsed_us > control_profile.max_us
+                               ? elapsed_us
+                               : control_profile.max_us;
+  control_profile_total_us += elapsed_us;
+  control_profile.mean_us =
+      (uint32_t)(control_profile_total_us / control_profile.samples);
+  ++control_profile_histogram[bucket];
+  control_profile.p50_us = ControlProfile_Percentile(50U);
+  control_profile.p95_us = ControlProfile_Percentile(95U);
+  control_profile.p99_us = ControlProfile_Percentile(99U);
+  if (deadline_cycles > 0U && elapsed_cycles > deadline_cycles) {
+    ++control_profile.deadline_miss;
+  }
+  if (notification_count > 1U) {
+    control_profile.missed_ticks += notification_count - 1U;
+  }
+  (void)__atomic_fetch_add(&control_profile_sequence, 1U, __ATOMIC_SEQ_CST);
+}
+
+static uint32_t ControlProfile_Percentile(uint32_t percentile)
+{
+  const uint32_t target = (uint32_t)(
+      ((uint64_t)control_profile.samples * percentile + 99U) / 100U);
+  uint32_t cumulative = 0U;
+  uint32_t index;
+
+  for (index = 0U; index < CONTROL_PROFILE_BUCKET_COUNT; ++index) {
+    cumulative += control_profile_histogram[index];
+    if (cumulative >= target) {
+      return (index + 1U) * CONTROL_PROFILE_BUCKET_US;
+    }
+  }
+  return CONTROL_PROFILE_BUCKET_COUNT * CONTROL_PROFILE_BUCKET_US;
+}
+
+static void ControlProfile_Get(ControlProfileSnapshot *snapshot)
+{
+  uint32_t before;
+  uint32_t after;
+
+  do {
+    before = __atomic_load_n(&control_profile_sequence, __ATOMIC_ACQUIRE);
+    if ((before & 1U) != 0U) {
+      after = before + 1U;
+    } else {
+      *snapshot = control_profile;
+      after = __atomic_load_n(&control_profile_sequence, __ATOMIC_ACQUIRE);
+    }
+  } while (before != after || (after & 1U) != 0U);
 }
 
 static uint32_t TicksToMilliseconds(TickType_t ticks)

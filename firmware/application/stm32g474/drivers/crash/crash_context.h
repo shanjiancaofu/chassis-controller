@@ -25,5 +25,6 @@ void CrashContext_CaptureFromException(const uint32_t *stack,
                                        uint32_t exc_return,
                                        uint32_t fault_id);
 bool CrashContext_Take(CrashContext *context);
+__attribute__((noreturn)) void CrashContext_TriggerHardFault(void);
 
 #endif

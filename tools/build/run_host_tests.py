@@ -44,6 +44,10 @@ TESTS = {
         "FAULT_MANAGER_HOST_TEST",
         ["tests/unit/test_fault_manager.c", "app/safety/fault_manager.c"],
     ),
+    "feedback_watchdog": (
+        "FEEDBACK_WATCHDOG_HOST_TEST",
+        ["tests/unit/test_feedback_watchdog.c", "app/chassis/feedback_watchdog.c"],
+    ),
     "gpio_stm32": (
         "GPIO_STM32_HOST_TEST",
         ["tests/unit/test_gpio_stm32.c", "drivers/gpio/gpio_common.c",

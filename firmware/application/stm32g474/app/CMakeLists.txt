@@ -1,6 +1,7 @@
 add_library(chassis_product STATIC
   chassis/command_manager.c
   chassis/differential_drive.c
+  chassis/feedback_watchdog.c
   chassis/odometry.c
   chassis/wheel_controller.c
   console/console.c

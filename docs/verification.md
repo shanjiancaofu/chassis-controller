@@ -14,6 +14,55 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## 1.0.6 V1 Closure Pack 软件候选（2026-09-01）
+
+`1.0.5 build1` 已有 confirmed 镜像，因此本轮行为变化使用 `1.0.6 build1`。已实现：正反转
+feedback-loss watchdog、500ms fail-close 行为测试、Cortex-M4F FP extended frame 解析、显式 HardFault/
+左右 encoder API failure 注入，以及 ControlTask DWT 在线 samples/min/mean/P50/P95/P99/max/
+deadline_miss/missed_ticks 统计。分位数由 100us 在线直方图近似，不保存逐样本数组。
+
+软件证据：19 项 C host tests PASS，`tools/build/tests` 13 项 PASS，Release Application 链接 PASS；
+flash `114116/491520` bytes，RAM `56144/131072` bytes。BIN `114124` bytes，SHA-256
+`ac13a6e204f243ab824611da3e5d449d66b3a019377b30f7938b5bd3874aff09`；OTA `114188` bytes，
+SHA-256 `5fd4d391b4ac5fc51554dd29c1b8760f700b3c6a08dd005296b02aeb1d6169aa`，payload CRC32
+`0x723932A8`。硬件烧录、DWT 数值、故障注入和 wheels-up 集中 Gate 均为 `NOT VERIFIED`。最终
+source SHA 在候选工作区提交后记录，不得以 dirty HEAD 代替 source SHA；hardware date 待实测填写。
+
+完整 `tools/test/run_all.py` PASS：19 项 C host、Kconfig 3、DTS 3、build safety/architecture 13、
+schema 5、OTA 18、四组 config matrix 与 LCD preview 全部通过。Debug Application 链接 PASS，flash
+`130140/491520` bytes、RAM `56152/131072` bytes。上述均为软件证据，不提升任何硬件 Gate 状态。
+
+### 1.0.6 集中硬件 Gate（READY，尚未执行）
+
+候选身份：source SHA `PENDING COMMIT`；firmware `1.0.6 build1`；BIN/OTA SHA-256 见上；hardware date
+`PENDING`。只允许该组身份进入本轮烧录记录。
+
+电机电源 OFF：先复跑 PowerReady/零 PWM；`hardfault test confirm` 必须在 self-test lock 获得且两轮
+输出为零后触发，复位后要求 `PREVIOUS_EXCEPTION` 且 PC 可由本候选 ELF 的 `addr2line` 对应；分别执行
+`encoder fail left confirm`、`encoder fail right confirm`，要求下一 ControlTask 周期锁存 encoder fault、
+释放 owner、两轮 PWM=0。`status` 的 motor 行同时记录 `wcet_samples/min/mean/p50/p95/p99/max`、
+`wcet_deadline_miss`、`wcet_missed_ticks` 作为 DWT baseline。
+
+电源 ON 且 wheels-up：依次 `+50/+100/+150/+200/+300/+500` 与负向同档，逐项记录左右 target、
+measurement、PWM、first-motion latency、steady error。随后正转/反转分别物理断开左、右 encoder，要求
+`<=500ms + 1 control period` 锁存 `CHASSIS_FAULT_ENCODER`、两轮 PWM=0、禁止自动恢复。最后复跑 CAN
+unplug、bus-off、200ms command timeout 和 300ms peer heartbeat timeout。动态 `/odom` 只验 forward
+`x+`、reverse `x-`、left rotate `yaw+`、right rotate `yaw-`、stop 基本稳定；所有数字实测后再标 PASS。
+
+## Startup boost candidate（2026-09-01）
+
+左右轮独立使用3500 permille、最长150ms的启动补偿；仅在target非零且measurement绝对值≤1时启用，
+反馈出现后切回PID。Stop/EmergencyStop重置计时。host tests与Release build通过。
+
+### 1.0.5 confirmed wheels-up result（2026-09-01）
+
+真实 OTA 已 CONFIRMED。架空轮、未移动线束下测试 `100/200/300 mm/s` 各约0.35s，三档均获得双侧
+编码器反馈，最大速度约 `31/31`、`77/62`、`124/139`；输出约412 permille（原始 duty约3500/8499）。
+每级发零速，最终 STOPPED/fault=0/PWM=0。后退与原地旋转补充测试已通过；带负载和动态 `/odom` 仍待验收。
+
+`-300 mm/s` 后退双侧反馈约 `-108/-124`。清除过渡后，`+1500 mrad/s` 左旋稳定左负/右正，
+`-1500 mrad/s` 右旋稳定左正/右负；动作结束均 STOPPED/fault=0/PWM=0。
+
 ## Wheels-up low-speed gate（2026-09-01）
 
 在主电源约 12.05 V、车轮架空、未移动线束条件下发送约 `+100 mm/s` 速度命令 1.2 秒，观测到

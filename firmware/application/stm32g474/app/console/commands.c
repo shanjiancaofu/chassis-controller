@@ -16,6 +16,8 @@
 #include "app/safety/safety_manager.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
 #include "app/maintenance/self_test/qspi_self_test.h"
+#include "app/runtime/control_runtime.h"
+#include "drivers/crash/crash_context.h"
 
 static ConsoleCommandPort command_port;
 
@@ -192,6 +194,30 @@ void ConsoleCommands_Process(const ConsoleCommand *command,
         DiagnosticReport_RequestIwdgArmed();
       }
       break;
+    case CONSOLE_COMMAND_ENCODER_FAIL_LEFT:
+    case CONSOLE_COMMAND_ENCODER_FAIL_RIGHT:
+      if (!command_port.acquire_self_test_lock()) {
+        (void)UartMessages_SendResponse(now_ms, "encoder_fail", false,
+                                        "code=BUSY");
+      } else {
+        const bool left = command->type == CONSOLE_COMMAND_ENCODER_FAIL_LEFT;
+
+        ControlRuntime_InjectEncoderReadFailure(left);
+        (void)UartMessages_SendResponse(
+            now_ms, "encoder_fail", true,
+            left ? "side=LEFT state=ARMED" : "side=RIGHT state=ARMED");
+      }
+      break;
+    case CONSOLE_COMMAND_HARDFAULT_TEST:
+      if (!command_port.acquire_self_test_lock()) {
+        (void)UartMessages_SendResponse(now_ms, "hardfault_test", false,
+                                        "code=BUSY");
+      } else {
+        (void)UartMessages_SendResponse(now_ms, "hardfault_test", true,
+                                        "state=TRIGGERED");
+        CrashContext_TriggerHardFault();
+      }
+      break;
     case CONSOLE_COMMAND_MOTOR_DUTY: {
       const bool accepted =
           MotorSelfTest_SetDuty(command->arguments.motor_duty);
@@ -359,7 +385,7 @@ static void SendConsoleHelp(uint32_t now_ms)
       "commands=help,ping,status,telemetry,can_status,can_tx,pid_show,pid_set,"
       "pid_target,pid_stop,encoder_zero,encoder_result,odometry_reset,ota_uart,qspi_test,"
       "iwdg_reset_test,motor_duty,motor_stop,motor_left_forward,motor_left_reverse,"
-      "motor_right_forward,motor_right_reverse";
+      "motor_right_forward,motor_right_reverse,encoder_fail,hardfault_test";
 
   (void)UartMessages_SendResponse(now_ms, "help", true, commands);
 }

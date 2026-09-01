@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "app/chassis/odometry.h"
+#include "app/chassis/feedback_watchdog.h"
 #include "app/chassis/wheel_controller.h"
 #include "app/diagnostics/board_health.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
@@ -34,14 +35,13 @@ static const struct device *left_encoder_device;
 static const struct device *right_encoder_device;
 static uint32_t consecutive_control_overruns;
 static volatile bool emergency_stop_event;
-static uint32_t left_feedback_loss_ms;
-static uint32_t right_feedback_loss_ms;
+static FeedbackWatchdog feedback_watchdog;
+static volatile bool inject_left_encoder_failure;
+static volatile bool inject_right_encoder_failure;
 
 static void ReleaseMotionOwner(void);
 static void ApplyPendingControlParameters(void);
 static bool PowerReady(uint32_t now_ms);
-static bool UpdateFeedbackWatchdog(const WheelControllerSnapshot *wheels,
-                                   uint32_t elapsed_ms);
 
 static int16_t GetLeftMotorAppliedDuty(void) {
   return motor_get_applied_duty(drive_device, MOTOR_LEFT);
@@ -86,8 +86,9 @@ bool ControlRuntime_Init(void) {
   }
   consecutive_control_overruns = 0U;
   emergency_stop_event = false;
-  left_feedback_loss_ms = 0U;
-  right_feedback_loss_ms = 0U;
+  FeedbackWatchdog_Reset(&feedback_watchdog);
+  inject_left_encoder_failure = false;
+  inject_right_encoder_failure = false;
   return WheelController_Init(&wheel_controller_motor_port);
 }
 
@@ -107,8 +108,7 @@ void ControlRuntime_StopForEmergencyStopEvent(void) {
   ReleaseMotionOwner();
   WheelController_Stop();
   SafetyManager_Stop();
-  left_feedback_loss_ms = 0U;
-  right_feedback_loss_ms = 0U;
+  FeedbackWatchdog_Reset(&feedback_watchdog);
   kernel_critical_exit();
 }
 
@@ -130,6 +130,7 @@ void ControlRuntime_Stop(void) {
   CommandManager_ClearCommand();
   MotorSelfTest_Stop();
   WheelController_Stop();
+  FeedbackWatchdog_Reset(&feedback_watchdog);
   SafetyManager_Stop();
   kernel_critical_exit();
 }
@@ -186,8 +187,16 @@ void ControlRuntime_Run(uint32_t notification_count) {
     consecutive_control_overruns = 0U;
   }
 
-  left_encoder_result = encoder_read_delta(left_encoder_device, &left_delta);
-  right_encoder_result = encoder_read_delta(right_encoder_device, &right_delta);
+  left_encoder_result =
+      __atomic_exchange_n(&inject_left_encoder_failure, false,
+                          __ATOMIC_ACQ_REL)
+          ? -1
+          : encoder_read_delta(left_encoder_device, &left_delta);
+  right_encoder_result =
+      __atomic_exchange_n(&inject_right_encoder_failure, false,
+                          __ATOMIC_ACQ_REL)
+          ? -1
+          : encoder_read_delta(right_encoder_device, &right_delta);
   if (left_encoder_result < 0 || right_encoder_result < 0) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER);
     return;
@@ -224,6 +233,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
     ReleaseMotionOwner();
     kernel_critical_exit();
     WheelController_EmergencyStop();
+    FeedbackWatchdog_Reset(&feedback_watchdog);
     return;
   }
   if (FaultManager_HasCritical()) {
@@ -232,6 +242,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
     ReleaseMotionOwner();
     kernel_critical_exit();
     WheelController_EmergencyStop();
+    FeedbackWatchdog_Reset(&feedback_watchdog);
     SafetyManager_LatchInternalFault();
     return;
   }
@@ -241,6 +252,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
   }
   if (!SafetyManager_IsRunning()) {
     WheelController_Stop();
+    FeedbackWatchdog_Reset(&feedback_watchdog);
     return;
   }
 
@@ -254,6 +266,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
   kernel_critical_exit();
   if (!command_available) {
     WheelController_Stop();
+    FeedbackWatchdog_Reset(&feedback_watchdog);
     SafetyManager_EnterCommandTimeout();
     return;
   }
@@ -266,25 +279,28 @@ void ControlRuntime_Run(uint32_t notification_count) {
   {
     WheelControllerSnapshot wheels;
     WheelController_GetSnapshot(&wheels);
-    if (!UpdateFeedbackWatchdog(&wheels,
-                                MOTOR_CONTROL_PERIOD_MS * notification_count)) {
+    const FeedbackWatchdogSample sample = {
+        .left_target = wheels.left_target,
+        .right_target = wheels.right_target,
+        .left_measurement = wheels.left_measurement,
+        .right_measurement = wheels.right_measurement,
+        .left_output = wheels.left_output,
+        .right_output = wheels.right_output,
+    };
+    if (!FeedbackWatchdog_Update(
+            &feedback_watchdog, &sample,
+            MOTOR_CONTROL_PERIOD_MS * notification_count)) {
       ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER);
     }
   }
 }
 
-static bool UpdateFeedbackWatchdog(const WheelControllerSnapshot *wheels,
-                                   uint32_t elapsed_ms) {
-  const bool left_stalled = wheels != NULL && wheels->left_target != 0 &&
-                            wheels->left_output >= MOTOR_ENCODER_STARTUP_OUTPUT_THRESHOLD &&
-                            wheels->left_measurement == 0;
-  const bool right_stalled = wheels != NULL && wheels->right_target != 0 &&
-                             wheels->right_output >= MOTOR_ENCODER_STARTUP_OUTPUT_THRESHOLD &&
-                             wheels->right_measurement == 0;
-  left_feedback_loss_ms = left_stalled ? left_feedback_loss_ms + elapsed_ms : 0U;
-  right_feedback_loss_ms = right_stalled ? right_feedback_loss_ms + elapsed_ms : 0U;
-  return left_feedback_loss_ms < MOTOR_ENCODER_FEEDBACK_LOSS_TIMEOUT_MS &&
-         right_feedback_loss_ms < MOTOR_ENCODER_FEEDBACK_LOSS_TIMEOUT_MS;
+void ControlRuntime_InjectEncoderReadFailure(bool left) {
+  if (left) {
+    __atomic_store_n(&inject_left_encoder_failure, true, __ATOMIC_RELEASE);
+  } else {
+    __atomic_store_n(&inject_right_encoder_failure, true, __ATOMIC_RELEASE);
+  }
 }
 
 bool ControlRuntime_StartMotorSelfTest(MotorSelfTestAction action,
