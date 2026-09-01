@@ -58,6 +58,7 @@ int main(void)
   assert(!WheelController_Init(NULL));
   assert(!WheelController_Update(1, 1, 0, 0, 1U));
   assert(WheelController_Init(&motor_port));
+  assert(!WheelController_Update(1, 1, 0, 0, 0U));
   assert(!WheelController_Update(101, 0, 0, 0, 1U));
   assert(WheelController_Update(5, -5, 0, 0, 1U));
   assert(apply_count == 1U);

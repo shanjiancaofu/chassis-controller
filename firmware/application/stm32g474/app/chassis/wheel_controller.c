@@ -88,6 +88,7 @@ bool WheelController_Update(int32_t left_target, int32_t right_target,
   int16_t right_duty;
 
   if (!controller_motor_port_ready ||
+      elapsed_ticks == 0U ||
       left_target < -MOTOR_CONTROL_TARGET_LIMIT ||
       left_target > MOTOR_CONTROL_TARGET_LIMIT ||
       right_target < -MOTOR_CONTROL_TARGET_LIMIT ||
