@@ -29,6 +29,7 @@ function(chassis_target_setup target)
     $<$<CONFIG:Debug>:-Og>
     $<$<CONFIG:Debug>:-g3>
     $<$<CONFIG:Release>:-Os>
+    $<$<CONFIG:Release>:-g3>
     -ffunction-sections
     -fdata-sections
     -Wall

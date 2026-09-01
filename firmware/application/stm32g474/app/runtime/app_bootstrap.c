@@ -89,12 +89,17 @@ static bool InitializeCommunication(const struct device *can_device,
   {
     CrashContext crash;
     if (CrashContext_Take(&crash)) {
-      char fields[192];
+      char fields[256];
       (void)snprintf(fields, sizeof(fields),
-                     "fault=%lu pc=0x%08lX lr=0x%08lX cfsr=0x%08lX hfsr=0x%08lX",
+                     "fault=%lu pc=0x%08lX lr=0x%08lX exc_return=0x%08lX "
+                     "frame=%s cfsr=0x%08lX hfsr=0x%08lX",
                      (unsigned long)crash.fault_id,
                      (unsigned long)crash.pc,
                      (unsigned long)crash.lr,
+                     (unsigned long)crash.exc_return,
+                     crash.frame_type == CRASH_FRAME_EXTENDED_FP
+                         ? "EXTENDED_FP"
+                         : "BASIC",
                      (unsigned long)crash.cfsr,
                      (unsigned long)crash.hfsr);
       (void)UartMessages_SendLog(now_ms, UART_MESSAGES_LOG_ERROR,

@@ -16,6 +16,7 @@ add_library(chassis_drivers STATIC
   adc/power_sample_stm32.c
   adc/power_sample_common.c
   reset/reset_stm32.c
+  crash/crash_frame.c
   crash/crash_context.c
   sensor/sr501_stm32.c
   can/can_common.c

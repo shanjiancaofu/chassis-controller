@@ -48,6 +48,10 @@ TESTS = {
         "FEEDBACK_WATCHDOG_HOST_TEST",
         ["tests/unit/test_feedback_watchdog.c", "app/chassis/feedback_watchdog.c"],
     ),
+    "crash_frame": (
+        "CRASH_FRAME_HOST_TEST",
+        ["tests/unit/test_crash_frame.c", "drivers/crash/crash_frame.c"],
+    ),
     "gpio_stm32": (
         "GPIO_STM32_HOST_TEST",
         ["tests/unit/test_gpio_stm32.c", "drivers/gpio/gpio_common.c",

@@ -5,8 +5,6 @@
 #include "stm32g4xx.h"
 
 #define CRASH_CONTEXT_MAGIC 0x43524153U
-#define EXC_RETURN_BASIC_FRAME_BIT (1UL << 4)
-#define FP_EXTENDED_FRAME_WORDS 18U
 
 typedef struct {
   uint32_t magic;
@@ -22,25 +20,22 @@ void CrashContext_CaptureFromException(const uint32_t *stack,
   CrashContext captured = {
       .fault_id = fault_id,
       .exc_return = exc_return,
+      .frame_type = CrashFrame_TypeFromExcReturn(exc_return),
       .cfsr = SCB->CFSR,
       .hfsr = SCB->HFSR,
       .mmfar = SCB->MMFAR,
       .bfar = SCB->BFAR,
   };
-  if (stack != NULL) {
-    const uint32_t *core_frame = stack;
-
-    if ((exc_return & EXC_RETURN_BASIC_FRAME_BIT) == 0U) {
-      core_frame += FP_EXTENDED_FRAME_WORDS;
-    }
-    captured.r0 = core_frame[0];
-    captured.r1 = core_frame[1];
-    captured.r2 = core_frame[2];
-    captured.r3 = core_frame[3];
-    captured.r12 = core_frame[4];
-    captured.lr = core_frame[5];
-    captured.pc = core_frame[6];
-    captured.xpsr = core_frame[7];
+  CrashCoreFrame core;
+  if (CrashFrame_DecodeCore(stack, &core)) {
+    captured.r0 = core.r0;
+    captured.r1 = core.r1;
+    captured.r2 = core.r2;
+    captured.r3 = core.r3;
+    captured.r12 = core.r12;
+    captured.lr = core.lr;
+    captured.pc = core.pc;
+    captured.xpsr = core.xpsr;
   }
   persistent_context.context = captured;
   __DMB();

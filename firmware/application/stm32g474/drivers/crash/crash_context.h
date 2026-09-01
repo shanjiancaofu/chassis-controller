@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "drivers/crash/crash_frame.h"
+
 typedef struct {
   uint32_t fault_id;
   uint32_t r0;
@@ -15,6 +17,7 @@ typedef struct {
   uint32_t pc;
   uint32_t xpsr;
   uint32_t exc_return;
+  CrashFrameType frame_type;
   uint32_t cfsr;
   uint32_t hfsr;
   uint32_t mmfar;
