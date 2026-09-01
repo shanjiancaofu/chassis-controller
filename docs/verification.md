@@ -14,6 +14,13 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## Missed-tick PID dt（2026-09-01）
+
+`WheelController_Update(..., elapsed_ticks)` 将 PID dt 改为
+`MOTOR_CONTROL_PERIOD_MS * elapsed_ticks / 1000`，与同一控制周期的 encoder delta 除数、odometry dt
+和 target slew 一致。host 行为测试以 `kp=0, ki=100, target=5` 验证 1 tick 输出 5、3 ticks 输出
+15。真实调度超周期与 DWT WCET/jitter 尚未进行目标板故障注入。
+
 ## Cortex-M crash context（2026-09-01）
 
 HardFault、MemManage、BusFault、UsageFault 改为 naked wrapper，从 MSP/PSP 取得 Cortex-M 异常栈，

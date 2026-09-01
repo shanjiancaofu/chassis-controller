@@ -3,6 +3,12 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：控制周期 dt 语义统一
+
+允许范围内的 missed tick 现在同时作用于 encoder measurement、odometry、slew 和 PID dt；严重超周期
+仍走 `CHASSIS_FAULT_CONTROL_OVERRUN`。host 行为测试覆盖 1 tick/3 ticks 积分输出，目标板 missed-tick
+故障注入和 DWT jitter 实测仍待执行。
+
 ## 2026-09-01：Cortex-M crash context 已实现
 
 四类 Cortex-M fault handler 现在保留“先急停”语义，并把异常栈寄存器及 SCB fault status 保存到

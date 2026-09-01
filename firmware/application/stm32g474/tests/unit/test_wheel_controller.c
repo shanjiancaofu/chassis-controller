@@ -86,6 +86,15 @@ int main(void)
   WheelController_GetSnapshot(&snapshot);
   assert(snapshot.left_output == 0);
   assert(snapshot.right_output == 0);
+
+  WheelController_Stop();
+  WheelController_ApplyPidGains(WHEEL_CONTROLLER_LEFT, 0U, 100U, 0U);
+  WheelController_ApplyPidGains(WHEEL_CONTROLLER_RIGHT, 0U, 100U, 0U);
+  assert(WheelController_Update(5, 5, 0, 0, 1U));
+  assert(applied_left == 5 && applied_right == 5);
+  WheelController_Stop();
+  assert(WheelController_Update(5, 5, 0, 0, 3U));
+  assert(applied_left == 15 && applied_right == 15);
   return 0;
 }
 

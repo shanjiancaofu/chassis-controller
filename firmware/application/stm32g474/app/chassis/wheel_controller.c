@@ -14,7 +14,8 @@ static WheelControllerMotorPort controller_motor_port;
 static bool controller_motor_port_ready;
 
 static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
-                           int32_t measurement, int16_t current_duty);
+                           int32_t measurement, int16_t current_duty,
+                           uint32_t elapsed_ticks);
 static int32_t SlewTarget(int32_t current, int32_t requested,
                           uint32_t elapsed_ticks);
 
@@ -102,10 +103,12 @@ bool WheelController_Update(int32_t left_target, int32_t right_target,
   right_ramped_target = effective_right_target;
 
   left_duty = UpdateWheel(&left_pid, effective_left_target, left_measurement,
-                          controller_motor_port.get_left_applied_duty());
+                          controller_motor_port.get_left_applied_duty(),
+                          elapsed_ticks);
   right_duty = UpdateWheel(&right_pid, effective_right_target,
                            right_measurement,
-                           controller_motor_port.get_right_applied_duty());
+                           controller_motor_port.get_right_applied_duty(),
+                           elapsed_ticks);
   controller_motor_port.set_signed_duty_both(left_duty, right_duty);
   controller_snapshot.left_target = effective_left_target;
   controller_snapshot.right_target = effective_right_target;
@@ -139,9 +142,12 @@ void WheelController_GetSnapshot(WheelControllerSnapshot *snapshot)
 }
 
 static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
-                           int32_t measurement, int16_t current_duty)
+                           int32_t measurement, int16_t current_duty,
+                           uint32_t elapsed_ticks)
 {
   int16_t duty;
+  const float dt_seconds =
+      (float)(MOTOR_CONTROL_PERIOD_MS * elapsed_ticks) / 1000.0f;
 
   if (target == 0) {
     SpeedPid_Reset(pid);
@@ -149,8 +155,7 @@ static int16_t UpdateWheel(SpeedPid *pid, int32_t target,
   }
 
   duty = (int16_t)SpeedPid_Update(
-      pid, (float)target, (float)measurement,
-      MOTOR_CONTROL_PERIOD_MS / 1000.0f);
+      pid, (float)target, (float)measurement, dt_seconds);
   if ((current_duty > 0 && duty < 0) ||
       (current_duty < 0 && duty > 0)) {
     SpeedPid_Reset(pid);

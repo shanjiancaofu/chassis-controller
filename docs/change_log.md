@@ -1,5 +1,12 @@
 # 变更记录
 
+## 2026-09-01：统一 missed-tick PID 时间语义
+
+- `WheelController_Update()` 现在把 `elapsed_ticks` 传入左右 PID，`dt` 统一为
+  `MOTOR_CONTROL_PERIOD_MS * elapsed_ticks`；与 encoder delta 归一化、odometry dt 和 target slew
+  使用同一时间跨度。
+- host 行为测试用纯积分增益验证 1 tick 输出 5、3 ticks 输出 15，防止 PID 再退回固定 10 ms。
+
 ## 2026-09-01：Cortex-M 异常现场持久化
 
 - HardFault、MemManage、BusFault、UsageFault 仍先调用 `ChassisApp_PanicStopFromException()`，随后
