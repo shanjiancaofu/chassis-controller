@@ -63,6 +63,9 @@ def run_case(port, target: int, side: str) -> dict[str, object]:
     fault_system: dict[str, str] = {}
     fault_motor: dict[str, str] = {}
     observed_fault_at: float | None = None
+    response_timestamp_ms: int | None = None
+    systems_by_seq: dict[str, dict[str, str]] = {}
+    motors_by_seq: dict[str, dict[str, str]] = {}
     receive_buffer = ""
     deadline = time.monotonic() + 0.75
     next_status = injection_time
@@ -83,17 +86,36 @@ def run_case(port, target: int, side: str) -> dict[str, object]:
             lines.append(line)
             if "command=encoder_fail" in line:
                 response = line
+                fields = parse_fields(line)
+                try:
+                    response_timestamp_ms = int(fields["ts_ms"])
+                except (KeyError, ValueError):
+                    response_timestamp_ms = None
             if "section=system" in line:
                 fields = parse_fields(line)
+                systems_by_seq[fields.get("seq", "")] = fields
                 if fields.get("fault") == "0x00000010":
-                    fault_system = fields
+                    candidate_motor = motors_by_seq.get(fields.get("seq", ""), {})
+                    if candidate_motor.get("left_pwm") == "0" and candidate_motor.get("right_pwm") == "0":
+                        fault_system = fields
+                        fault_motor = candidate_motor
                     if observed_fault_at is None:
                         observed_fault_at = time.monotonic()
             if "section=motor" in line and fault_system:
-                fault_motor = parse_fields(line)
-                if fault_system and fault_motor.get("left_pwm") == "0" and fault_motor.get("right_pwm") == "0":
-                    break
-        if fault_system and fault_motor.get("left_pwm") == "0" and fault_motor.get("right_pwm") == "0":
+                fields = parse_fields(line)
+                motors_by_seq[fields.get("seq", "")] = fields
+                if fields.get("seq") == fault_system.get("seq"):
+                    fault_motor = fields
+            elif "section=motor" in line:
+                fields = parse_fields(line)
+                motors_by_seq[fields.get("seq", "")] = fields
+                matching_system = systems_by_seq.get(fields.get("seq", ""), {})
+                if matching_system.get("fault") == "0x00000010" and fields.get("left_pwm") == "0" and fields.get("right_pwm") == "0":
+                    fault_system = matching_system
+                    fault_motor = fields
+                    if observed_fault_at is None:
+                        observed_fault_at = time.monotonic()
+        if fault_system and fault_motor.get("seq") == fault_system.get("seq") and fault_motor.get("left_pwm") == "0" and fault_motor.get("right_pwm") == "0":
             break
     if not response:
         response = next((line for line in lines if "command=encoder_fail" in line), "")
@@ -118,15 +140,21 @@ def run_case(port, target: int, side: str) -> dict[str, object]:
         "right_pwm": motor.get("right_pwm", "missing"),
         "fault_observation_latency_ms": round((fault_time - injection_time) * 1000.0, 1),
         "device_fault_timestamp_ms": system.get("ts_ms", "missing"),
+        "device_injection_timestamp_ms": response_timestamp_ms or "missing",
         "raw_response": response,
     }
-    host_latency_pass = result["fault_observation_latency_ms"] <= 510.0
+    try:
+        device_latency_ms = int(result["device_fault_timestamp_ms"]) - int(result["device_injection_timestamp_ms"])
+    except (TypeError, ValueError):
+        device_latency_ms = None
+    result["device_fault_latency_ms"] = device_latency_ms if device_latency_ms is not None else "inconclusive"
+    device_latency_pass = device_latency_ms is not None and 0 <= device_latency_ms <= 510
     result["passed"] = bool(
         result["armed"]
         and result["encoder_fault_latched"]
         and result["left_pwm"] == "0"
         and result["right_pwm"] == "0"
-        and host_latency_pass
+        and device_latency_pass
     )
     return result
 
