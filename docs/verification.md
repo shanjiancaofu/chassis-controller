@@ -14,6 +14,12 @@
 | `NOT VERIFIED` | 尚未验证或固件变化后需要回归 |
 | `DEFERRED` | 已知尚未完成，按当前计划后置且不阻塞主线 |
 
+## RC motion power readiness（2026-09-01）
+
+`PowerReady()` 用 valid、≤250ms、≥9V 判定运动准备状态。`ControlRuntime_Start()` 和 motor self-test
+在不 ready 时拒绝启动；只有 RUNNING/open-loop 才把失效、过期或欠压锁存为 critical fault。
+18 项 host、源级策略门禁和 Release build 通过；真实硬件矩阵仍为 `NOT VERIFIED`。
+
 ## Missed-tick PID dt（2026-09-01）
 
 `WheelController_Update(..., elapsed_ticks)` 将 PID dt 改为

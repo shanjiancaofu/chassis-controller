@@ -37,6 +37,7 @@ static volatile bool emergency_stop_event;
 
 static void ReleaseMotionOwner(void);
 static void ApplyPendingControlParameters(void);
+static bool PowerReady(uint32_t now_ms);
 
 static int16_t GetLeftMotorAppliedDuty(void) {
   return motor_get_applied_duty(drive_device, MOTOR_LEFT);
@@ -107,6 +108,9 @@ bool ControlRuntime_Start(void) {
   CommandManagerCommand command;
   bool accepted;
 
+  if (!PowerReady(time_uptime_ms())) {
+    return false;
+  }
   kernel_critical_enter();
   accepted = CommandManager_Get(&command) && SafetyManager_RequestRun(true);
   kernel_critical_exit();
@@ -129,6 +133,16 @@ static void ReleaseMotionOwner(void) {
       owner == COMMAND_SOURCE_SELF_TEST) {
     CommandManager_Release(owner);
   }
+}
+
+static bool PowerReady(uint32_t now_ms) {
+  PowerSampleSnapshot power_sample = {0};
+
+  power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), now_ms,
+                            &power_sample);
+  return power_sample.valid &&
+         power_sample.sample_age_ms <= MOTOR_CONTROL_MAX_SUPPLY_SAMPLE_AGE_MS &&
+         power_sample.millivolts >= MOTOR_CONTROL_MIN_SUPPLY_MV;
 }
 
 void ControlRuntime_Run(uint32_t notification_count) {
@@ -181,9 +195,10 @@ void ControlRuntime_Run(uint32_t notification_count) {
   }
   power_sample_get_snapshot(DEVICE_DT_GET(DT_CHOSEN(chassis_power)), now_ms,
                             &power_sample);
-  if (!power_sample.valid ||
-      power_sample.sample_age_ms > MOTOR_CONTROL_MAX_SUPPLY_SAMPLE_AGE_MS ||
-      power_sample.millivolts < MOTOR_CONTROL_MIN_SUPPLY_MV) {
+  if ((SafetyManager_IsRunning() || SafetyManager_IsOpenLoopTestRunning()) &&
+      (!power_sample.valid ||
+       power_sample.sample_age_ms > MOTOR_CONTROL_MAX_SUPPLY_SAMPLE_AGE_MS ||
+       power_sample.millivolts < MOTOR_CONTROL_MIN_SUPPLY_MV)) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
     return;
   }
@@ -243,7 +258,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
 
 bool ControlRuntime_StartMotorSelfTest(MotorSelfTestAction action,
                                        uint32_t now_ms) {
-  if (!SafetyManager_RequestOpenLoopTest()) {
+  if (!PowerReady(now_ms) || !SafetyManager_RequestOpenLoopTest()) {
     return false;
   }
   kernel_critical_enter();

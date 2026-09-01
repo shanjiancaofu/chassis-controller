@@ -35,6 +35,15 @@ class ControlRuntimeSafetyTest(unittest.TestCase):
         self.assertIn("power_sample.sample_age_ms > MOTOR_CONTROL_MAX_SUPPLY_SAMPLE_AGE_MS", source)
         self.assertIn("power_sample.millivolts < MOTOR_CONTROL_MIN_SUPPLY_MV", source)
 
+    def test_motion_start_requires_power_but_stopped_does_not_fault(self) -> None:
+        source = (
+            Path(__file__).parents[3]
+            / "firmware/application/stm32g474/app/runtime/control_runtime.c"
+        ).read_text(encoding="utf-8")
+        self.assertIn("if (!PowerReady(time_uptime_ms()))", source)
+        self.assertIn("if (!PowerReady(now_ms) || !SafetyManager_RequestOpenLoopTest())", source)
+        self.assertIn("SafetyManager_IsRunning() || SafetyManager_IsOpenLoopTestRunning()", source)
+
 
 if __name__ == "__main__":
     unittest.main()

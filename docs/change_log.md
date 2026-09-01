@@ -1,5 +1,11 @@
 # 变更记录
 
+## 2026-09-01：运动电源 readiness 与运行时欠压分离
+
+- STOPPED 下电机主电源 OFF/0mV 不再自动锁存 undervoltage；正常 Start 和 motor self-test 必须先满足
+  fresh、valid、≥9V 的 power sample。
+- RUNNING/open-loop 期间 invalid/stale/undervoltage 仍 critical fail-close。软件门禁与 Release 构建
+  通过，真实 0mV STOPPED/Start reject/运行时掉电矩阵待集中硬件验收。
 ## 2026-09-01：拒绝零 elapsed control tick
 
 - `WheelController_Update()` 对 `elapsed_ticks==0` 立即返回 `false`；host 行为测试和 Release build 通过。

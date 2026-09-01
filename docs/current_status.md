@@ -3,6 +3,11 @@
 本文件是新对话的最小交接上下文。它只保存当前结论，不替代设计、协议和完整验证记录。
 具体细节按 [`README.md`](README.md) 的索引读取。
 
+## 2026-09-01：RC motion power readiness
+
+STOPPED + 电机电源 OFF 不锁存 undervoltage；正常运动与 motor self-test 需要 fresh、valid、≥9V，
+RUNNING/open-loop 掉电仍 fail-close。当前仅软件验证，板上 confirmed 镜像仍是 `1.0.3 build1`。
+
 ## 2026-09-01：控制周期 dt 语义统一
 
 允许范围内的 missed tick 现在同时作用于 encoder measurement、odometry、slew 和 PID dt；严重超周期
