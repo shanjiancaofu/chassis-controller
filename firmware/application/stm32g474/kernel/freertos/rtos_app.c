@@ -87,6 +87,23 @@ bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
       RtosApp_DisplayTaskMain, "display", CONFIG_DISPLAY_TASK_STACK_SIZE, NULL,
       CONFIG_DISPLAY_TASK_PRIORITY, display_task_stack, &display_task_buffer);
 
+  if (control_task_handle == NULL || diagnostics_task_handle == NULL ||
+      display_task_handle == NULL) {
+    if (display_task_handle != NULL) {
+      vTaskDelete(display_task_handle);
+      display_task_handle = NULL;
+    }
+    if (diagnostics_task_handle != NULL) {
+      vTaskDelete(diagnostics_task_handle);
+      diagnostics_task_handle = NULL;
+    }
+    if (control_task_handle != NULL) {
+      vTaskDelete(control_task_handle);
+      control_task_handle = NULL;
+    }
+    return false;
+  }
+
   service_task_heartbeat = now;
   control_task_heartbeat = now;
   diagnostics_task_heartbeat = now;

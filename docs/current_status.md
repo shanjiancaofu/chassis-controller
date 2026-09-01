@@ -12,6 +12,9 @@ fault injection、复位后现场打印和 `addr2line` 对照仍为 `NOT VERIFIE
 电源采样控制边界已补齐 freshness：未初始化、超过 250 ms 的旧样本或低于 9 V 均进入 latched
 `CHASSIS_FAULT_UNDERVOLTAGE`，不再把“无采样”当作“无需检查”。真实 ADC 断线/超时注入仍待硬件 Gate。
 
+RTOS 三个静态任务创建失败会完整回滚已创建句柄；双电机 duty pair 已改为一次关中断、成对更新 TIM8
+compare。两项均已通过源级门禁和 Release 构建。
+
 ## 2026-09-01：1.0.3 编码器反馈 fail-close
 
 板上 confirmed Application 已更新为 `1.0.3 build1`。左右编码器任一 `read_delta` 失败时，控制周期

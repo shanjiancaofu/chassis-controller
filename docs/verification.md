@@ -31,6 +31,12 @@ R0–R3/R12/LR/PC/xPSR、EXC_RETURN、CFSR、HFSR、MMFAR 和 BFAR；下次 Appl
 `MOTOR_CONTROL_MIN_SUPPLY_MV=9000` mV，都会走既有 `CHASSIS_FAULT_UNDERVOLTAGE` fail-close 路径。
 主机源级门禁和 Release 构建通过；真实 ADC I/O error、断线和超时注入保持 `NOT VERIFIED`。
 
+### RTOS and motor output atomicity
+
+`RtosApp_CreateTasks()` 在 control/diagnostics/display 任一静态任务创建失败时调用 `vTaskDelete()`
+回滚已经成功创建的任务并清空句柄。STM32 `motor_set_signed_duty_both()` 在一个 PRIMASK 临界区内
+同时写入四路 compare 和左右 applied state；源级门禁与 Release 构建通过。
+
 ## 1.0.3 build1 编码器反馈 fail-close（2026-09-01）
 
 旧逻辑在任一 `encoder_read_delta()` 失败后把左右 delta 都设置为零，随后继续 odometry 和 PID；非零

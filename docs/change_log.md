@@ -15,6 +15,12 @@
   250 ms 未更新或低于 9 V 时统一锁存 `CHASSIS_FAULT_UNDERVOLTAGE` 并急停。
 - 新增源级安全门禁并通过 Release 构建；真实 ADC 断线/超时注入仍未执行。
 
+## 2026-09-01：RTOS 创建回滚与双电机原子更新
+
+- `RtosApp_CreateTasks()` 任一静态任务创建失败时，删除已创建任务并清空句柄，拒绝留下部分启动状态。
+- STM32 `set_signed_duty_both()` 现在在一次关中断区内清零并更新左右 TIM8 compare/state，避免先写左轮
+  再写右轮造成短暂不一致；单电机 API 语义不变。
+
 ## 2026-09-01：1.0.3 编码器反馈失效 fail-close
 
 - `ControlRuntime_Run()` 分别读取左右编码器结果；任一读取失败立即调用
