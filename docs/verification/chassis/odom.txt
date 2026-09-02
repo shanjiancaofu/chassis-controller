@@ -1,4 +1,13 @@
 firmware: 1.0.8 build1
-status: PENDING_MOTOR_POWER_ON
-required: forward x+, reverse x-, left rotate yaw sign, right rotate opposite yaw, stop velocity zero
+status: DIRECTIONAL_SMOKE_PASS
+forward_x_mm_during_motion: 634
+reverse_x_mm_during_motion: -644
+left_rotate_heading_mrad_short_window: 442
+left_rotate_angular_mrad_s: 4219
+right_rotate_heading_mrad_short_window: -637
+right_rotate_angular_mrad_s: -4360
+stop_linear_mm_s: 0
+stop_angular_mrad_s: 0
+stop_pwm: 0/0
+fault: 0x00000000
 metric_calibration: NOT_VERIFIED

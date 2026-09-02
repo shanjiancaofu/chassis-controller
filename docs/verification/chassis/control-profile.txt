@@ -12,4 +12,15 @@ max_us: 29
 deadline_miss: 0
 missed_ticks: 0
 idle_result: PASS
-motion_profile: PENDING_MOTOR_POWER_ON
+motion_profile: MEASURED
+motion_state: forward/reverse/in-place left/in-place right
+motion_samples_cumulative: 53457
+motion_min_us: 16
+motion_mean_us: 16
+motion_p50_bucket_upper_us: 100
+motion_p95_bucket_upper_us: 100
+motion_p99_bucket_upper_us: 100
+motion_max_us: 29
+motion_deadline_miss: 0
+motion_missed_ticks: 0
+motion_result: PASS

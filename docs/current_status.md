@@ -27,8 +27,12 @@ toolchain、ELF/BIN/OTA SHA256 与尺寸；hardware validation 字段必须由�
 
 1.0.8 PowerReady 与 HardFault 已复跑：0mV 非零目标被拒绝且 PWM=0；UDF 经 IWDG reset 后记录
 `pc=0x0801AFF6`、`frame=EXTENDED_FP`，同一 Release ELF 定位到 `crash_context.c:49`。idle DWT
-75865 samples 的 min/mean/max 为16/16/29us，deadline_miss=0、missed_ticks=0。motion DWT、basic odom
-和电源开启条件下的完整 CAN command timeout 仍待执行。
+75865 samples 的 min/mean/max 为16/16/29us，deadline_miss=0、missed_ticks=0。
+
+电源开启后补充验证完成：motion DWT 累计53457 samples，min/mean/max 16/16/29us，deadline_miss=0、
+missed_ticks=0；odom directional smoke 为 forward x+、reverse x-、left yaw+、right yaw-，stop 2s 后
+linear/angular=0、PWM=0。完整零速度 CAN 0x101、0x180/181/200/240、200ms command timeout 和300ms
+peer heartbeat timeout 全部 PASS；physical bus-off/unplug 不在 V1 scope。
 
 ## 2026-09-01：1.0.7 crash-frame 修复候选
 

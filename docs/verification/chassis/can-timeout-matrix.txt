@@ -4,6 +4,9 @@ physical_unplug: NOT_PERFORMED_OUT_OF_V1_SCOPE
 stm32_heartbeat: PASS
 peer_heartbeat_timeout: PASS
 power_off_zero_velocity_start: REJECTED_BY_POWER_READY_AS_DESIGNED
-full_zero_velocity_can_path: PENDING_MOTOR_POWER_ON
-command_timeout: PENDING_MOTOR_POWER_ON
+full_zero_velocity_can_path: PASS
+status_channels_0x180_0x181_0x200_0x240: PASS
+command_timeout_200ms: PASS
+peer_heartbeat_timeout_300ms: PASS
+final_regression: PASS
 software_bus_off_injection: NOT_AVAILABLE
