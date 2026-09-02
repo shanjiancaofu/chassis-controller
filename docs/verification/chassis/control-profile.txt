@@ -1,0 +1,15 @@
+firmware: 1.0.8 build1
+date: 2026-09-02
+profile_scope: ControlTask execution time, not ISR-to-task wake latency
+state: STOPPED / motor supply off
+samples: 75865
+min_us: 16
+mean_us: 16
+p50_bucket_upper_us: 100
+p95_bucket_upper_us: 100
+p99_bucket_upper_us: 100
+max_us: 29
+deadline_miss: 0
+missed_ticks: 0
+idle_result: PASS
+motion_profile: PENDING_MOTOR_POWER_ON

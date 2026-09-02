@@ -1,0 +1,11 @@
+firmware: 1.0.8 build1
+date: 2026-09-02
+physical_unplug: NOT_PERFORMED_OUT_OF_V1_SCOPE
+acceptance: ARMED + fault=0x10 + INTERNAL_FAULT + PWM=0/0 + device latency <=510ms
+forward_left_device_latency_ms: 396
+forward_right_device_latency_ms: 84
+reverse_left_device_latency_ms: 84
+reverse_right_device_latency_ms: 84
+all_cases_same_sequence: true
+all_cases_pwm_zero: true
+result: PASS

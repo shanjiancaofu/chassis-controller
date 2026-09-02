@@ -1,0 +1,4 @@
+firmware: 1.0.8 build1
+status: PENDING_MOTOR_POWER_ON
+required: forward x+, reverse x-, left rotate yaw sign, right rotate opposite yaw, stop velocity zero
+metric_calibration: NOT_VERIFIED

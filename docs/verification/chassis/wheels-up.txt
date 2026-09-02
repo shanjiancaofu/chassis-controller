@@ -1,0 +1,10 @@
+firmware: 1.0.8 build1
+date: 2026-09-01
+condition: wheels-up, motor supply approximately 12.0V
+target_plus_50: RUNNING left_speed=40 left_pwm=5698 right_speed=42 right_pwm=6260
+target_plus_100: RUNNING left_speed=66 left_pwm=8000 right_speed=66 right_pwm=8000
+target_minus_50: RUNNING left_speed=-40 left_pwm=-5711 right_speed=-42 right_pwm=-5772
+target_minus_100: RUNNING left_speed=-69 left_pwm=-7929 right_speed=-66 right_pwm=-8000
+stop_state: STOPPED fault=0 PWM=0/0
+target_limit: 100
+result: PASS

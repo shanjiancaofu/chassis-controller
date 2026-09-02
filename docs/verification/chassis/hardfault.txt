@@ -1,0 +1,16 @@
+firmware: 1.0.8 build1
+date: 2026-09-02
+command: hardfault test confirm
+fault: 3
+pc: 0x0801AFF6
+lr: 0x08012A6F
+exc_return: 0xFFFFFFED
+frame: EXTENDED_FP
+cfsr: 0x00010000
+hfsr: 0x40000000
+reset: IWDG
+addr2line_function: CrashContext_TriggerHardFault
+addr2line_location: firmware/application/stm32g474/drivers/crash/crash_context.c:49
+left_pwm_after_reset: 0
+right_pwm_after_reset: 0
+result: PASS

@@ -1,0 +1,10 @@
+firmware: 1.0.8 build1
+date: 2026-09-02
+motor_supply_mv: 0
+command: pid target 100 100
+response: ERROR code=SAFETY_STOP
+control: STOPPED
+fault: 0x00000000
+left_pwm: 0
+right_pwm: 0
+result: PASS

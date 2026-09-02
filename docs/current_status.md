@@ -25,6 +25,11 @@ toolchain、ELF/BIN/OTA SHA256 与尺寸；hardware validation 字段必须由�
 观察到 `ARMED` → `CHASSIS_FAULT_ENCODER` → `INTERNAL_FAULT` → PWM=0；设备时间延迟分别为
 `396/84/84/84ms`（forward-left/right、reverse-left/right），全部 ≤510ms。物理插拔不在 V1 scope。
 
+1.0.8 PowerReady 与 HardFault 已复跑：0mV 非零目标被拒绝且 PWM=0；UDF 经 IWDG reset 后记录
+`pc=0x0801AFF6`、`frame=EXTENDED_FP`，同一 Release ELF 定位到 `crash_context.c:49`。idle DWT
+75865 samples 的 min/mean/max 为16/16/29us，deadline_miss=0、missed_ticks=0。motion DWT、basic odom
+和电源开启条件下的完整 CAN command timeout 仍待执行。
+
 ## 2026-09-01：1.0.7 crash-frame 修复候选
 
 `1.0.6 build1` 已真实 OTA CONFIRMED，并通过 PIN reset、0mV PowerReady 和 DWT baseline；受控 HardFault

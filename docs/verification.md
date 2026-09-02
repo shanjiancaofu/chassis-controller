@@ -39,6 +39,10 @@
 
 V1 的“Target PASS”只允许来自实际目标板/Jetson session；软件测试、静态审查和 CI 不能替代真机证据。
 
+本轮原始摘要证据位于 [`verification/chassis/`](verification/chassis/)：release identity、PowerReady、
+HardFault、encoder software injection、ControlTask profile、CAN timeout、wheels-up 和 odom 分项保存；
+`PENDING` 项不会因同目录其他项目通过而自动升级。
+
 软件故障注入自动化入口：
 
 ```bash
