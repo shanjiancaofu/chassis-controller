@@ -8,6 +8,8 @@
 | 任务 | 先读 | 需要时再读 |
 | --- | --- | --- |
 | 继续当前开发 | `current_status.md` | `roadmap.md`、相关设计文档 |
+| 查看 V1 最终能力与指标 | `v1_validation_overview.md` | `verification.md` |
+| 准备架构讲解与面试 | `v1_architecture_interview.md` | `architecture.md` |
 | 修改代码结构或任务边界 | `architecture.md` | `AGENTS.md` |
 | 修改硬件、引脚或外设 | `hardware.md` | 当前 `.ioc`、`verification.md` |
 | 修改 Bootloader、OTA 或 QSPI | `bootloader_and_ota.md` | `protocol/ota_canfd_protocol.md`、`verification.md` |

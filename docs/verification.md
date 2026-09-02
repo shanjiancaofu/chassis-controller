@@ -48,25 +48,26 @@ HardFault、encoder software injection、ControlTask profile、CAN timeout、whe
 ```bash
 python3 tools/target/run_software_fault_injection.py \
   --serial-port /dev/ttyCH341USB0 \
-  --json _output/test/encoder-software-injection.json
+  --target 100 --side left \
+  --json _output/test/encoder-forward-left.json
 ```
 
-脚本执行 forward/reverse × left/right 四个 case，持续刷新 `±100` target 使系统保持 RUNNING，再发送
-`encoder fail left/right confirm`。每个 case 必须返回 `ARMED`、锁存 fault bit4、两轮 PWM=0；不执行
-任何 physical encoder unplug。
+四个 case 必须独立运行：`--target 100 --side left/right` 与 `--target -100 --side left/right`。每次 fault
+锁存后先 reset，再运行下一 case。脚本持续刷新目标使系统保持 RUNNING，再发送显式 injection；每个 case
+必须返回 `ARMED`、锁存 fault bit4，并在同一 telemetry sequence 看到两轮 PWM=0。不执行 physical unplug。
 
 ### 1.0.8 candidate note
 
 The software encoder injection command was corrected to arm only while the selected wheel is actively
 running above the watchdog output threshold. This is a firmware behavior change, so the candidate is
-`1.0.8 build1`; the board remains on the previously verified `1.0.7 build1` until CI and OTA. The target
-injection Gate must record the `ARMED` response, injection timestamp, fault timestamp, both PWM values and
-the final latched fault. Physical unplug tests remain outside V1 scope.
+`1.0.8 build1`. The target injection Gate records the `ARMED` response and a later paired diagnostic snapshot
+with both PWM values and the final latched fault. Exact ControlTask latch latency is not instrumented; reported
+intervals are diagnostic observation latency. Physical unplug tests remain outside V1 scope.
 
 Current 1.0.8 Release artifacts: flash `114392/491520` bytes, RAM `56152/131072` bytes. BIN `114400` bytes,
 SHA-256 `a0fb1b2b405bfda3ea3098de5decefb87f774b3cfde63c8258fc4961c01355e7`; OTA `114464` bytes,
 SHA-256 `1aec5fbedf3218bba502072ed4da00dc14290473c6ac34dcb600f6e74e8c2ea6`; payload CRC32 `0x2F90B21F`.
-The board remains on `1.0.7 build1` until the 1.0.8 commit and GitHub Actions complete.
+The board is running confirmed `1.0.8 build1`.
 
 ### 1.0.8 target validation update (2026-09-01)
 
@@ -77,9 +78,9 @@ returned to STOPPED/PWM=0 after `pid stop`.
 
 Software encoder injection behavior passed for all four cases (`+100/-100 × left/right`): each returned
 `ARMED`, latched `CHASSIS_FAULT_ENCODER (0x10)`, entered `INTERNAL_FAULT`, and drove both PWM values to zero
-in the same telemetry sequence. Device-timestamp latency was `396ms` (forward-left), `84ms` (forward-right),
-`84ms` (reverse-left), and `84ms` (reverse-right), all within the `510ms` bound. No physical encoder/CAN/
-camera unplug was performed.
+in the same telemetry sequence. Diagnostic observation intervals were `396ms` (forward-left), `84ms`
+(forward-right), `84ms` (reverse-left), and `84ms` (reverse-right). These values are not exact ControlTask
+fault-latch latency; exact latch timing is not instrumented. No physical encoder/CAN/camera unplug was performed.
 
 ## 1.0.7 crash-frame 修复候选（2026-09-01）
 

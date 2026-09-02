@@ -23,6 +23,11 @@ smoke。CAN FD OTA、断电/回滚故障注入、带负载 PID、轮式里程计
 最新摘要见 [`docs/current_status.md`](docs/current_status.md)，完整证据见
 [`docs/verification.md`](docs/verification.md)。
 
+V1 最终入口：
+
+- [V1 验证总览](docs/v1_validation_overview.md)
+- [V1 架构与面试要点](docs/v1_architecture_interview.md)
+
 ## 目录
 
 ```text

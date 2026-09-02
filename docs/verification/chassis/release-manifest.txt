@@ -2,6 +2,7 @@ project: chassis-controller
 firmware_version: 1.0.8
 firmware_build: 1
 firmware_source_commit: c17d89a44c25a354f4c585ce310a880e6b9065d7
+evidence_baseline_commit: f51f436fd6ec4a22a5abb40adcc1e8238268bc29
 toolchain_version: arm-none-eabi-gcc 14.3.1
 application_elf_size: 3033976
 application_elf_sha256: a41b09b469464f25076611578b3535ef78700df1d3a0f9cebf78a70a42bc7100
@@ -11,4 +12,4 @@ application_ota_size: 114464
 application_ota_sha256: 1aec5fbedf3218bba502072ed4da00dc14290473c6ac34dcb600f6e74e8c2ea6
 payload_crc32: 0x2F90B21F
 hardware_validation_date: 2026-09-02
-hardware_validation: PARTIAL_PASS
+hardware_validation: V1_SCOPE_PASS

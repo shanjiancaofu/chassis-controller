@@ -14,16 +14,16 @@ physical hotplug 明确为 V1 scope 外。
 Release/artifact-validation。`tools/release/make-manifest.sh` 自动绑定 firmware、source commit、
 toolchain、ELF/BIN/OTA SHA256 与尺寸；hardware validation 字段必须由真机 session 后填写。
 
-## 2026-09-01：1.0.8 软件 encoder injection candidate
+## 2026-09-02：1.0.8 V1 当前权威状态
 
-`encoder fail left/right confirm` 现在要求系统已 RUNNING 且被测侧 PWM 达到 3500 threshold，直接 arm
-一次性 read failure，不再先获取 self-test lock/Stop；因此 target Gate 真正覆盖运动中 failure →
-`CHASSIS_FAULT_ENCODER` → 两轮 PWM=0。由于行为变化，候选从 `1.0.7 build1` 顺延为 `1.0.8 build1`；
-板上仍是已验证的 `1.0.7`，新候选尚未烧录。
+板上 confirmed Application 为 `1.0.8 build1`。`encoder fail left/right confirm` 要求系统已 RUNNING 且
+被测侧 PWM 达到3500 threshold，直接 arm 一次性 read failure，不再先获取 self-test lock/Stop；target
+Gate 覆盖运动中 failure → `CHASSIS_FAULT_ENCODER` → 两轮 PWM=0。
 
 `1.0.8` 已完成 OTA/CONFIRMED。software encoder injection 四个方向/侧别均已在同一 telemetry sequence
-观察到 `ARMED` → `CHASSIS_FAULT_ENCODER` → `INTERNAL_FAULT` → PWM=0；设备时间延迟分别为
-`396/84/84/84ms`（forward-left/right、reverse-left/right），全部 ≤510ms。物理插拔不在 V1 scope。
+观察到 `ARMED` → `CHASSIS_FAULT_ENCODER` → `INTERNAL_FAULT` → 同一 telemetry sequence PWM=0。状态
+报告观察间隔分别为 `396/84/84/84ms`（forward-left/right、reverse-left/right）；这是 diagnostic
+observation latency，不是精确 ControlTask fault-latch latency。物理插拔不在 V1 scope。
 
 1.0.8 PowerReady 与 HardFault 已复跑：0mV 非零目标被拒绝且 PWM=0；UDF 经 IWDG reset 后记录
 `pc=0x0801AFF6`、`frame=EXTENDED_FP`，同一 Release ELF 定位到 `crash_context.c:49`。idle DWT
