@@ -10,18 +10,20 @@ HardFault、软件 encoder failure injection、CAN timeout/software fault、DWT/
 正常 Argus/GStreamer/Software ISP 链路与性能稳定性。Camera recovery 继续保留软件 fake 行为 PASS，
 physical hotplug 明确为 V1 scope 外。
 
-## 2026-09-03：1.0.9 build2 1 kHz 控制候选
+## 2026-09-03：1.0.9 build3 1 kHz 控制候选
 
 ControlTask/TIM6 已从10ms提升到1ms。CAN velocity、UART/raw wheel target、PID gain和遥测继续使用
 已验证的“10ms等效encoder counts”单位；每次1ms encoder delta按真实elapsed time归一化，避免已有
 `±100`命令突然变成十倍物理速度。目标slew仍为每10ms最多5 counts，换向显式保持10ms零输出，
 feedback watchdog/startup boost/odom均继续使用真实毫秒时间。
 
-`1.0.9 build2` 已OTA CONFIRMED并通过OpenOCD复位。目标板实测
+build2实测发现1ms瞬时encoder量化会令持久化Kd对单点跳变过敏。build3增加10个1ms样本的滑动
+窗口，以10ms累计delta作为控制measurement，并按`1ms/10ms`比例解释内部Kd，保持原调参单位。
+
+`1.0.9 build3` 已OTA CONFIRMED。目标板实测
 `control_period_ms=1`、`control_expected_ms=1`；约31.9万周期及`±20`架空正反转期间
-WCET max为30us，deadline miss/missed tick均为0，停止后STOPPED、fault=0、PWM=0/0。
-本轮源码尚未提交，release manifest因此为`source_dirty=true`；当前结果是Target验证候选，不是最终
-可追溯Release RC。
+WCET max为30us；build3的`±50`连续样本双轮均收敛到目标，12个左右轮样本没有PWM异常归零，
+WCET max为33us，deadline miss/missed tick均为0，停止后STOPPED、fault=0、PWM=0/0。
 
 `chassis-controller` 新增 GitHub Actions：repository-quality、host-unit-tests、ARM Debug、ARM
 Release/artifact-validation。`tools/release/make-manifest.sh` 自动绑定 firmware、source commit、

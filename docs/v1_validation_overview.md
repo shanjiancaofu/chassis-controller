@@ -9,7 +9,7 @@
 | PowerReady | PASS | PASS | 0mV 时非零目标返回 `SAFETY_STOP`，PWM=0/0 | ADC 物理断线 |
 | HardFault / IWDG / symbolication | PASS | PASS | `EXTENDED_FP`，PC 定位 `crash_context.c:49` | — |
 | Encoder API failure fail-close | PASS | PASS | 四组 software injection：fault `0x10`、同 snapshot PWM=0/0 | physical unplug |
-| ControlTask execution profile | PASS | MEASURED | 1ms period候选，约31.9万周期及架空motion max 30us，deadline miss=0 | ISR→task jitter；source_dirty候选待提交后重绑manifest |
+| ControlTask execution profile | PASS | MEASURED | 1ms period；5分钟30万周期、±50 motion max 33us，deadline miss=0 | ISR→task jitter |
 | Wheels-up closed-loop | PASS | PASS | `±50/±100` 双侧反馈、停止 PWM=0 | 带负载 PID 标定 |
 | CAN FD timeout safety | PASS | PASS | 0x101、0x180/181/200/240、200ms command、300ms peer timeout | physical unplug/bus-off |
 | Odometry direction | PASS | PASS | forward x+、reverse x-、left yaw+、right yaw-、stop velocity=0 | metric calibration |
