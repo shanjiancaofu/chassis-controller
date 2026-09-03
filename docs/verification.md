@@ -51,7 +51,7 @@ delta通过10个1ms样本的滑动窗口形成10ms累计measurement；内部Kd�
 PASS。Release flash为`114856/491520`字节，RAM为`56272/131072`字节。build3候选产物：
 
 ```text
-application.elf SHA256 520c8c3c34dc52ddcbff723ad91a65bcd3b8b0a45601aed5b4c059fac800a646
+application.elf SHA256 618ed51f1faee7489406ea1749769c1300b092a8f14aa66870cd7aec275fa6ec
 application.bin SHA256 e0ec13a28626bc3979a76045b105958c895f857bc02af96dec2ff1f98352f37b
 app-v1.0.9-b3.ota SHA256 c133a75e4f7ca68c73076253cc118ddad4ad886522d99bbf06291a24200ab18d
 OTA payload CRC32 0xD3DAB4F2
@@ -59,12 +59,14 @@ OTA payload CRC32 0xD3DAB4F2
 
 Target结果：UART OTA达到CONFIRMED。实测
 `control_period_ms=1`、`control_expected_ms=1`、`odom_period_ms=1`。累计约318870个控制样本，
-以及clean build2对应的5分钟30万周期零目标稳态均无deadline miss/missed tick。build3的`+50/-50`
+以及1kHz候选的5分钟30万周期零目标稳态均无deadline miss/missed tick。build3的`+50/-50`
 架空连续采样中，两轮速度分别收敛到`±50`，左右各12个有效样本均无PWM异常归零；WCET max为
 `33us`。最终回归为STOPPED、fault=0、PWM=0/0。
 
-build3源码、clean manifest和OpenOCD复位仍待提交后的最终绑定；当前标记为
-`HARDWARE PASS CANDIDATE`，不提前声明Final Freeze。
+clean source commit `bbfc833b1e3bc6d5c372e7c85fcdaf844674c5ad`生成的BIN/OTA hash与板上
+build3完全一致；OpenOCD复位后Application startup、STOPPED/fault=0/PWM=0和1ms任务状态PASS。
+GitHub Actions #12的quality、host、ARM Debug、ARM Release全部PASS。本节状态为
+`HARDWARE PASS / V1_SCOPE_PASS`；最终evidence commit只改变文档，不改变固件字节。
 
 本轮原始摘要证据位于 [`verification/chassis/`](verification/chassis/)：release identity、PowerReady、
 HardFault、encoder software injection、ControlTask profile、CAN timeout、wheels-up 和 odom 分项保存；

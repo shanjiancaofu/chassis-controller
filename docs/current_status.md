@@ -24,6 +24,8 @@ build2实测发现1ms瞬时encoder量化会令持久化Kd对单点跳变过敏�
 `control_period_ms=1`、`control_expected_ms=1`；约31.9万周期及`±20`架空正反转期间
 WCET max为30us；build3的`±50`连续样本双轮均收敛到目标，12个左右轮样本没有PWM异常归零，
 WCET max为33us，deadline miss/missed tick均为0，停止后STOPPED、fault=0、PWM=0/0。
+提交后clean build的BIN/OTA与板上镜像逐字节hash一致，OpenOCD复位回归和GitHub Actions四项均PASS；
+chassis 1kHz V1范围现已Freeze。
 
 `chassis-controller` 新增 GitHub Actions：repository-quality、host-unit-tests、ARM Debug、ARM
 Release/artifact-validation。`tools/release/make-manifest.sh` 自动绑定 firmware、source commit、
