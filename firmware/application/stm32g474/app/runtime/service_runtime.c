@@ -62,8 +62,8 @@ static bool IsDue(uint32_t now_ms, uint32_t due_ms) {
 }
 
 static bool RunStartupArming(uint32_t now_ms) {
-  const bool asserted = emergency_stop_is_asserted(
-      DEVICE_DT_GET(DT_CHOSEN(chassis_estop)));
+  const bool asserted =
+      emergency_stop_is_asserted(DEVICE_DT_GET(DT_CHOSEN(chassis_estop)));
 
   if (!SafetyManager_IsStarting()) {
     return true;
@@ -181,9 +181,9 @@ static uint8_t ProtocolControlState(ChassisControlState state) {
   }
 }
 
-static ChassisProtocolNodeState ProtocolNodeState(
-    const SystemStatusSnapshot *status, uint32_t active_faults,
-    bool protocol_critical_fault) {
+static ChassisProtocolNodeState
+ProtocolNodeState(const SystemStatusSnapshot *status, uint32_t active_faults,
+                  bool protocol_critical_fault) {
   if (OtaSession_IsActive() || status->motor_test.running ||
       QspiSelfTest_GetStatus() == QSPI_SELF_TEST_RUNNING) {
     return CHASSIS_PROTOCOL_NODE_MAINTENANCE;
@@ -230,17 +230,13 @@ static void PublishChassisStatus(uint32_t now_ms) {
   if (!fault_sequence_sent || fault_sequence != last_fault_sequence_sent ||
       IsDue(now_ms, fault_tx_due_ms)) {
     const ChassisProtocolFaultStatus fault = {
-        .severity = protocol_critical_fault
-                        ? CHASSIS_PROTOCOL_FAULT_CRITICAL
-                        : active_faults != 0U
-                              ? CHASSIS_PROTOCOL_FAULT_WARNING
-                              : CHASSIS_PROTOCOL_FAULT_NONE,
-        .flags = (active_faults != 0U
-                      ? CHASSIS_PROTOCOL_FAULT_FLAG_ACTIVE
-                      : 0U) |
-                 (protocol_critical_fault
-                      ? CHASSIS_PROTOCOL_FAULT_FLAG_CRITICAL
-                      : 0U),
+        .severity = protocol_critical_fault ? CHASSIS_PROTOCOL_FAULT_CRITICAL
+                    : active_faults != 0U   ? CHASSIS_PROTOCOL_FAULT_WARNING
+                                            : CHASSIS_PROTOCOL_FAULT_NONE,
+        .flags =
+            (active_faults != 0U ? CHASSIS_PROTOCOL_FAULT_FLAG_ACTIVE : 0U) |
+            (protocol_critical_fault ? CHASSIS_PROTOCOL_FAULT_FLAG_CRITICAL
+                                     : 0U),
         .active_faults = active_faults,
         .latched_faults = latched_faults,
         .fault_sequence = fault_sequence,
@@ -254,8 +250,8 @@ static void PublishChassisStatus(uint32_t now_ms) {
   }
   if (IsDue(now_ms, heartbeat_tx_due_ms)) {
     const ChassisProtocolHeartbeat heartbeat = {
-        .node_state = ProtocolNodeState(&status, active_faults,
-                                        protocol_critical_fault),
+        .node_state =
+            ProtocolNodeState(&status, active_faults, protocol_critical_fault),
         .flags = CHASSIS_PROTOCOL_HEARTBEAT_FLAG_SENDER_READY,
         .uptime_ms = now_ms,
         .fault_summary = (uint16_t)active_faults,
@@ -276,9 +272,9 @@ static void PublishChassisStatus(uint32_t now_ms) {
         .running = status.control_state == CHASSIS_CONTROL_RUNNING,
         .control_state = ProtocolControlState(status.control_state),
         .left_velocity_mm_s = WheelDeltaToMillimetersPerSecond(
-            wheels.left_measurement, MOTOR_CONTROL_PERIOD_MS),
+            wheels.left_measurement, MOTOR_CONTROL_REFERENCE_PERIOD_MS),
         .right_velocity_mm_s = WheelDeltaToMillimetersPerSecond(
-            wheels.right_measurement, MOTOR_CONTROL_PERIOD_MS),
+            wheels.right_measurement, MOTOR_CONTROL_REFERENCE_PERIOD_MS),
         .linear_velocity_mm_s =
             RoundToI16(odometry.linear_velocity_mps * 1000.0f),
         .angular_velocity_mrad_s =
@@ -475,7 +471,7 @@ void ServiceRuntime_Run(void) {
             control_command.target.velocity.linear_velocity_mm_s,
             control_command.target.velocity.angular_velocity_mrad_s,
             MOTOR_ENCODER_COUNTS_PER_REVOLUTION, CHASSIS_WHEEL_DIAMETER_M,
-            CHASSIS_TRACK_WIDTH_M, MOTOR_CONTROL_PERIOD_MS,
+            CHASSIS_TRACK_WIDTH_M, MOTOR_CONTROL_REFERENCE_PERIOD_MS,
             MOTOR_CONTROL_TARGET_LIMIT, &left_target, &right_target);
       } else {
         left_target = control_command.target.wheel_raw.left_target;
@@ -543,10 +539,8 @@ void ServiceRuntime_Run(void) {
     ControlRuntime_EmergencyStopOutputs();
   }
   if (OtaSession_IsResetRequested(now_ms) &&
-      ((OtaSession_GetSource() == OTA_SOURCE_UART &&
-        OtaUart_IsTxIdle()) ||
-       (OtaSession_GetSource() == OTA_SOURCE_CAN_FD &&
-        OtaCan_IsTxIdle()))) {
+      ((OtaSession_GetSource() == OTA_SOURCE_UART && OtaUart_IsTxIdle()) ||
+       (OtaSession_GetSource() == OTA_SOURCE_CAN_FD && OtaCan_IsTxIdle()))) {
     ControlRuntime_Stop();
     ControlRuntime_CoastOutputs();
     if (watchdog_prepare_for_bootloader()) {

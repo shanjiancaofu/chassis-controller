@@ -22,6 +22,8 @@
 
 /* USER CODE BEGIN 0 */
 
+#include "config/control_config.h"
+
 /* USER CODE END 0 */
 
 TIM_HandleTypeDef htim2;
@@ -201,6 +203,9 @@ void MX_TIM6_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM6_Init 2 */
+
+  __HAL_TIM_SET_AUTORELOAD(&htim6, (1000U * MOTOR_CONTROL_PERIOD_MS) - 1U);
+  __HAL_TIM_SET_COUNTER(&htim6, 0U);
 
   /* USER CODE END TIM6_Init 2 */
 
@@ -526,4 +531,3 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef* tim_pwmHandle)
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
-

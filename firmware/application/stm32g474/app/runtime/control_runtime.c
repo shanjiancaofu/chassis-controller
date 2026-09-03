@@ -3,8 +3,8 @@
 #include <limits.h>
 #include <stddef.h>
 
-#include "app/chassis/odometry.h"
 #include "app/chassis/feedback_watchdog.h"
+#include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
 #include "app/diagnostics/board_health.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
@@ -42,6 +42,7 @@ static volatile bool inject_right_encoder_failure;
 static void ReleaseMotionOwner(void);
 static void ApplyPendingControlParameters(void);
 static bool PowerReady(uint32_t now_ms);
+static int32_t NormalizeEncoderDelta(int32_t delta, uint32_t elapsed_ms);
 
 static int16_t GetLeftMotorAppliedDuty(void) {
   return motor_get_applied_duty(drive_device, MOTOR_LEFT);
@@ -98,8 +99,7 @@ void ControlRuntime_NotifyEmergencyStopFromIsr(void) {
 }
 
 bool ControlRuntime_TakeEmergencyStopEvent(void) {
-  return __atomic_exchange_n(&emergency_stop_event, false,
-                             __ATOMIC_ACQ_REL);
+  return __atomic_exchange_n(&emergency_stop_event, false, __ATOMIC_ACQ_REL);
 }
 
 void ControlRuntime_StopForEmergencyStopEvent(void) {
@@ -166,6 +166,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
   int64_t max_encoder_delta;
   int64_t left_abs_delta;
   int64_t right_abs_delta;
+  uint32_t elapsed_ms;
   bool command_available;
   uint32_t missed_ticks;
   const uint32_t now_ms = time_uptime_ms();
@@ -174,6 +175,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
     return;
   }
   missed_ticks = notification_count - 1U;
+  elapsed_ms = MOTOR_CONTROL_PERIOD_MS * notification_count;
   if (missed_ticks > 0U) {
     BoardHealth_RecordControlOverrun(missed_ticks);
     ++consecutive_control_overruns;
@@ -188,8 +190,7 @@ void ControlRuntime_Run(uint32_t notification_count) {
   }
 
   left_encoder_result =
-      __atomic_exchange_n(&inject_left_encoder_failure, false,
-                          __ATOMIC_ACQ_REL)
+      __atomic_exchange_n(&inject_left_encoder_failure, false, __ATOMIC_ACQ_REL)
           ? -1
           : encoder_read_delta(left_encoder_device, &left_delta);
   right_encoder_result =
@@ -202,7 +203,9 @@ void ControlRuntime_Run(uint32_t notification_count) {
     return;
   }
   max_encoder_delta =
-      (int64_t)MOTOR_ENCODER_MAX_DELTA_PER_TICK * notification_count;
+      ((int64_t)MOTOR_ENCODER_MAX_DELTA_PER_REFERENCE_PERIOD * elapsed_ms +
+       MOTOR_CONTROL_REFERENCE_PERIOD_MS - 1U) /
+      MOTOR_CONTROL_REFERENCE_PERIOD_MS;
   left_abs_delta = left_delta < 0 ? -(int64_t)left_delta : left_delta;
   right_abs_delta = right_delta < 0 ? -(int64_t)right_delta : right_delta;
   if (left_abs_delta > max_encoder_delta ||
@@ -219,13 +222,12 @@ void ControlRuntime_Run(uint32_t notification_count) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_UNDERVOLTAGE);
     return;
   }
-  if (!Odometry_Update(left_delta, right_delta, now_ms,
-                       MOTOR_CONTROL_PERIOD_MS * notification_count)) {
+  if (!Odometry_Update(left_delta, right_delta, now_ms, elapsed_ms)) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_INTERNAL);
     return;
   }
-  left_measurement = left_delta / (int32_t)notification_count;
-  right_measurement = right_delta / (int32_t)notification_count;
+  left_measurement = NormalizeEncoderDelta(left_delta, elapsed_ms);
+  right_measurement = NormalizeEncoderDelta(right_delta, elapsed_ms);
   ApplyPendingControlParameters();
   if (SafetyManager_IsEmergencyStopLatched()) {
     kernel_critical_enter();
@@ -287,12 +289,21 @@ void ControlRuntime_Run(uint32_t notification_count) {
         .left_output = wheels.left_output,
         .right_output = wheels.right_output,
     };
-    if (!FeedbackWatchdog_Update(
-            &feedback_watchdog, &sample,
-            MOTOR_CONTROL_PERIOD_MS * notification_count)) {
+    if (!FeedbackWatchdog_Update(&feedback_watchdog, &sample,
+                                 MOTOR_CONTROL_PERIOD_MS *
+                                     notification_count)) {
       ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER);
     }
   }
+}
+
+static int32_t NormalizeEncoderDelta(int32_t delta, uint32_t elapsed_ms) {
+  const int64_t scaled = (int64_t)delta * MOTOR_CONTROL_REFERENCE_PERIOD_MS;
+
+  if (elapsed_ms == 0U) {
+    return 0;
+  }
+  return (int32_t)(scaled / (int64_t)elapsed_ms);
 }
 
 bool ControlRuntime_ArmEncoderReadFailure(bool left) {
@@ -335,8 +346,7 @@ bool ControlRuntime_AcquireSelfTestLock(void) {
   if (IwdgSelfTest_IsResetRequested() ||
       QspiSelfTest_GetStatus() == QSPI_SELF_TEST_RUNNING ||
       OtaConfirmation_IsUsingQspi() || ParameterStorage_IsUsingQspi() ||
-      OtaSession_IsActive() || OtaUart_IsEnabled() ||
-      motor_test.running) {
+      OtaSession_IsActive() || OtaUart_IsEnabled() || motor_test.running) {
     return false;
   }
   ControlRuntime_Stop();

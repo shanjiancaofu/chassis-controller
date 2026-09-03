@@ -13,39 +13,29 @@ static uint32_t apply_count;
 static uint32_t coast_count;
 static uint32_t emergency_stop_count;
 
-static void FakeCoastAll(void)
-{
+static void FakeCoastAll(void) {
   ++coast_count;
   applied_left = 0;
   applied_right = 0;
 }
 
-static void FakeEmergencyStop(void)
-{
+static void FakeEmergencyStop(void) {
   ++emergency_stop_count;
   applied_left = 0;
   applied_right = 0;
 }
 
-static void FakeSetSignedDutyBoth(int16_t left_duty, int16_t right_duty)
-{
+static void FakeSetSignedDutyBoth(int16_t left_duty, int16_t right_duty) {
   ++apply_count;
   applied_left = left_duty;
   applied_right = right_duty;
 }
 
-static int16_t FakeGetLeftAppliedDuty(void)
-{
-  return applied_left;
-}
+static int16_t FakeGetLeftAppliedDuty(void) { return applied_left; }
 
-static int16_t FakeGetRightAppliedDuty(void)
-{
-  return applied_right;
-}
+static int16_t FakeGetRightAppliedDuty(void) { return applied_right; }
 
-int main(void)
-{
+int main(void) {
   const WheelControllerMotorPort motor_port = {
       .coast_all = FakeCoastAll,
       .emergency_stop = FakeEmergencyStop,
@@ -61,15 +51,31 @@ int main(void)
   assert(!WheelController_Update(1, 1, 0, 0, 0U));
   assert(!WheelController_Update(101, 0, 0, 0, 1U));
   assert(WheelController_Update(5, -5, 0, 0, 1U));
-  assert(apply_count == 1U);
+  WheelController_GetSnapshot(&snapshot);
+  assert(snapshot.left_target == 0);
+  assert(snapshot.right_target == 0);
+  assert(WheelController_Update(5, -5, 0, 0, 1U));
+  assert(apply_count == 2U);
   assert(applied_left > 0);
   assert(applied_right < 0);
 
   WheelController_GetSnapshot(&snapshot);
-  assert(snapshot.left_target == 5);
-  assert(snapshot.right_target == -5);
+  assert(snapshot.left_target == 1);
+  assert(snapshot.right_target == -1);
   assert(snapshot.left_output == applied_left);
   assert(snapshot.right_output == applied_right);
+
+  for (int i = 0; i < 10; ++i) {
+    assert(WheelController_Update(-5, 5, 0, 0, 1U));
+    WheelController_GetSnapshot(&snapshot);
+    assert(snapshot.left_target == 0);
+  }
+  assert(WheelController_Update(-5, 5, 0, 0, 1U));
+  WheelController_GetSnapshot(&snapshot);
+  assert(snapshot.left_target == 0);
+  assert(WheelController_Update(-5, 5, 0, 0, 1U));
+  WheelController_GetSnapshot(&snapshot);
+  assert(snapshot.left_target == -1);
 
   WheelController_Stop();
   assert(coast_count == 1U);
@@ -91,10 +97,10 @@ int main(void)
   WheelController_Stop();
   WheelController_ApplyPidGains(WHEEL_CONTROLLER_LEFT, 0U, 10000U, 0U);
   WheelController_ApplyPidGains(WHEEL_CONTROLLER_RIGHT, 0U, 10000U, 0U);
-  assert(WheelController_Update(5, 5, 2, 2, 1U));
+  assert(WheelController_Update(5, 5, 2, 2, 10U));
   assert(applied_left == 300 && applied_right == 300);
   WheelController_Stop();
-  assert(WheelController_Update(5, 5, 2, 2, 3U));
+  assert(WheelController_Update(5, 5, 2, 2, 30U));
   assert(applied_left == 900 && applied_right == 900);
   return 0;
 }

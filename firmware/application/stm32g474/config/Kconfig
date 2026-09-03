@@ -75,7 +75,7 @@ config SERVICE_TASK_PERIOD_MS
 
 config CONTROL_TASK_PERIOD_MS
     int
-    default 10
+    default 1
     range 1 1000
 
 config DIAGNOSTICS_TASK_PERIOD_MS

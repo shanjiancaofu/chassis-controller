@@ -3,8 +3,9 @@
 #include <stddef.h>
 
 #include "FreeRTOS.h"
-#include "task.h"
+#include "config/control_config.h"
 #include "stm32g4xx.h"
+#include "task.h"
 
 #define CONTROL_PROFILE_BUCKET_US 100U
 #define CONTROL_PROFILE_BUCKET_COUNT 101U
@@ -30,6 +31,8 @@ static StackType_t display_task_stack[CONFIG_DISPLAY_TASK_STACK_SIZE];
 
 _Static_assert(CONFIG_CONTROL_TASK_PRIORITY < configMAX_PRIORITIES,
                "control task priority invalid");
+_Static_assert(CONFIG_CONTROL_TASK_PERIOD_MS == MOTOR_CONTROL_PERIOD_MS,
+               "control task period must match the TIM6/PID period");
 _Static_assert(CONFIG_SERVICE_TASK_PRIORITY < CONFIG_CONTROL_TASK_PRIORITY,
                "service task must be below control");
 _Static_assert(CONFIG_DIAGNOSTICS_TASK_PRIORITY < CONFIG_SERVICE_TASK_PRIORITY,
@@ -82,8 +85,7 @@ static void ControlProfile_Record(uint32_t elapsed_cycles,
 static uint32_t ControlProfile_Percentile(uint32_t percentile);
 static void ControlProfile_Get(ControlProfileSnapshot *snapshot);
 
-bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
-{
+bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks) {
   const TickType_t now = xTaskGetTickCount();
 
   if (callbacks == NULL || callbacks->start_control_clock == NULL ||
@@ -103,11 +105,11 @@ bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
   control_task_handle = xTaskCreateStatic(
       RtosApp_ControlTaskMain, "control", CONFIG_CONTROL_TASK_STACK_SIZE, NULL,
       CONFIG_CONTROL_TASK_PRIORITY, control_task_stack, &control_task_buffer);
-  diagnostics_task_handle = xTaskCreateStatic(
-      RtosApp_DiagnosticsTaskMain, "diagnostics", CONFIG_DIAGNOSTICS_TASK_STACK_SIZE,
-      NULL,
-      CONFIG_DIAGNOSTICS_TASK_PRIORITY, diagnostics_task_stack,
-      &diagnostics_task_buffer);
+  diagnostics_task_handle =
+      xTaskCreateStatic(RtosApp_DiagnosticsTaskMain, "diagnostics",
+                        CONFIG_DIAGNOSTICS_TASK_STACK_SIZE, NULL,
+                        CONFIG_DIAGNOSTICS_TASK_PRIORITY,
+                        diagnostics_task_stack, &diagnostics_task_buffer);
   display_task_handle = xTaskCreateStatic(
       RtosApp_DisplayTaskMain, "display", CONFIG_DISPLAY_TASK_STACK_SIZE, NULL,
       CONFIG_DISPLAY_TASK_PRIORITY, display_task_stack, &display_task_buffer);
@@ -155,8 +157,7 @@ bool RtosApp_CreateTasks(const RtosAppCallbacks *callbacks)
          display_task_handle != NULL;
 }
 
-void RtosApp_ServiceTaskMain(void *argument)
-{
+void RtosApp_ServiceTaskMain(void *argument) {
   (void)argument;
   TickType_t last_wake_time = xTaskGetTickCount();
 
@@ -172,8 +173,7 @@ void RtosApp_ServiceTaskMain(void *argument)
   }
 }
 
-void RtosApp_DiagnosticsTaskMain(void *argument)
-{
+void RtosApp_DiagnosticsTaskMain(void *argument) {
   (void)argument;
   TickType_t last_wake_time = xTaskGetTickCount();
 
@@ -188,8 +188,7 @@ void RtosApp_DiagnosticsTaskMain(void *argument)
   }
 }
 
-void RtosApp_DisplayTaskMain(void *argument)
-{
+void RtosApp_DisplayTaskMain(void *argument) {
   (void)argument;
   TickType_t last_wake_time = xTaskGetTickCount();
 
@@ -204,8 +203,7 @@ void RtosApp_DisplayTaskMain(void *argument)
   }
 }
 
-bool RtosApp_AreCriticalTasksHealthy(void)
-{
+bool RtosApp_AreCriticalTasksHealthy(void) {
   const TickType_t now = xTaskGetTickCount();
 
   return __atomic_load_n(&service_task_started, __ATOMIC_ACQUIRE) &&
@@ -223,14 +221,13 @@ bool RtosApp_AreCriticalTasksHealthy(void)
              RTOS_APP_TASK_RUNNING &&
          GetTaskHealthState(
              true,
-             now - __atomic_load_n(&diagnostics_task_heartbeat,
-                                   __ATOMIC_RELAXED),
+             now -
+                 __atomic_load_n(&diagnostics_task_heartbeat, __ATOMIC_RELAXED),
              pdMS_TO_TICKS(CONFIG_DIAGNOSTICS_TASK_TIMEOUT_MS)) ==
              RTOS_APP_TASK_RUNNING;
 }
 
-void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
-{
+void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot) {
   TickType_t now;
   TickType_t service_age;
   TickType_t control_age;
@@ -242,11 +239,14 @@ void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
   }
 
   now = xTaskGetTickCount();
-  service_age = now - __atomic_load_n(&service_task_heartbeat, __ATOMIC_RELAXED);
-  control_age = now - __atomic_load_n(&control_task_heartbeat, __ATOMIC_RELAXED);
+  service_age =
+      now - __atomic_load_n(&service_task_heartbeat, __ATOMIC_RELAXED);
+  control_age =
+      now - __atomic_load_n(&control_task_heartbeat, __ATOMIC_RELAXED);
   diagnostics_age =
       now - __atomic_load_n(&diagnostics_task_heartbeat, __ATOMIC_RELAXED);
-  display_age = now - __atomic_load_n(&display_task_heartbeat, __ATOMIC_RELAXED);
+  display_age =
+      now - __atomic_load_n(&display_task_heartbeat, __ATOMIC_RELAXED);
 
   snapshot->uptime_ms = TicksToMilliseconds(now);
   snapshot->service_heartbeat_age_ms = TicksToMilliseconds(service_age);
@@ -269,11 +269,14 @@ void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
   snapshot->control_timeout_ms = CONFIG_CONTROL_TASK_TIMEOUT_MS;
   snapshot->diagnostics_timeout_ms = CONFIG_DIAGNOSTICS_TASK_TIMEOUT_MS;
   snapshot->display_timeout_ms = CONFIG_DISPLAY_TASK_TIMEOUT_MS;
-  snapshot->service_run_count = __atomic_load_n(&service_run_count, __ATOMIC_RELAXED);
-  snapshot->control_run_count = __atomic_load_n(&control_run_count, __ATOMIC_RELAXED);
+  snapshot->service_run_count =
+      __atomic_load_n(&service_run_count, __ATOMIC_RELAXED);
+  snapshot->control_run_count =
+      __atomic_load_n(&control_run_count, __ATOMIC_RELAXED);
   snapshot->diagnostics_run_count =
       __atomic_load_n(&diagnostics_run_count, __ATOMIC_RELAXED);
-  snapshot->display_run_count = __atomic_load_n(&display_run_count, __ATOMIC_RELAXED);
+  snapshot->display_run_count =
+      __atomic_load_n(&display_run_count, __ATOMIC_RELAXED);
   {
     ControlProfileSnapshot profile;
 
@@ -324,13 +327,12 @@ void RtosApp_GetRuntimeSnapshot(RtosAppRuntimeSnapshot *snapshot)
       snapshot->diagnostics_task_state == RTOS_APP_TASK_RUNNING;
   snapshot->display_task_healthy =
       snapshot->display_task_state == RTOS_APP_TASK_RUNNING;
-  snapshot->critical_tasks_healthy =
-      snapshot->service_task_healthy && snapshot->control_task_healthy &&
-      snapshot->diagnostics_task_healthy;
+  snapshot->critical_tasks_healthy = snapshot->service_task_healthy &&
+                                     snapshot->control_task_healthy &&
+                                     snapshot->diagnostics_task_healthy;
 }
 
-void RtosApp_NotifyControlTaskFromIsr(void)
-{
+void RtosApp_NotifyControlTaskFromIsr(void) {
   BaseType_t higher_priority_task_woken = pdFALSE;
 
   if (control_task_handle == NULL) {
@@ -341,8 +343,7 @@ void RtosApp_NotifyControlTaskFromIsr(void)
   portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
-static void RtosApp_ControlTaskMain(void *argument)
-{
+static void RtosApp_ControlTaskMain(void *argument) {
   (void)argument;
 
   if (!app_callbacks.start_control_clock()) {
@@ -354,8 +355,7 @@ static void RtosApp_ControlTaskMain(void *argument)
 
   __atomic_store_n(&control_task_started, true, __ATOMIC_RELEASE);
   for (;;) {
-    const uint32_t notification_count =
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    const uint32_t notification_count = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     const uint32_t started_cycles = DWT->CYCCNT;
 
     RecordTaskActivity(&control_task_started, &control_task_heartbeat,
@@ -366,8 +366,7 @@ static void RtosApp_ControlTaskMain(void *argument)
   }
 }
 
-static void ControlProfile_Init(void)
-{
+static void ControlProfile_Init(void) {
   uint32_t index;
 
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
@@ -382,16 +381,14 @@ static void ControlProfile_Init(void)
 }
 
 static void ControlProfile_Record(uint32_t elapsed_cycles,
-                                  uint32_t notification_count)
-{
-  const uint32_t elapsed_us = SystemCoreClock == 0U
-                                  ? 0U
-                                  : (uint32_t)(((uint64_t)elapsed_cycles *
-                                                1000000ULL) /
-                                               SystemCoreClock);
+                                  uint32_t notification_count) {
+  const uint32_t elapsed_us =
+      SystemCoreClock == 0U
+          ? 0U
+          : (uint32_t)(((uint64_t)elapsed_cycles * 1000000ULL) /
+                       SystemCoreClock);
   const uint32_t deadline_cycles =
-      (uint32_t)(((uint64_t)SystemCoreClock *
-                  CONFIG_CONTROL_TASK_PERIOD_MS) /
+      (uint32_t)(((uint64_t)SystemCoreClock * CONFIG_CONTROL_TASK_PERIOD_MS) /
                  1000ULL);
   uint32_t bucket = elapsed_us / CONTROL_PROFILE_BUCKET_US;
 
@@ -404,9 +401,8 @@ static void ControlProfile_Record(uint32_t elapsed_cycles,
       control_profile.samples == 1U || elapsed_us < control_profile.min_us
           ? elapsed_us
           : control_profile.min_us;
-  control_profile.max_us = elapsed_us > control_profile.max_us
-                               ? elapsed_us
-                               : control_profile.max_us;
+  control_profile.max_us =
+      elapsed_us > control_profile.max_us ? elapsed_us : control_profile.max_us;
   control_profile_total_us += elapsed_us;
   control_profile.mean_us =
       (uint32_t)(control_profile_total_us / control_profile.samples);
@@ -423,10 +419,9 @@ static void ControlProfile_Record(uint32_t elapsed_cycles,
   (void)__atomic_fetch_add(&control_profile_sequence, 1U, __ATOMIC_SEQ_CST);
 }
 
-static uint32_t ControlProfile_Percentile(uint32_t percentile)
-{
-  const uint32_t target = (uint32_t)(
-      ((uint64_t)control_profile.samples * percentile + 99U) / 100U);
+static uint32_t ControlProfile_Percentile(uint32_t percentile) {
+  const uint32_t target =
+      (uint32_t)(((uint64_t)control_profile.samples * percentile + 99U) / 100U);
   uint32_t cumulative = 0U;
   uint32_t index;
 
@@ -439,8 +434,7 @@ static uint32_t ControlProfile_Percentile(uint32_t percentile)
   return CONTROL_PROFILE_BUCKET_COUNT * CONTROL_PROFILE_BUCKET_US;
 }
 
-static void ControlProfile_Get(ControlProfileSnapshot *snapshot)
-{
+static void ControlProfile_Get(ControlProfileSnapshot *snapshot) {
   uint32_t before;
   uint32_t after;
 
@@ -455,15 +449,12 @@ static void ControlProfile_Get(ControlProfileSnapshot *snapshot)
   } while (before != after || (after & 1U) != 0U);
 }
 
-static uint32_t TicksToMilliseconds(TickType_t ticks)
-{
-  return (uint32_t)(((uint64_t)ticks * 1000ULL) /
-                    (uint64_t)configTICK_RATE_HZ);
+static uint32_t TicksToMilliseconds(TickType_t ticks) {
+  return (uint32_t)(((uint64_t)ticks * 1000ULL) / (uint64_t)configTICK_RATE_HZ);
 }
 
 static RtosAppTaskState GetTaskHealthState(bool started, TickType_t age,
-                                           TickType_t timeout)
-{
+                                           TickType_t timeout) {
   if (!started) {
     return RTOS_APP_TASK_NOT_STARTED;
   }
@@ -474,11 +465,9 @@ static void RecordTaskActivity(volatile bool *started,
                                volatile TickType_t *heartbeat,
                                volatile TickType_t *last_run,
                                volatile uint32_t *run_count,
-                               volatile TickType_t *period)
-{
+                               volatile TickType_t *period) {
   const TickType_t now = xTaskGetTickCount();
-  const uint32_t previous_count =
-      __atomic_load_n(run_count, __ATOMIC_RELAXED);
+  const uint32_t previous_count = __atomic_load_n(run_count, __ATOMIC_RELAXED);
   const TickType_t previous = __atomic_load_n(last_run, __ATOMIC_RELAXED);
 
   if (previous_count > 0U) {

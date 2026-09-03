@@ -10,13 +10,11 @@
 #include "subsys/communication/can/chassis_protocol.h"
 #include "subsys/communication/can/chassis_protocol_ids.h"
 
-static int Send(const struct can_frame *frame)
-{
+static int Send(const struct can_frame *frame) {
   return frame != NULL ? 0 : -1;
 }
 
-int main(void)
-{
+int main(void) {
   const ChassisProtocolPort port = {.send = Send};
   ChassisProtocolVelocityCommand velocity = {
       .enabled = true,
@@ -48,7 +46,7 @@ int main(void)
       control.target.velocity.linear_velocity_mm_s,
       control.target.velocity.angular_velocity_mrad_s,
       MOTOR_ENCODER_COUNTS_PER_REVOLUTION, CHASSIS_WHEEL_DIAMETER_M,
-      CHASSIS_TRACK_WIDTH_M, MOTOR_CONTROL_PERIOD_MS,
+      CHASSIS_TRACK_WIDTH_M, MOTOR_CONTROL_REFERENCE_PERIOD_MS,
       MOTOR_CONTROL_TARGET_LIMIT, &left_target, &right_target));
   assert(left_target == 32 && right_target == 32);
   assert(CommandManager_Submit(&(CommandManagerCommand){
