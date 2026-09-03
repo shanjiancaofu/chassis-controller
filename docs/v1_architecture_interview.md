@@ -5,7 +5,7 @@ flowchart LR
     J[Jetson / CAN FD] --> P[Protocol codec + ordering]
     P --> C[CommandManager / authority]
     C --> S[SafetyManager + FaultManager]
-    T[TIM7 10ms notify] --> R[ControlTask]
+    T[TIM6 1ms notify] --> R[ControlTask]
     R --> E[Encoder read + validation]
     R --> W[FeedbackWatchdog]
     R --> PID[Wheel PID + startup boost]
@@ -18,7 +18,7 @@ flowchart LR
 
 ## 项目亮点
 
-1. STM32G474 + FreeRTOS 的10ms双轮闭环，控制任务实测 max 29us。
+1. STM32G474 + FreeRTOS 的1ms双轮闭环；1.0.9 build2架空实测 max 30us、零deadline miss。
 2. CAN FD command/heartbeat/sequence timeout 与 authority ownership 一体化 fail-close。
 3. 正反转 encoder feedback-loss 使用幅值阈值和 elapsed-tick 语义，software injection 四象限验证。
 4. HardFault 先清零PWM，再持久化 Cortex-M4F basic/extended frame，重启后可由同一ELF定位。

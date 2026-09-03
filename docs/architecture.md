@@ -10,7 +10,7 @@ Jetson 的运动命令，在 STM32 内完成双轮控制、安全保护和状态
 
 STM32 负责：
 
-- 100 Hz 双轮速度控制和编码器采集
+- 1 kHz双轮速度控制和编码器采集；命令/PID继续使用10ms等效encoder-count单位
 - 电机 PWM、方向切换和零输出
 - 急停、命令超时、故障锁存和看门狗
 - ADC、RTC、QSPI、LCD、按键和板级诊断
@@ -171,7 +171,7 @@ chassis-controller/
 ### `app`
 
 负责产品生命周期、业务域和跨模块流程。`chassis_app.c` 只保留 `SYS_INIT` 和对 RTOS 暴露的
-正式入口；`runtime/app_bootstrap` 装配设备和端口，`control_runtime` 协调 100 Hz 控制，
+正式入口；`runtime/app_bootstrap` 装配设备和端口，`control_runtime` 协调1kHz控制，
 `service_runtime` 协调 UART/CAN/OTA/参数保存和维护，diagnostics/display runtime 分别推进诊断
 与界面。Console、维护、自检、参数和诊断实现留在对应产品域，不进入通用 subsystem。
 
@@ -308,7 +308,7 @@ kernel
 
 | 任务 | 周期/触发 | 优先级 | 超时/健康 | 作用 |
 | --- | --- | --- | --- | --- |
-| `control_task` | 100 Hz，TIM6 通知 | 最高业务优先级 | 50 ms 健康超时；单周期目标 10 ms | 编码器、轮速控制、安全停车和 PWM |
+| `control_task` | 1 kHz，TIM6通知 | 最高业务优先级 | 50ms健康超时；单周期deadline 1ms | 编码器、轮速控制、安全停车和 PWM |
 | `service_task` | 事件驱动，空闲时 1 ms 轮询 | 中高 | 200 ms 通信超时由协议定义 | UART/CAN、Console、OTA 会话和命令入口 |
 | `diagnostics_task` | 100 ms | 普通 | 500 ms 诊断刷新超时 | 更新 `SystemStatusSnapshot`、复位原因、任务统计和遥测快照 |
 | `display_task` | 1 ms DMA 推进循环，LCD 1 s 刷新 | 较低 | 2 s 显示刷新超时 | LCD 页面切换和显示快照，不读取硬件拼接状态 |

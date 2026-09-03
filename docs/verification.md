@@ -39,6 +39,32 @@
 
 V1 的“Target PASS”只允许来自实际目标板/Jetson session；软件测试、静态审查和 CI 不能替代真机证据。
 
+## 1.0.9 build2：1 kHz ControlTask验证候选（2026-09-03）
+
+ControlTask和TIM6从10ms改为1ms；为保持已有命令和PID标定的物理语义，wheel target与measurement
+仍使用10ms等效encoder counts。velocity conversion和运动遥测使用10ms reference period，encoder
+delta按实际elapsed time归一化。500ms feedback-loss、150ms startup boost、5 counts/10ms slew和
+10ms换向零输出均显式按时间计算，不依赖tick数量。
+
+软件验证：20项C host tests、5项control safety tests、18项OTA tests、ARM Debug/Release build均
+PASS。Release flash为`114640/491520`字节，RAM为`56168/131072`字节。最终build2产物：
+
+```text
+application.elf SHA256 a032780b86caceb95676c2a96a1abd370647d6f413b45d5b819d57fb5d6c59ec
+application.bin SHA256 95b4780e798bc197d9896088f80ccfea7a52f02f67352e09275c551d9fe8ec9f
+app-v1.0.9-b2.ota SHA256 ba8126f05f8816049f25f45ee6ebbf4f58e493d92d379683fc398ca1ad7a40d2
+OTA payload CRC32 0xCA5077B5
+```
+
+Target结果：UART OTA达到CONFIRMED，OpenOCD复位后仍启动`1.0.9 build2`。实测
+`control_period_ms=1`、`control_expected_ms=1`、`odom_period_ms=1`。累计约318870个控制样本，
+随后`+20/-20`架空正反转均有双侧方向正确的encoder/PWM反馈；WCET min/mean/max为
+`17/17/30us`，deadline miss=0、missed ticks=0。最终回归为STOPPED、fault=0、PWM=0/0。
+
+本次目标板测试对应未提交工作区，manifest为`source_dirty=true`，所以这里只标记
+`HARDWARE PASS CANDIDATE`。提交并由CI生成clean manifest后，需核对ELF/BIN/OTA SHA；若固件字节
+变化则重新OTA，未变化则可沿用本次Target证据并绑定clean source commit。
+
 本轮原始摘要证据位于 [`verification/chassis/`](verification/chassis/)：release identity、PowerReady、
 HardFault、encoder software injection、ControlTask profile、CAN timeout、wheels-up 和 odom 分项保存；
 `PENDING` 项不会因同目录其他项目通过而自动升级。

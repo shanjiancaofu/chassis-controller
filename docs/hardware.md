@@ -254,7 +254,7 @@ CubeMX 6.18.1 将 `SR501_OUT` 引脚定义和输入下拉初始化同步到 `Cor
 | TIM2 | 左编码器 |
 | TIM3 | LCD 背光 PWM |
 | TIM4 | 右编码器 |
-| TIM6 | 10 ms 控制通知 |
+| TIM6 | 1 ms ControlTask通知；ARR=999，timer clock=1MHz |
 | TIM7 | HAL 时基 |
 | TIM8 | 四路 20 kHz 电机 PWM |
 | DMA1 CH1 | USART1 RX circular |
