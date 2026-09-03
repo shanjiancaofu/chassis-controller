@@ -4,21 +4,36 @@ STM32G474VET6 底盘控制器。STM32 负责双电机闭环、安全停车、板
 CAN FD 通信；Jetson Orin Nano 负责上层控制、诊断和固件发送。本仓库与
 `cockpit-system` 独立维护。
 
-## 当前状态
+## V1 状态
 
-当前 Application 软件候选为 `1.0.8 build1`，Bootloader 为 `0.1.0 build22`。STM32 HAL + FreeRTOS
-原生平台架构、Device/Init、Kconfig/DTS、模块化 CMake、Application 运行边界和 Chassis CAN FD V1
-已经收敛。1.0.3 已通过 Release、host、安全门禁、UART OTA、普通复位和零速度 CAN target
-regression；编码器读取失败现立即锁存 critical encoder fault，不再以零测量继续 PID。
+当前已冻结版本为 `Application 1.0.9 build3`、`Bootloader 0.1.0 build22`。ControlTask 由 TIM6
+以 1ms 周期唤醒，在 STM32G474 上形成 1kHz 双轮闭环；命令、PID 参数和遥测继续使用 10ms
+等效 encoder-count 单位，以保持既有 CAN/UART 行为和实测调参语义。
 
-V1 硬件验证范围只包含正常运行、PowerReady、安全闭环、软件故障注入和性能采样；物理 encoder/CAN/
-camera 拔线不属于 V1 Gate。`chassis-controller` 的 GitHub Actions 负责 quality、host tests、ARM
-Debug/Release build 和 release artifact validation；目标板结果必须使用 `tools/target/` 的实测证据记录。
+```text
+Jetson command
+    → CAN FD codec / sequence / heartbeat
+    → authority + SafetyManager / FaultManager
+    → 1kHz ControlTask
+    → 10ms sliding encoder window
+    → PID + startup boost + feedback watchdog
+    → paired TIM8 motor PWM
+```
 
-`tools/target/run_target_regression.py` 提供轻量目标板自动回归，能够检查启动日志、版本、UART
-status、任务、fault、零 PWM、主要外设和 OTA 状态；真实 CAN 接口就绪后可增加零速度 CAN FD
-smoke。CAN FD OTA、断电/回滚故障注入、带负载 PID、轮式里程计几何校准和 IMU 动态安装轴向仍
-按硬件条件分别验证，未实测内容保持 `NOT VERIFIED`。
+V1 目标板结果：
+
+| 项目 | 结果 | 关键证据 |
+|---|---|---|
+| 1kHz ControlTask | PASS | 5分钟约30万周期，motion WCET max 33us，0 deadline miss |
+| Wheels-up closed loop | PASS | build3 `±50` 双轮收敛、无PWM异常归零，停止PWM=0/0 |
+| PowerReady / fail-close | PASS | 无有效供电拒绝运动；fault/timeout清命令并停双轮 |
+| Encoder failure injection | PASS | forward/reverse × left/right，fault `0x10`，同snapshot PWM=0/0 |
+| HardFault post-mortem | PASS | PWM清零、`.noinit` context、IWDG reset、同ELF `addr2line` |
+| UART OTA / provenance | PASS | `1.0.9 build3` CONFIRMED，clean source + ELF/BIN/OTA SHA256 |
+| CAN timeout / odom direction | PASS | command/heartbeat timeout；forward x+、reverse x-、yaw双向 |
+
+V1 不声明物理 encoder/CAN 拔线、带负载 PID 标定、精确 odom 几何标定或真实 Nav2 运动；这些项目
+明确留在 V2，而不是用软件测试冒充硬件结果。
 
 最新摘要见 [`docs/current_status.md`](docs/current_status.md)，完整证据见
 [`docs/verification.md`](docs/verification.md)。
@@ -27,6 +42,7 @@ V1 最终入口：
 
 - [V1 验证总览](docs/v1_validation_overview.md)
 - [V1 架构与面试要点](docs/v1_architecture_interview.md)
+- [V1 求职材料包](docs/portfolio_pack.md)
 
 ## 目录
 
