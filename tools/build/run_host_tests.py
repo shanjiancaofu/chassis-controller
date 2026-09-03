@@ -99,6 +99,10 @@ TESTS = {
         ["tests/unit/test_wheel_controller.c", "app/chassis/wheel_controller.c",
          "lib/pid/speed_pid.c"],
     ),
+    "wheel_speed_window": (
+        "WHEEL_SPEED_WINDOW_HOST_TEST",
+        ["tests/unit/test_wheel_speed_window.c", "app/chassis/wheel_speed_window.c"],
+    ),
     "uart_stm32": (
         "UART_STM32_HOST_TEST",
         ["tests/unit/test_uart_stm32.c", "drivers/uart/uart_stm32.c"],

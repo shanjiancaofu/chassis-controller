@@ -26,6 +26,7 @@ static int16_t UpdateWheel(SpeedPid *pid, int32_t target, int32_t measurement,
 static int32_t SlewTarget(int32_t current, int32_t requested,
                           uint32_t elapsed_ticks, uint32_t *remainder,
                           uint32_t *direction_hold_ms);
+static float ScaleDerivativeGain(float kd);
 
 bool WheelController_Init(const WheelControllerMotorPort *motor_port) {
   controller_motor_port_ready = false;
@@ -48,10 +49,12 @@ bool WheelController_Init(const WheelControllerMotorPort *motor_port) {
   left_direction_hold_ms = 0U;
   right_direction_hold_ms = 0U;
   SpeedPid_Init(&left_pid, MOTOR_LEFT_PID_KP, MOTOR_LEFT_PID_KI,
-                MOTOR_LEFT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
+                ScaleDerivativeGain(MOTOR_LEFT_PID_KD),
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT,
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
   SpeedPid_Init(&right_pid, MOTOR_RIGHT_PID_KP, MOTOR_RIGHT_PID_KI,
-                MOTOR_RIGHT_PID_KD, (float)MOTOR_CONTROL_OUTPUT_LIMIT,
+                ScaleDerivativeGain(MOTOR_RIGHT_PID_KD),
+                (float)MOTOR_CONTROL_OUTPUT_LIMIT,
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
   return true;
 }
@@ -150,9 +153,14 @@ void WheelController_ApplyPidGains(WheelControllerSide side, uint16_t kp,
   }
 
   pid = side == WHEEL_CONTROLLER_LEFT ? &left_pid : &right_pid;
-  SpeedPid_Init(pid, (float)kp, (float)ki, (float)kd,
+  SpeedPid_Init(pid, (float)kp, (float)ki, ScaleDerivativeGain((float)kd),
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT,
                 (float)MOTOR_CONTROL_OUTPUT_LIMIT);
+}
+
+static float ScaleDerivativeGain(float kd) {
+  return kd * (float)MOTOR_CONTROL_PERIOD_MS /
+         (float)MOTOR_CONTROL_REFERENCE_PERIOD_MS;
 }
 
 void WheelController_GetSnapshot(WheelControllerSnapshot *snapshot) {

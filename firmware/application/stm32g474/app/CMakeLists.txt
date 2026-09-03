@@ -4,6 +4,7 @@ add_library(chassis_product STATIC
   chassis/feedback_watchdog.c
   chassis/odometry.c
   chassis/wheel_controller.c
+  chassis/wheel_speed_window.c
   console/console.c
   diagnostics/board_health.c
   diagnostics/diagnostic_report.c

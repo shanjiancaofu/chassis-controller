@@ -6,6 +6,7 @@
 #include "app/chassis/feedback_watchdog.h"
 #include "app/chassis/odometry.h"
 #include "app/chassis/wheel_controller.h"
+#include "app/chassis/wheel_speed_window.h"
 #include "app/diagnostics/board_health.h"
 #include "app/maintenance/self_test/iwdg_self_test.h"
 #include "app/maintenance/self_test/qspi_self_test.h"
@@ -36,13 +37,13 @@ static const struct device *right_encoder_device;
 static uint32_t consecutive_control_overruns;
 static volatile bool emergency_stop_event;
 static FeedbackWatchdog feedback_watchdog;
+static WheelSpeedWindow wheel_speed_window;
 static volatile bool inject_left_encoder_failure;
 static volatile bool inject_right_encoder_failure;
 
 static void ReleaseMotionOwner(void);
 static void ApplyPendingControlParameters(void);
 static bool PowerReady(uint32_t now_ms);
-static int32_t NormalizeEncoderDelta(int32_t delta, uint32_t elapsed_ms);
 
 static int16_t GetLeftMotorAppliedDuty(void) {
   return motor_get_applied_duty(drive_device, MOTOR_LEFT);
@@ -88,6 +89,7 @@ bool ControlRuntime_Init(void) {
   consecutive_control_overruns = 0U;
   emergency_stop_event = false;
   FeedbackWatchdog_Reset(&feedback_watchdog);
+  WheelSpeedWindow_Reset(&wheel_speed_window);
   inject_left_encoder_failure = false;
   inject_right_encoder_failure = false;
   return WheelController_Init(&wheel_controller_motor_port);
@@ -226,8 +228,12 @@ void ControlRuntime_Run(uint32_t notification_count) {
     ControlRuntime_LatchInternalFault(CHASSIS_FAULT_INTERNAL);
     return;
   }
-  left_measurement = NormalizeEncoderDelta(left_delta, elapsed_ms);
-  right_measurement = NormalizeEncoderDelta(right_delta, elapsed_ms);
+  if (!WheelSpeedWindow_Update(&wheel_speed_window, left_delta, right_delta,
+                               notification_count, &left_measurement,
+                               &right_measurement)) {
+    ControlRuntime_LatchInternalFault(CHASSIS_FAULT_INTERNAL);
+    return;
+  }
   ApplyPendingControlParameters();
   if (SafetyManager_IsEmergencyStopLatched()) {
     kernel_critical_enter();
@@ -295,15 +301,6 @@ void ControlRuntime_Run(uint32_t notification_count) {
       ControlRuntime_LatchInternalFault(CHASSIS_FAULT_ENCODER);
     }
   }
-}
-
-static int32_t NormalizeEncoderDelta(int32_t delta, uint32_t elapsed_ms) {
-  const int64_t scaled = (int64_t)delta * MOTOR_CONTROL_REFERENCE_PERIOD_MS;
-
-  if (elapsed_ms == 0U) {
-    return 0;
-  }
-  return (int32_t)(scaled / (int64_t)elapsed_ms);
 }
 
 bool ControlRuntime_ArmEncoderReadFailure(bool left) {
