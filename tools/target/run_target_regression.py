@@ -19,6 +19,8 @@ def main() -> int:
     parser.add_argument("--expected-version", required=True)
     parser.add_argument("--expected-build", type=int, required=True)
     parser.add_argument("--reset", action="store_true")
+    parser.add_argument("--startup-wait", type=float, default=3.0)
+    parser.add_argument("--ready-timeout", type=float, default=15.0)
     parser.add_argument("--can-interface")
     parser.add_argument("--expect-bus-off", action="store_true")
     parser.add_argument("--json", type=pathlib.Path, default=pathlib.Path("_output/test/target-regression.json"))
@@ -31,7 +33,8 @@ def main() -> int:
         args.expected_version,
         args.expected_build,
         args.reset,
-        3.0,
+        args.startup_wait,
+        args.ready_timeout,
     )
     report.extend(serial_results)
 

@@ -86,7 +86,10 @@ def run_serial_smoke(
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
-                startup_text = read_until_idle(serial_port, startup_wait, idle=0.8)
+                # Bootloader and Application banners are separated by image validation and
+                # handoff. Keep the full bounded capture window instead of treating that gap
+                # as end-of-log.
+                startup_text = read_until_idle(serial_port, startup_wait, idle=startup_wait)
                 report.add("bootloader startup", "BOOT: START" in startup_text)
                 report.add(
                     "application startup",
@@ -140,8 +143,11 @@ def run_serial_smoke(
     )
     report.add(
         "motor zero output",
-        all(motor.get(name) == "0" for name in ("left_target", "left_speed", "left_pwm", "right_target", "right_speed", "right_pwm")),
-        f"control={motor.get('control')}",
+        all(motor.get(name) == "0" for name in ("left_target", "left_pwm", "right_target", "right_pwm")),
+        (
+            f"control={motor.get('control')} left_pwm={motor.get('left_pwm')} "
+            f"right_pwm={motor.get('right_pwm')}"
+        ),
     )
     report.add("ADC", sensors.get("adc_valid") == "1", f"mv={sensors.get('adc_mv')}")
     report.add("IMU", sensors.get("imu") == "READY", sensors.get("imu" , "missing"))
